@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ice Climber</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+  }
+  #gameContainer {
+    position: relative;
+    border: 3px solid #445;
+    box-shadow: 0 0 30px rgba(100,150,255,0.3);
+  }
+  canvas {
+    display: block;
+    background: #1a1a3e;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="game" width="512" height="480"></canvas>
+</div>
+<script>
+// ============================================================
+// ICE CLIMBER - Single File HTML Game
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// --- CONSTANTS ---
+const TILE = 16;
+const COLS = 32;            // 32 * 16 = 512
+const FLOOR_HEIGHT = 4;     // rows between platforms
+const NUM_FLOORS = 8;       // climbable platform layers
+const SUMMIT_ROWS = 8;      // bonus area at top
+const GROUND_ROWS = 2;      // ground at bottom
+const TOTAL_ROWS = SUMMIT_ROWS + NUM_FLOORS * FLOOR_HEIGHT + GROUND_ROWS;
+const WORLD_WIDTH = COLS * TILE;
+const WORLD_HEIGHT = TOTAL_ROWS * TILE;
+
+// Physics
+const GRAVITY = 0.35;
+const JUMP_VELOCITY = -7.8;
+const PLAYER_SPEED = 2.2;
+const MAX_FALL_SPEED = 6.0;
+const FRICTION = 0.75;
+
+// Tile types
+const EMPTY = 0;
+const ICE = 1;
+const SOLID = 2;
+const CLOUD = 3;
+
+// Colors (NES-inspired)
+const C = {
+  sky:          '#1a1a3e',
+  skyLight:     '#252560',
+  mountain:     '#303070',
+  mountainLight:'#4040a0',
+  ice:          '#88ccff',
+  iceHigh:      '#bbddff',
+  iceShadow:    '#5599cc',
+  solid:        '#6666aa',
+  solidHigh:    '#8888cc',
+  cloud:        '#ffffff',
+  cloudShadow:  '#ccddee',
+  player:       '#ff5533',
+  playerDark:   '#cc3311',
+  playerFace:   '#ffcc99',
+  playerHair:   '#884422',
+  hammer:       '#cccccc',
+  hammerHead:   '#aaaaaa',
+  topi:         '#ffffff',
+  topiDark:     '#ccccdd',
+  topiNose:     '#ff6666',
+  nitpicker:    '#cc44cc',
+  nitpickerDark:'#9933aa',
+  nitpickerBeak:'#ffaa00',
+  text:         '#ffffff',
+  textGold:     '#f0a500',
+  textBlue:     '#88ccff',
+  hud:          'rgba(0,0,0,0.65)',
+};
+
+// Level configs
+const LEVEL_CONFIGS = [
+  { name:'Mountain 1', gapCount:2, maxGapWidth:3, topiCount:2, nitCount:0, forceScrollDelay:999999, forceScrollSpeed:0, topiSpeed:0.8 },
+  { name:'Mountain 2', gapCount:3, maxGapWidth:4, topiCount:3, nitCount:1, forceScrollDelay:600,    forceScrollSpeed:0.3, topiSpeed:1.1 },
+  { name:'Mountain 3', gapCount:4, maxGapWidth:5, topiCount:3, nitCount:2, forceScrollDelay:360,    forceScrollSpeed:0.6, topiSpeed:1.4 },
+];
+
+// Bonus item types
+const BONUS_TYPES = [
+  { name:'eggplant',  color:'#8844aa', points:500 },
+  { name:'carrot',    color:'#ff8800', points:300 },
+  { name:'cabbage',   color:'#44cc44', points:400 },
+  { name:'corn',      color:'#ffdd44', points:200 },
+  { name:'mushroom',  color:'#ff4444', points:800 },
+];
+
+// --- GAME STATE ---
+let gameState = 'title';
+let stateTimer = 0;
+let currentLevel = 0;
+let score = 0;
+let lives = 3;
+let levelGrid = [];
+let cameraY = 0;
+let maxCameraY = 0;  // highest camera has been (lowest Y value)
+let forceScrollTimer = 0;
+
+// Player
+let player = {
+  x:0, y:0, vx:0, vy:0,
+  width:14, height:16,
+  onGround:false, facing:1,
+  alive:true, invincible:0,
+  hammerSwing:0,
+};
+
+// Entities
+let enemies = [];
+let particles = [];
+let scorePopups = [];
+let bonusItems = [];
+let bonusTimer = 0;
+let spawnedFloors = new Set();
+
+// Input
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Audio
+let audioCtx = null;
+let audioEnabled = false;
+
+function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    gain.gain.value = 0;
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.05);
+    audioEnabled = true;
+  } catch(e) {}
+}
+
+function playSound(type) {
+  if (!audioCtx || !audioEnabled) return;
+  audioCtx.resume();
+  let t = audioCtx.currentTime;
+
+  function beep(freq, start, dur, vol, wave) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.value = freq;
+    o.type = wave || 'square';
+    g.gain.setValueAtTime(vol || 0.12, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    o.start(start); o.stop(start + dur);
+  }
+
+  switch(type) {
+    case 'jump':
+      beep(350, t, 0.07, 0.1);
+      beep(550, t+0.04, 0.07, 0.1);
+      break;
+    case 'break':
+      beep(200, t, 0.05, 0.18, 'sawtooth');
+      beep(120, t+0.03, 0.05, 0.14, 'sawtooth');
+      break;
+    case 'enemyDefeat':
+      beep(600, t, 0.08, 0.12);
+      beep(300, t+0.07, 0.12, 0.1);
+      break;
+    case 'death':
+      beep(400, t, 0.12, 0.15);
+      beep(300, t+0.12, 0.12, 0.15);
+      beep(200, t+0.24, 0.12, 0.15);
+      beep(100, t+0.36, 0.25, 0.12);
+      break;
+    case 'collect':
+      beep(500, t, 0.06, 0.1);
+      beep(700, t+0.05, 0.06, 0.1);
+      beep(900, t+0.1, 0.08, 0.1);
+      break;
+    case 'levelComplete':
+      beep(523, t, 0.12, 0.12);
+      beep(659, t+0.12, 0.12, 0.12);
+      beep(784, t+0.24, 0.12, 0.12);
+      beep(1047, t+0.36, 0.25, 0.15);
+      break;
+    case 'bonusEnd':
+      beep(800, t, 0.1, 0.1);
+      beep(600, t+0.1, 0.1, 0.1);
+      beep(400, t+0.2, 0.2, 0.1);
+      break;
+  }
+}
+
+// ============================================================
+// LEVEL GENERATION
+// ============================================================
+
+function getFloorRow(floorIdx) {
+  // Floor 0 is the lowest platform, floor NUM_FLOORS-1 is the highest
+  let groundRow = TOTAL_ROWS - 1;
+  return groundRow - (floorIdx + 1) * FLOOR_HEIGHT;
+}
+
+function generateLevel(lvlIdx) {
+  let cfg = LEVEL_CONFIGS[lvlIdx];
+  let grid = [];
+  for (let r = 0; r < TOTAL_ROWS; r++) {
+    grid[r] = new Array(COLS).fill(EMPTY);
+  }
+
+  // Ground floor (bottom 2 rows solid)
+  for (let r = TOTAL_ROWS - GROUND_ROWS; r < TOTAL_ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = SOLID;
+    }
+  }
+
+  // Side walls
+  for (let r = 0; r < TOTAL_ROWS; r++) {
+    grid[r][0] = SOLID;
+    grid[r][COLS-1] = SOLID;
+  }
+
+  // Platform floors
+  for (let floor = 0; floor < NUM_FLOORS; floor++) {
+    let row = getFloorRow(floor);
+
+    // Fill with ICE
+    for (let c = 1; c < COLS-1; c++) {
+      grid[row][c] = ICE;
+    }
+
+    // Punch gaps
+    let gaps = [];
+    for (let g = 0; g < cfg.gapCount; g++) {
+      let width = 2 + Math.floor(Math.random() * (cfg.maxGapWidth - 1));
+      let startCol = 2 + Math.floor(Math.random() * (COLS - 4 - width));
+      let overlaps = gaps.some(prev =>
+        startCol < prev.s + prev.w + 2 && startCol + width + 2 > prev.s
+      );
+      if (!overlaps) {
+        for (let c = startCol; c < startCol + width && c < COLS-1; c++) {
+          grid[row][c] = EMPTY;
+        }
+        gaps.push({ s: startCol, w: width });
+      }
+    }
+
+    // Make edge blocks of each platform segment SOLID (unbreakable)
+    for (let c = 1; c < COLS-1; c++) {
+      if (grid[row][c] === ICE) {
+        let leftEmpty = (c === 1 || grid[row][c-1] === EMPTY);
+        let rightEmpty = (c === COLS-2 || grid[row][c+1] === EMPTY);
+        if (leftEmpty || rightEmpty) {
+          grid[row][c] = SOLID;
+        }
+      }
+    }
+  }
+
+  // Summit area - cloud platforms for bonus stage
+  let summitRow = SUMMIT_ROWS - 3;
+  for (let c = 3; c < COLS-3; c += 4) {
+    for (let cc = c; cc < c + 3 && cc < COLS-3; cc++) {
+      grid[summitRow][cc] = CLOUD;
+    }
+  }
+  // Another row of clouds higher
+  for (let c = 5; c < COLS-5; c += 5) {
+    for (let cc = c; cc < c + 2 && cc < COLS-5; cc++) {
+      grid[summitRow - 2][cc] = CLOUD;
+    }
+  }
+
+  return grid;
+}
+
+function getTile(row, col) {
+  if (row < 0 || row >= TOTAL_ROWS) return SOLID;
+  // Wrap columns for screen wrap (but walls stay)
+  if (col < 0 || col >= COLS) return SOLID;
+  return levelGrid[row][col];
+}
+
+function setTile(row, col, val) {
+  if (row >= 0 && row < TOTAL_ROWS && col >= 0 && col < COLS) {
+    levelGrid[row][col] = val;
+  }
+}
+
+function isSolid(tile) {
+  return tile === SOLID || tile === ICE;
+}
+
+// ============================================================
+// CAMERA
+// ============================================================
+
+function updateCamera() {
+  let playerScreenY = player.y - cameraY;
+  let threshold = canvas.height * 0.4;
+
+  if (playerScreenY < threshold) {
+    cameraY = player.y - threshold;
+  }
+
+  // Clamp
+  let maxBottom = WORLD_HEIGHT - canvas.height;
+  if (cameraY > maxBottom) cameraY = maxBottom;
+  if (cameraY < 0) cameraY = 0;
+
+  // Never scroll down (camera only goes up)
+  if (cameraY < maxCameraY) maxCameraY = cameraY;
+  cameraY = maxCameraY;
+
+  // Check if player fell off screen
+  if (player.alive && player.y > cameraY + canvas.height + TILE) {
+    loseLife();
+  }
+}
+
+function updateForceScroll() {
+  let cfg = LEVEL_CONFIGS[currentLevel];
+  forceScrollTimer++;
+  if (forceScrollTimer > cfg.forceScrollDelay) {
+    maxCameraY -= cfg.forceScrollSpeed;
+    if (maxCameraY < 0) maxCameraY = 0;
+    cameraY = maxCameraY;
+  }
+}
+
+// ============================================================
+// COLLISION
+// ============================================================
+
+function moveAndCollide(entity, isPlayer) {
+  // --- Horizontal ---
+  entity.x += entity.vx;
+
+  // Screen wrap (player only)
+  if (isPlayer) {
+    if (entity.x + entity.width < 0) entity.x = WORLD_WIDTH - 2;
+    if (entity.x > WORLD_WIDTH) entity.x = -entity.width + 2;
+  }
+
+  let left = Math.floor(entity.x / TILE);
+  let right = Math.floor((entity.x + entity.width - 1) / TILE);
+  let top = Math.floor(entity.y / TILE);
+  let bottom = Math.floor((entity.y + entity.height - 1) / TILE);
+
+  for (let r = top; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      if (isSolid(getTile(r, c))) {
+        if (entity.vx > 0) {
+          entity.x = c * TILE - entity.width;
+        } else if (entity.vx < 0) {
+          entity.x = (c + 1) * TILE;
+        }
+        entity.vx = 0;
+      }
+    }
+  }
+
+  // --- Vertical ---
+  entity.y += entity.vy;
+
+  left = Math.floor(entity.x / TILE);
+  right = Math.floor((entity.x + entity.width - 1) / TILE);
+  top = Math.floor(entity.y / TILE);
+  bottom = Math.floor((entity.y + entity.height - 1) / TILE);
+
+  entity.onGround = false;
+
+  for (let r = top; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      let tile = getTile(r, c);
+
+      // Cloud: one-way from above only
+      if (tile === CLOUD) {
+        if (entity.vy > 0 && (entity.y + entity.height - entity.vy) <= r * TILE + 2) {
+          entity.y = r * TILE - entity.height;
+          entity.vy = 0;
+          entity.onGround = true;
+        }
+        continue;
+      }
+
+      if (isSolid(tile)) {
+        if (entity.vy > 0) {
+          // Landing
+          entity.y = r * TILE - entity.height;
+          entity.vy = 0;
+          entity.onGround = true;
+        } else if (entity.vy < 0) {
+          // Head hit
+          entity.y = (r + 1) * TILE;
+
+          // Block breaking (player only)
+          if (isPlayer && tile === ICE) {
+            setTile(r, c, EMPTY);
+            score += 10;
+            spawnBreakParticles(c * TILE + TILE/2, r * TILE + TILE/2);
+            addScorePopup(c * TILE + TILE/2, r * TILE, 10);
+            playSound('break');
+            player.hammerSwing = 10;
+
+            // Check if enemy was on this block
+            for (let enemy of enemies) {
+              if (!enemy.alive) continue;
+              let eCol = Math.floor((enemy.x + enemy.width/2) / TILE);
+              let eRow = Math.floor((enemy.y + enemy.height) / TILE);
+              if (eRow === r && eCol === c) {
+                enemy.alive = false;
+                score += 50;
+                addScorePopup(enemy.x, enemy.y, 50);
+                playSound('enemyDefeat');
+              }
+            }
+          }
+          entity.vy = 0;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+// PLAYER
+// ============================================================
+
+function updatePlayer() {
+  if (!player.alive) return;
+
+  // Horizontal
+  if (keys['ArrowLeft']) {
+    player.vx = -PLAYER_SPEED;
+    player.facing = -1;
+  } else if (keys['ArrowRight']) {
+    player.vx = PLAYER_SPEED;
+    player.facing = 1;
+  } else {
+    player.vx *= FRICTION;
+    if (Math.abs(player.vx) < 0.1) player.vx = 0;
+  }
+
+  // Jump
+  if (keys['Space'] && player.onGround) {
+    player.vy = JUMP_VELOCITY;
+    player.onGround = false;
+    keys['Space'] = false;
+    playSound('jump');
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
+
+  // Move & collide
+  moveAndCollide(player, true);
+
+  // Timers
+  if (player.hammerSwing > 0) player.hammerSwing--;
+  if (player.invincible > 0) player.invincible--;
+}
+
+function loseLife() {
+  if (!player.alive) return;
+  player.alive = false;
+  player.vx = 0;
+  player.vy = 0;
+  playSound('death');
+  lives--;
+
+  if (lives <= 0) {
+    stateTimer = 120;
+    setTimeout(() => { gameState = 'gameOver'; }, 1500);
+  } else {
+    setTimeout(() => { respawnPlayer(); }, 1200);
+  }
+}
+
+function respawnPlayer() {
+  // Find a safe platform near the bottom of the visible area
+  let bottomRow = Math.floor((cameraY + canvas.height) / TILE) - 2;
+  let topRow = Math.floor(cameraY / TILE) + 2;
+  for (let r = bottomRow; r >= topRow; r--) {
+    for (let c = 3; c < COLS-3; c++) {
+      if (isSolid(getTile(r, c)) && getTile(r-1, c) === EMPTY && getTile(r-2, c) === EMPTY) {
+        player.x = c * TILE + 1;
+        player.y = (r-1) * TILE;
+        player.vx = 0;
+        player.vy = 0;
+        player.alive = true;
+        player.invincible = 120;
+        return;
+      }
+    }
+  }
+  // Fallback
+  player.x = WORLD_WIDTH / 2 - 8;
+  player.y = cameraY + canvas.height * 0.5;
+  player.vx = 0;
+  player.vy = 0;
+  player.alive = true;
+  player.invincible = 120;
+}
+
+// ============================================================
+// ENEMIES
+// ============================================================
+
+function createTopi(col, floorRow) {
+  let cfg = LEVEL_CONFIGS[currentLevel];
+  return {
+    type:'topi', x: col*TILE, y: (floorRow-1)*TILE,
+    vx: cfg.topiSpeed * (Math.random()>0.5?1:-1),
+    vy: 0, width:14, height:16,
+    alive:true, onGround:false,
+    facing: 1, floorRow: floorRow,
+    fillTimer: 0,
+  };
+}
+
+function createNitpicker(x, y) {
+  return {
+    type:'nitpicker', x:x, y:y,
+    vx: 1.5 * (Math.random()>0.5?1:-1),
+    vy: 0, width:14, height:12,
+    alive:true, state:'fly',
+    flyTimer:0, homeY:y, facing:1,
+  };
+}
+
+function checkEnemySpawns() {
+  let cfg = LEVEL_CONFIGS[currentLevel];
+  let topRow = Math.floor(cameraY / TILE);
+
+  for (let floor = 0; floor < NUM_FLOORS; floor++) {
+    let fRow = getFloorRow(floor);
+    if (spawnedFloors.has(floor)) continue;
+    if (fRow >= topRow && fRow < topRow + 30) {
+      spawnedFloors.add(floor);
+
+      // Topi on some floors
+      if (floor % 2 === 0) {
+        let topiAlive = enemies.filter(e => e.type==='topi' && e.alive).length;
+        if (topiAlive < cfg.topiCount) {
+          let col = 4 + Math.floor(Math.random() * (COLS - 8));
+          // Make sure spawn is on a solid/ice tile
+          if (isSolid(getTile(fRow, col))) {
+            enemies.push(createTopi(col, fRow));
+          }
+        }
+      }
+
+      // Nitpicker on some floors
+      if (floor % 3 === 1 && cfg.nitCount > 0) {
+        let nitAlive = enemies.filter(e => e.type==='nitpicker' && e.alive).length;
+        if (nitAlive < cfg.nitCount) {
+          enemies.push(createNitpicker(
+            Math.random() * (WORLD_WIDTH - 60) + 30,
+            fRow * TILE - 50
+          ));
+        }
+      }
+    }
+  }
+}
+
+function updateEnemies() {
+  for (let enemy of enemies) {
+    if (!enemy.alive) continue;
+
+    if (enemy.type === 'topi') {
+      updateTopi(enemy);
+    } else if (enemy.type === 'nitpicker') {
+      updateNitpicker(enemy);
+    }
+  }
+  // Clean up dead enemies that are off screen
+  enemies = enemies.filter(e => e.alive || e.y < cameraY + canvas.height + 100);
+}
+
+function updateTopi(e) {
+  // Gravity
+  e.vy += GRAVITY;
+  if (e.vy > MAX_FALL_SPEED) e.vy = MAX_FALL_SPEED;
+
+  // Patrol
+  e.x += e.vx;
+  e.facing = e.vx > 0 ? 1 : -1;
+
+  // Wall check
+  let aheadCol = Math.floor((e.x + (e.vx > 0 ? e.width : 0)) / TILE);
+  let feetRow = Math.floor((e.y + e.height) / TILE);
+
+  if (isSolid(getTile(feetRow - 1, aheadCol))) {
+    // Wall ahead, reverse
+    e.vx *= -1;
+    e.facing *= -1;
+  }
+
+  // Edge check: don't walk off platform
+  let belowAhead = getTile(feetRow, aheadCol);
+  if (e.onGround && belowAhead === EMPTY) {
+    e.vx *= -1;
+    e.facing *= -1;
+    e.x += e.vx * 2;
+  }
+
+  // Gap filling
+  let curCol = Math.floor((e.x + e.width/2) / TILE);
+  if (getTile(e.floorRow, curCol) === EMPTY && e.fillTimer <= 0) {
+    if (Math.random() < 0.003) {
+      e.fillTimer = 90;
+    }
+  }
+  if (e.fillTimer > 0) {
+    e.fillTimer--;
+    if (e.fillTimer === 0) {
+      let fc = Math.floor((e.x + e.width/2) / TILE);
+      if (getTile(e.floorRow, fc) === EMPTY) {
+        setTile(e.floorRow, fc, ICE);
+      }
+    }
+  }
+
+  // Collision
+  moveAndCollide(e, false);
+
+  // Fall off world
+  if (e.y > WORLD_HEIGHT + 50) e.alive = false;
+}
+
+function updateNitpicker(e) {
+  e.flyTimer++;
+
+  if (e.state === 'fly') {
+    e.x += e.vx;
+    e.y = e.homeY + Math.sin(e.flyTimer * 0.05) * 20;
+    e.facing = e.vx > 0 ? 1 : -1;
+
+    // Screen wrap
+    if (e.x > WORLD_WIDTH + 20) e.x = -e.width;
+    if (e.x + e.width < -20) e.x = WORLD_WIDTH;
+
+    // Dive check
+    if (e.flyTimer % 90 === 0 && player.alive) {
+      let dx = player.x - e.x;
+      let dy = player.y - e.y;
+      if (Math.abs(dx) < 100 && dy > 0 && dy < 160) {
+        e.state = 'dive';
+        e.vx = dx > 0 ? 2.5 : -2.5;
+        e.vy = 3;
+        e.flyTimer = 0;
+      }
+    }
+  } else if (e.state === 'dive') {
+    e.x += e.vx;
+    e.y += e.vy;
+
+    if (e.flyTimer > 45 || e.y > e.homeY + 120) {
+      e.state = 'fly';
+      e.vy = 0;
+      e.y = e.homeY;
+      e.vx = e.facing * 1.5;
+      e.flyTimer = 0;
+    }
+  }
+
+  // Off screen cleanup
+  if (e.y > WORLD_HEIGHT + 100) e.alive = false;
+}
+
+function checkPlayerEnemyCollisions() {
+  if (!player.alive || player.invincible > 0) return;
+
+  for (let enemy of enemies) {
+    if (!enemy.alive) continue;
+
+    // AABB overlap
+    if (player.x < enemy.x + enemy.width &&
+        player.x + player.width > enemy.x &&
+        player.y < enemy.y + enemy.height &&
+        player.y + player.height > enemy.y) {
+
+      // Head bonk (player falling onto enemy)
+      if (player.vy > 0 && player.y + player.height - player.vy <= enemy.y + 6) {
+        enemy.alive = false;
+        player.vy = JUMP_VELOCITY * 0.5;
+        let pts = enemy.type === 'nitpicker' ? 150 : 100;
+        score += pts;
+        addScorePopup(enemy.x, enemy.y, pts);
+        playSound('enemyDefeat');
+      } else {
+        // Player takes damage
+        loseLife();
+      }
+    }
+  }
+}
+
+// ============================================================
+// PARTICLES & POPUPS
+// ============================================================
+
+function spawnBreakParticles(wx, wy) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: wx, y: wy,
+      vx: (Math.random()-0.5) * 5,
+      vy: (Math.random()-0.5) * 5 - 2,
+      life: 18 + Math.floor(Math.random()*12),
+      color: Math.random() > 0.5 ? C.ice : C.iceHigh,
+      size: 2 + Math.floor(Math.random()*3),
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length-1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    let sy = p.y - cameraY;
+    if (sy < -10 || sy > canvas.height + 10) continue;
+    ctx.globalAlpha = Math.max(0, p.life / 30);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, sy, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function addScorePopup(wx, wy, pts) {
+  scorePopups.push({ x: wx, y: wy, text: '+' + pts, life: 45 });
+}
+
+function updateScorePopups() {
+  for (let i = scorePopups.length-1; i >= 0; i--) {
+    scorePopups[i].y -= 0.5;
+    scorePopups[i].life--;
+    if (scorePopups[i].life <= 0) scorePopups.splice(i, 1);
+  }
+}
+
+function drawScorePopups() {
+  ctx.font = 'bold 10px Courier New';
+  ctx.textAlign = 'center';
+  for (let p of scorePopups) {
+    let sy = p.y - cameraY;
+    if (sy < -20 || sy > canvas.height + 20) continue;
+    ctx.globalAlpha = Math.max(0, p.life / 45);
+    ctx.fillStyle = C.textGold;
+    ctx.fillText(p.text, p.x, sy);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// BONUS STAGE
+// ============================================================
+
+function initBonusStage() {
+  bonusItems = [];
+  let summitRow = SUMMIT_ROWS - 3;
+
+  // Place items on and around the cloud platforms
+  for (let c = 4; c < COLS-4; c += 3) {
+    let type = BONUS_TYPES[Math.floor(Math.random() * BONUS_TYPES.length)];
+    bonusItems.push({
+      x: c * TILE + 2, y: (summitRow-1) * TILE,
+      type: type, collected: false,
+      width: 12, height: 12,
+    });
+  }
+  // Some on the upper clouds
+  for (let c = 6; c < COLS-6; c += 5) {
+    let type = BONUS_TYPES[Math.floor(Math.random() * BONUS_TYPES.length)];
+    bonusItems.push({
+      x: c * TILE + 2, y: (summitRow-3) * TILE,
+      type: type, collected: false,
+      width: 12, height: 12,
+    });
+  }
+
+  bonusTimer = 600; // 10 seconds
+
+  // Place player at bottom of summit area
+  player.x = WORLD_WIDTH/2 - 8;
+  player.y = (summitRow + 2) * TILE;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = false;
+}
+
+function updateBonusStage() {
+  updatePlayer();
+
+  // Camera for bonus: lock to summit area
+  cameraY = 0;
+  maxCameraY = 0;
+
+  bonusTimer--;
+  if (bonusTimer <= 0) {
+    playSound('bonusEnd');
+    gameState = 'levelComplete';
+    stateTimer = 150;
+    return;
+  }
+
+  // Collect items
+  for (let item of bonusItems) {
+    if (item.collected) continue;
+    if (player.x < item.x + item.width &&
+        player.x + player.width > item.x &&
+        player.y < item.y + item.height &&
+        player.y + player.height > item.y) {
+      item.collected = true;
+      score += item.type.points;
+      addScorePopup(item.x, item.y, item.type.points);
+      playSound('collect');
+    }
+  }
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+
+function drawLevel() {
+  let startRow = Math.floor(cameraY / TILE);
+  let endRow = Math.ceil((cameraY + canvas.height) / TILE) + 1;
+  if (startRow < 0) startRow = 0;
+  if (endRow > TOTAL_ROWS) endRow = TOTAL_ROWS;
+
+  // Draw mountain side decoration
+  let sideGrad = ctx.createLinearGradient(0, 0, 20, 0);
+  sideGrad.addColorStop(0, C.mountain);
+  sideGrad.addColorStop(1, C.mountainLight);
+
+  // Left wall
+  ctx.fillStyle = C.mountain;
+  ctx.fillRect(0, 0, TILE, canvas.height);
+  // Right wall
+  ctx.fillRect((COLS-1)*TILE, 0, TILE, canvas.height);
+
+  for (let r = startRow; r < endRow; r++) {
+    let sy = r * TILE - cameraY;
+    for (let c = 0; c < COLS; c++) {
+      let sx = c * TILE;
+      let tile = levelGrid[r] ? levelGrid[r][c] : EMPTY;
+
+      if (tile === ICE) {
+        // Ice block with highlight
+        ctx.fillStyle = C.ice;
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = C.iceHigh;
+        ctx.fillRect(sx, sy, TILE, 3);
+        ctx.fillRect(sx, sy, 3, TILE);
+        ctx.fillStyle = C.iceShadow;
+        ctx.fillRect(sx, sy + TILE-2, TILE, 2);
+        ctx.fillRect(sx + TILE-2, sy, 2, TILE);
+        // Sparkle
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx+3, sy+3, 2, 2);
+      }
+      else if (tile === SOLID) {
+        // Solid brick
+        ctx.fillStyle = C.solid;
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = C.solidHigh;
+        ctx.fillRect(sx, sy, TILE, 2);
+        ctx.fillRect(sx, sy, 2, TILE);
+        // Brick pattern
+        ctx.fillStyle = '#5555aa';
+        ctx.fillRect(sx + TILE/2, sy, 1, TILE);
+        ctx.fillRect(sx, sy + TILE/2, TILE, 1);
+      }
+      else if (tile === CLOUD) {
+        // Fluffy cloud platform
+        ctx.fillStyle = C.cloud;
+        ctx.fillRect(sx+1, sy+4, TILE-2, TILE-4);
+        ctx.fillRect(sx+3, sy+2, TILE-6, TILE-2);
+        ctx.fillStyle = C.cloudShadow;
+        ctx.fillRect(sx+2, sy+TILE-3, TILE-4, 2);
+      }
+    }
+  }
+}
+
+function drawPlayer() {
+  if (!player.alive) return;
+  // Invincibility flashing
+  if (player.invincible > 0 && Math.floor(player.invincible / 4) % 2 === 0) return;
+
+  let sx = Math.round(player.x);
+  let sy = Math.round(player.y - cameraY);
+  if (sy < -20 || sy > canvas.height + 20) return;
+
+  let f = player.facing;
+
+  // Parka body
+  ctx.fillStyle = C.player;
+  ctx.fillRect(sx + 2, sy + 6, 10, 7);
+
+  // Parka hood
+  ctx.fillStyle = C.playerDark;
+  ctx.fillRect(sx + 3, sy + 1, 8, 3);
+
+  // Face
+  ctx.fillStyle = C.playerFace;
+  ctx.fillRect(sx + 4, sy + 3, 6, 5);
+
+  // Eye
+  ctx.fillStyle = '#000';
+  if (f === 1) {
+    ctx.fillRect(sx + 8, sy + 4, 2, 2);
+  } else {
+    ctx.fillRect(sx + 4, sy + 4, 2, 2);
+  }
+
+  // Mouth (small line)
+  ctx.fillStyle = '#cc6644';
+  ctx.fillRect(sx + 6, sy + 7, 2, 1);
+
+  // Legs
+  ctx.fillStyle = C.playerDark;
+  ctx.fillRect(sx + 3, sy + 13, 3, 3);
+  ctx.fillRect(sx + 8, sy + 13, 3, 3);
+
+  // Boots
+  ctx.fillStyle = '#664422';
+  ctx.fillRect(sx + 3, sy + 15, 4, 2);
+  ctx.fillRect(sx + 8, sy + 15, 4, 2);
+
+  // Hammer
+  if (player.hammerSwing > 0) {
+    ctx.fillStyle = C.hammer;
+    if (f === 1) {
+      ctx.fillRect(sx + 12, sy + 1, 3, 8);
+      ctx.fillStyle = C.hammerHead;
+      ctx.fillRect(sx + 11, sy - 1, 5, 3);
+    } else {
+      ctx.fillRect(sx - 1, sy + 1, 3, 8);
+      ctx.fillStyle = C.hammerHead;
+      ctx.fillRect(sx - 2, sy - 1, 5, 3);
+    }
+  }
+}
+
+function drawEnemies() {
+  for (let e of enemies) {
+    if (!e.alive) continue;
+    let sx = Math.round(e.x);
+    let sy = Math.round(e.y - cameraY);
+    if (sy < -20 || sy > canvas.height + 20) continue;
+
+    if (e.type === 'topi') {
+      drawTopi(sx, sy, e);
+    } else {
+      drawNitpicker(sx, sy, e);
+    }
+  }
+}
+
+function drawTopi(sx, sy, e) {
+  // Body
+  ctx.fillStyle = C.topi;
+  ctx.fillRect(sx + 1, sy + 4, 12, 10);
+  ctx.fillRect(sx + 3, sy + 2, 8, 14);
+  // Darker belly
+  ctx.fillStyle = C.topiDark;
+  ctx.fillRect(sx + 4, sy + 10, 6, 4);
+  // Eye
+  ctx.fillStyle = '#000';
+  ctx.fillRect(sx + (e.facing === 1 ? 9 : 4), sy + 5, 2, 2);
+  // Nose
+  ctx.fillStyle = C.topiNose;
+  ctx.fillRect(sx + (e.facing === 1 ? 11 : 2), sy + 7, 2, 2);
+  // Flippers
+  ctx.fillStyle = C.topiDark;
+  ctx.fillRect(sx + (e.facing === 1 ? 12 : 0), sy + 8, 3, 2);
+}
+
+function drawNitpicker(sx, sy, e) {
+  // Body
+  ctx.fillStyle = C.nitpicker;
+  ctx.fillRect(sx + 4, sy + 3, 6, 6);
+  // Head
+  ctx.fillStyle = C.nitpickerDark;
+  ctx.fillRect(sx + 5, sy + 1, 4, 4);
+  // Beak
+  ctx.fillStyle = C.nitpickerBeak;
+  ctx.fillRect(sx + (e.facing === 1 ? 10 : 1), sy + 3, 3, 2);
+  // Wings (flap)
+  let wingUp = Math.floor(e.flyTimer / 6) % 2 === 0;
+  ctx.fillStyle = C.nitpicker;
+  if (wingUp) {
+    ctx.fillRect(sx, sy, 5, 3);
+    ctx.fillRect(sx + 9, sy, 5, 3);
+  } else {
+    ctx.fillRect(sx, sy + 7, 5, 3);
+    ctx.fillRect(sx + 9, sy + 7, 5, 3);
+  }
+  // Eye
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(sx + (e.facing === 1 ? 7 : 5), sy + 2, 2, 2);
+  // Tail
+  ctx.fillStyle = C.nitpickerDark;
+  ctx.fillRect(sx + (e.facing === 1 ? 2 : 10), sy + 5, 3, 2);
+}
+
+function drawBonusItems() {
+  for (let item of bonusItems) {
+    if (item.collected) continue;
+    let sx = item.x;
+    let sy = item.y - cameraY;
+    if (sy < -20 || sy > canvas.height + 20) continue;
+
+    // Item body
+    ctx.fillStyle = item.type.color;
+    ctx.fillRect(sx + 1, sy + 2, 10, 8);
+    // Top/stem
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(sx + 4, sy, 4, 3);
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(sx + 2, sy + 3, 3, 2);
+
+    // Bobbing animation
+    let bob = Math.sin(Date.now() * 0.005 + item.x) * 2;
+    // Redraw offset (simple approach: just draw a glow underneath)
+    ctx.fillStyle = 'rgba(255,255,200,0.15)';
+    ctx.fillRect(sx - 1, sy + 10 + bob, 14, 3);
+  }
+}
+
+function drawHUD() {
+  ctx.fillStyle = C.hud;
+  ctx.fillRect(0, 0, canvas.width, 22);
+
+  ctx.font = 'bold 12px Courier New';
+  ctx.fillStyle = C.textGold;
+  ctx.textAlign = 'left';
+  ctx.fillText('LIVES: ' + lives, 8, 15);
+  ctx.textAlign = 'center';
+  ctx.fillText(LEVEL_CONFIGS[currentLevel].name.toUpperCase(), canvas.width/2, 15);
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE: ' + score, canvas.width - 8, 15);
+  ctx.textAlign = 'left';
+
+  // Bonus timer
+  if (gameState === 'bonus') {
+    let secs = Math.ceil(bonusTimer / 60);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = secs <= 3 ? '#ff4444' : C.textBlue;
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('BONUS TIME: ' + secs + 's', canvas.width/2, 38);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+
+function drawTitleScreen() {
+  // Sky
+  ctx.fillStyle = C.sky;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Stars
+  let starSeed = 42;
+  for (let i = 0; i < 50; i++) {
+    starSeed = (starSeed * 1103515245 + 12345) & 0x7fffffff;
+    let sx = (starSeed % canvas.width);
+    starSeed = (starSeed * 1103515245 + 12345) & 0x7fffffff;
+    let sy = (starSeed % (canvas.height - 100));
+    let twinkle = Math.sin(Date.now() * 0.003 + i) * 0.5 + 0.5;
+    ctx.globalAlpha = twinkle * 0.8;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // Mountains
+  ctx.fillStyle = C.mountain;
+  drawMountain(30, canvas.height, 130, 170);
+  drawMountain(180, canvas.height, 200, 110);
+  drawMountain(370, canvas.height, 150, 160);
+
+  ctx.fillStyle = C.mountainLight;
+  drawMountain(100, canvas.height, 160, 140);
+  drawMountain(300, canvas.height, 130, 190);
+
+  // Snow caps
+  ctx.fillStyle = '#ffffff';
+  drawTriangle(130, 170, 20);
+  drawTriangle(200, 110, 25);
+  drawTriangle(370+75, 160, 18);
+  drawTriangle(100+80, 140, 22);
+  drawTriangle(300+65, 190, 20);
+
+  // Ice platform decoration
+  ctx.fillStyle = C.ice;
+  for (let i = 0; i < 8; i++) {
+    let px = 40 + i * 55;
+    let py = 280 + Math.sin(i * 1.2) * 20;
+    ctx.fillRect(px, py, 40, 6);
+    ctx.fillStyle = C.iceHigh;
+    ctx.fillRect(px, py, 40, 2);
+    ctx.fillStyle = C.ice;
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+
+  // Title shadow
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 52px Courier New';
+  ctx.fillText('ICE CLIMBER', canvas.width/2 + 3, 78);
+
+  // Title text
+  ctx.fillStyle = C.textBlue;
+  ctx.font = 'bold 52px Courier New';
+  ctx.fillText('ICE CLIMBER', canvas.width/2, 75);
+
+  // Subtitle
+  ctx.fillStyle = C.textGold;
+  ctx.font = '14px Courier New';
+  ctx.fillText('A Retro Climbing Adventure', canvas.width/2, 100);
+
+  // Flashing start
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText('Press SPACE to Start', canvas.width/2, canvas.height - 80);
+  }
+
+  // Controls
+  ctx.fillStyle = '#6666aa';
+  ctx.font = '12px Courier New';
+  ctx.fillText('Arrow Keys: Move  |  Space: Jump', canvas.width/2, canvas.height - 50);
+  ctx.fillText('Break ice from below  |  Stomp enemies', canvas.width/2, canvas.height - 34);
+
+  ctx.textAlign = 'left';
+}
+
+function drawMountain(x, baseY, width, height) {
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  ctx.lineTo(x + width/2, baseY - height);
+  ctx.lineTo(x + width, baseY);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawTriangle(cx, height, size) {
+  let py = canvas.height - height;
+  ctx.beginPath();
+  ctx.moveTo(cx - size, py + size * 0.8);
+  ctx.lineTo(cx, py);
+  ctx.lineTo(cx + size, py + size * 0.8);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawOverlay(line1, line2, line3) {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = C.textBlue;
+  ctx.font = 'bold 36px Courier New';
+  ctx.fillText(line1, canvas.width/2, canvas.height/2 - 30);
+
+  if (line2) {
+    ctx.fillStyle = C.textGold;
+    ctx.font = '18px Courier New';
+    ctx.fillText(line2, canvas.width/2, canvas.height/2 + 15);
+  }
+
+  if (line3) {
+    if (Math.floor(Date.now() / 500) % 2 === 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px Courier New';
+      ctx.fillText(line3, canvas.width/2, canvas.height/2 + 55);
+    }
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// LEVEL COMPLETE CHECK
+// ============================================================
+
+function checkLevelComplete() {
+  if (!player.alive) return;
+  let summitY = (SUMMIT_ROWS - 1) * TILE;
+  if (player.y < summitY) {
+    playSound('levelComplete');
+    gameState = 'bonus';
+    stateTimer = 0;
+    initBonusStage();
+  }
+}
+
+// ============================================================
+// GAME INIT & LOOP
+// ============================================================
+
+function startGame() {
+  currentLevel = 0;
+  score = 0;
+  lives = 3;
+  initLevel(currentLevel);
+  gameState = 'playing';
+}
+
+function initLevel(lvlIdx) {
+  levelGrid = generateLevel(lvlIdx);
+  enemies = [];
+  particles = [];
+  scorePopups = [];
+  bonusItems = [];
+  spawnedFloors = new Set();
+  forceScrollTimer = 0;
+
+  // Place player on ground
+  let groundRow = TOTAL_ROWS - GROUND_ROWS;
+  player.x = WORLD_WIDTH / 2 - 8;
+  player.y = (groundRow - 1) * TILE;
+  player.vx = 0;
+  player.vy = 0;
+  player.alive = true;
+  player.invincible = 0;
+  player.onGround = false;
+  player.hammerSwing = 0;
+  player.facing = 1;
+
+  // Camera starts at bottom
+  cameraY = WORLD_HEIGHT - canvas.height;
+  maxCameraY = cameraY;
+}
+
+function gameLoop() {
+  // Clear
+  ctx.fillStyle = C.sky;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  switch (gameState) {
+    case 'title':
+      drawTitleScreen();
+      if (keys['Space']) {
+        keys['Space'] = false;
+        if (!audioEnabled) initAudio();
+        startGame();
+      }
+      break;
+
+    case 'playing':
+      updatePlayer();
+      if (player.alive) {
+        updateCamera();
+        updateForceScroll();
+      }
+      checkEnemySpawns();
+      updateEnemies();
+      checkPlayerEnemyCollisions();
+      updateParticles();
+      updateScorePopups();
+      checkLevelComplete();
+
+      drawLevel();
+      drawEnemies();
+      drawPlayer();
+      drawParticles();
+      drawScorePopups();
+      drawHUD();
+      break;
+
+    case 'bonus':
+      updateBonusStage();
+      updateParticles();
+      updateScorePopups();
+
+      drawLevel();
+      drawBonusItems();
+      drawPlayer();
+      drawParticles();
+      drawScorePopups();
+      drawHUD();
+      break;
+
+    case 'levelComplete':
+      drawLevel();
+      drawPlayer();
+      stateTimer--;
+
+      let lvlName = LEVEL_CONFIGS[currentLevel].name;
+      drawOverlay(lvlName + ' Complete!', 'Score: ' + score);
+
+      if (stateTimer <= 0) {
+        currentLevel++;
+        if (currentLevel >= LEVEL_CONFIGS.length) {
+          gameState = 'win';
+          score += lives * 500; // bonus for remaining lives
+          playSound('levelComplete');
+        } else {
+          initLevel(currentLevel);
+          gameState = 'playing';
+        }
+      }
+      break;
+
+    case 'gameOver':
+      drawLevel();
+      drawOverlay('GAME OVER', 'Final Score: ' + score, 'Press SPACE');
+      if (keys['Space']) {
+        keys['Space'] = false;
+        gameState = 'title';
+      }
+      break;
+
+    case 'win':
+      drawOverlay('YOU WIN!',
+        'Final Score: ' + score + ' (includes ' + (lives*500) + ' life bonus)',
+        'Press SPACE');
+      if (keys['Space']) {
+        keys['Space'] = false;
+        gameState = 'title';
+      }
+      break;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Start!
+gameLoop();
+
+</script>
+</body>
+</html>
