@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipe Dream</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #gameContainer {
+    position: relative;
+    border: 3px solid #334;
+    box-shadow: 0 0 30px rgba(50,150,255,0.3);
+  }
+  canvas { display: block; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="game"></canvas>
+</div>
+<script>
+// ============================================================
+// PIPE DREAM
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// Layout
+const GRID_COLS = 7;
+const GRID_ROWS = 7;
+const CELL = 68;
+const GRID_PAD_X = 20;
+const GRID_PAD_Y = 70;
+const QUEUE_X = GRID_PAD_X + GRID_COLS * CELL + 30;
+const QUEUE_W = 100;
+const W = QUEUE_X + QUEUE_W + 20;
+const H = GRID_PAD_Y + GRID_ROWS * CELL + 40;
+canvas.width = W;
+canvas.height = H;
+
+// Pipe width inside a cell
+const PW = 18; // pipe thickness
+const PM = (CELL - PW) / 2; // margin to center pipe
+
+// ============================================================
+// PIPE DEFINITIONS
+// Each pipe has 'connections': which sides it connects [top, right, bottom, left]
+// and a draw function for the pipe shape
+// ============================================================
+
+const PIPE_TYPES = {
+  // Straight
+  horiz:  { id:'horiz',  conn:[false,true,false,true],  label:'━' },
+  vert:   { id:'vert',   conn:[true,false,true,false],  label:'┃' },
+  // Elbows (named by which two sides connect)
+  elbow_tr: { id:'elbow_tr', conn:[true,true,false,false],  label:'┗' },   // top + right
+  elbow_tl: { id:'elbow_tl', conn:[true,false,false,true],  label:'┛' },   // top + left
+  elbow_br: { id:'elbow_br', conn:[false,true,true,false],  label:'┏' },   // bottom + right
+  elbow_bl: { id:'elbow_bl', conn:[false,false,true,true],  label:'┓' },   // bottom + left
+  // Cross
+  cross:  { id:'cross',  conn:[true,true,true,true], label:'╋', isCross:true },
+};
+
+// Direction helpers: 0=top, 1=right, 2=bottom, 3=left
+const DIR_DX = [0, 1, 0, -1];
+const DIR_DY = [-1, 0, 1, 0];
+const DIR_OPP = [2, 3, 0, 1];
+const DIR_NAMES = ['top','right','bottom','left'];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+
+let gameState = 'title'; // title, playing, levelComplete, gameOver
+let level = 1;
+let score = 0;
+let totalScore = 0;
+
+// Grid: each cell is null, 'wall', or { pipe, filled, fillProgress, fillDir, crossFillH, crossFillV }
+let grid = [];
+
+// Queue of upcoming pipes
+let queue = [];
+const QUEUE_SIZE = 6;
+
+// Start point
+let startRow = 0, startCol = 0, startDir = 0; // dir: direction flow EXITS the start cell
+
+// Flow state
+let flowActive = false;
+let preFlowTimer = 0;
+const PRE_FLOW_TIME_BASE = 30; // seconds
+let flowSpeed = 1; // cells per second base
+let flowTimer = 0;
+let flowInterval = 0; // frames between flow advances
+let flowCurrent = null; // { row, col, enterDir } — current cell being filled
+let pipesFilled = 0;
+let minPipes = 0;
+let flowFillProgress = 0; // 0..1 within current cell
+let gameOverTimer = 0;
+let levelCompleteTimer = 0;
+
+// Animation
+let titleAnim = 0;
+let placeFeedback = []; // [{x,y,timer}]
+
+// Audio
+let audioCtx = null;
+let audioEnabled = false;
+
+// Mouse
+let mouseX = 0, mouseY = 0;
+let mouseGridCol = -1, mouseGridRow = -1;
+
+// Keys
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+canvas.addEventListener('mousemove', e => {
+  let rect = canvas.getBoundingClientRect();
+  let scaleX = canvas.width / rect.width;
+  let scaleY = canvas.height / rect.height;
+  mouseX = (e.clientX - rect.left) * scaleX;
+  mouseY = (e.clientY - rect.top) * scaleY;
+  mouseGridCol = Math.floor((mouseX - GRID_PAD_X) / CELL);
+  mouseGridRow = Math.floor((mouseY - GRID_PAD_Y) / CELL);
+  if (mouseGridCol < 0 || mouseGridCol >= GRID_COLS) mouseGridCol = -1;
+  if (mouseGridRow < 0 || mouseGridRow >= GRID_ROWS) mouseGridRow = -1;
+});
+
+canvas.addEventListener('click', e => {
+  handleClick();
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  handleRightClick();
+});
+
+// ============================================================
+// AUDIO
+// ============================================================
+
+function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.value = 0; o.start(); o.stop(audioCtx.currentTime + 0.05);
+    audioEnabled = true;
+  } catch(e) {}
+}
+
+function beep(freq, start, dur, vol, wave) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value = freq;
+  o.type = wave || 'square';
+  g.gain.setValueAtTime(vol || 0.1, start);
+  g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+  o.start(start); o.stop(start + dur);
+}
+
+function playSound(type) {
+  if (!audioCtx || !audioEnabled) return;
+  audioCtx.resume();
+  let t = audioCtx.currentTime;
+  switch(type) {
+    case 'place':
+      beep(600, t, 0.05, 0.08);
+      beep(800, t+0.03, 0.04, 0.06);
+      break;
+    case 'discard':
+      beep(300, t, 0.06, 0.06, 'triangle');
+      beep(200, t+0.04, 0.06, 0.05, 'triangle');
+      break;
+    case 'flow':
+      beep(500, t, 0.08, 0.05, 'sine');
+      beep(700, t+0.05, 0.06, 0.04, 'sine');
+      break;
+    case 'cantPlace':
+      beep(150, t, 0.1, 0.08, 'sawtooth');
+      break;
+    case 'levelComplete':
+      beep(523, t, 0.12, 0.1); beep(659, t+0.12, 0.12, 0.1);
+      beep(784, t+0.24, 0.12, 0.1); beep(1047, t+0.36, 0.25, 0.12);
+      break;
+    case 'gameOver':
+      beep(400, t, 0.15, 0.1); beep(300, t+0.15, 0.15, 0.1);
+      beep(200, t+0.3, 0.15, 0.1); beep(100, t+0.45, 0.3, 0.08);
+      break;
+  }
+}
+
+// ============================================================
+// LEVEL SETUP
+// ============================================================
+
+function initLevel(lvl) {
+  level = lvl;
+  grid = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+      grid[r][c] = null;
+    }
+  }
+
+  // Place obstacles (level 3+)
+  let obstacleCount = 0;
+  if (level >= 3) {
+    obstacleCount = Math.min(level - 1, 10);
+  }
+
+  // Pick start point on a random edge
+  let edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+  if (edge === 0) {
+    startRow = 0; startCol = 1 + Math.floor(Math.random() * (GRID_COLS - 2));
+    startDir = 2; // flow exits downward
+  } else if (edge === 1) {
+    startCol = GRID_COLS - 1; startRow = 1 + Math.floor(Math.random() * (GRID_ROWS - 2));
+    startDir = 3; // flow exits left
+  } else if (edge === 2) {
+    startRow = GRID_ROWS - 1; startCol = 1 + Math.floor(Math.random() * (GRID_COLS - 2));
+    startDir = 0; // flow exits upward
+  } else {
+    startCol = 0; startRow = 1 + Math.floor(Math.random() * (GRID_ROWS - 2));
+    startDir = 1; // flow exits right
+  }
+
+  // Mark start cell
+  grid[startRow][startCol] = { pipe: null, isStart: true, startDir: startDir, filled: false, fillProgress: 0 };
+
+  // Place obstacles avoiding start cell
+  let placed = 0;
+  let attempts = 0;
+  while (placed < obstacleCount && attempts < 200) {
+    let r = Math.floor(Math.random() * GRID_ROWS);
+    let c = Math.floor(Math.random() * GRID_COLS);
+    if (grid[r][c] === null) {
+      grid[r][c] = 'wall';
+      placed++;
+    }
+    attempts++;
+  }
+
+  // Init queue
+  queue = [];
+  for (let i = 0; i < QUEUE_SIZE; i++) {
+    queue.push(randomPipe());
+  }
+
+  // Flow state
+  flowActive = false;
+  let preFlowSeconds = Math.max(12, PRE_FLOW_TIME_BASE - (level - 1) * 2);
+  preFlowTimer = preFlowSeconds * 60; // convert to frames
+  flowSpeed = 0.8 + level * 0.15;
+  if (flowSpeed > 3) flowSpeed = 3;
+  flowInterval = Math.floor(60 / flowSpeed);
+  flowTimer = 0;
+  flowCurrent = null;
+  pipesFilled = 0;
+  flowFillProgress = 0;
+  minPipes = Math.min(5 + level * 2, 25);
+  gameOverTimer = 0;
+  levelCompleteTimer = 0;
+  placeFeedback = [];
+  score = 0;
+}
+
+function randomPipe() {
+  let types;
+  if (level >= 5) {
+    types = ['horiz','vert','elbow_tr','elbow_tl','elbow_br','elbow_bl','cross'];
+  } else {
+    types = ['horiz','vert','elbow_tr','elbow_tl','elbow_br','elbow_bl'];
+  }
+  // Weight cross pipes lower
+  if (level >= 5) {
+    // 1 in 8 chance for cross
+    if (Math.random() < 0.125) return PIPE_TYPES['cross'];
+  }
+  let basic = ['horiz','vert','elbow_tr','elbow_tl','elbow_br','elbow_bl'];
+  return PIPE_TYPES[basic[Math.floor(Math.random() * basic.length)]];
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+
+function handleClick() {
+  if (gameState === 'title') {
+    if (!audioEnabled) initAudio();
+    startGame();
+    return;
+  }
+
+  if (gameState === 'levelComplete') {
+    if (levelCompleteTimer <= 0) {
+      initLevel(level + 1);
+      gameState = 'playing';
+    }
+    return;
+  }
+
+  if (gameState === 'gameOver') {
+    if (gameOverTimer <= 0) {
+      gameState = 'title';
+    }
+    return;
+  }
+
+  if (gameState !== 'playing') return;
+
+  // Place pipe on grid
+  let r = mouseGridRow, c = mouseGridCol;
+  if (r < 0 || c < 0) return;
+
+  let cell = grid[r][c];
+
+  // Can't place on walls
+  if (cell === 'wall') {
+    playSound('cantPlace');
+    return;
+  }
+
+  // Can't place on start cell
+  if (cell && cell.isStart) {
+    playSound('cantPlace');
+    return;
+  }
+
+  // Can't place on cells that already have a pipe
+  if (cell && cell.pipe) {
+    playSound('cantPlace');
+    return;
+  }
+
+  // Place current pipe
+  let pipeType = queue[0];
+  grid[r][c] = {
+    pipe: pipeType,
+    filled: false,
+    fillProgress: 0,
+    fillDir: -1, // direction water entered from
+    // Cross pipe tracking
+    crossFillH: false, // horizontal fill done
+    crossFillV: false, // vertical fill done
+    crossProgressH: 0,
+    crossProgressV: 0,
+    crossDirH: -1,
+    crossDirV: -1,
+  };
+
+  // Advance queue
+  queue.shift();
+  queue.push(randomPipe());
+
+  // Visual feedback
+  let px = GRID_PAD_X + c * CELL + CELL/2;
+  let py = GRID_PAD_Y + r * CELL + CELL/2;
+  placeFeedback.push({ x:px, y:py, timer:15 });
+
+  playSound('place');
+  score += 10;
+}
+
+function handleRightClick() {
+  if (gameState !== 'playing') return;
+
+  let r = mouseGridRow, c = mouseGridCol;
+  if (r < 0 || c < 0) return;
+
+  let cell = grid[r][c];
+
+  // Can only remove cells that have a pipe and are NOT yet filled by water
+  if (!cell || !cell.pipe || cell.filled) {
+    playSound('cantPlace');
+    return;
+  }
+
+  // For cross pipes, don't allow removal if either direction has started filling
+  if (cell.pipe.isCross && (cell.crossProgressH > 0 || cell.crossProgressV > 0)) {
+    playSound('cantPlace');
+    return;
+  }
+
+  // Don't allow removal if water is currently filling this pipe
+  if (cell.fillProgress > 0) {
+    playSound('cantPlace');
+    return;
+  }
+
+  // Remove the pipe — score penalty
+  grid[r][c] = null;
+  score = Math.max(0, score - 30);
+  playSound('discard');
+
+  // Visual feedback (red flash)
+  let px = GRID_PAD_X + c * CELL + CELL/2;
+  let py = GRID_PAD_Y + r * CELL + CELL/2;
+  placeFeedback.push({ x:px, y:py, timer:15, isRemove:true });
+}
+
+// ============================================================
+// FLOW SYSTEM
+// ============================================================
+
+function startFlow() {
+  flowActive = true;
+  // Flow starts exiting the start cell
+  let nextR = startRow + DIR_DY[startDir];
+  let nextC = startCol + DIR_DX[startDir];
+  let enterDir = DIR_OPP[startDir]; // the direction we enter the next cell FROM
+
+  flowCurrent = { row: nextR, col: nextC, enterDir: enterDir };
+  flowFillProgress = 0;
+
+  // Mark start cell as filled
+  if (grid[startRow][startCol]) {
+    grid[startRow][startCol].filled = true;
+    grid[startRow][startCol].fillProgress = 1;
+  }
+}
+
+function updateFlow() {
+  if (!flowActive || !flowCurrent) return;
+
+  let r = flowCurrent.row;
+  let c = flowCurrent.col;
+
+  // Check if we've gone off grid
+  if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) {
+    triggerGameOver();
+    return;
+  }
+
+  let cell = grid[r][c];
+
+  // Check if cell has a pipe
+  if (!cell || cell === 'wall' || !cell.pipe) {
+    triggerGameOver();
+    return;
+  }
+
+  let pipe = cell.pipe;
+  let enterDir = flowCurrent.enterDir; // 0=top,1=right,2=bottom,3=left — side we entered FROM
+
+  // Check if pipe connects on the side we're entering from
+  if (!pipe.conn[enterDir]) {
+    triggerGameOver();
+    return;
+  }
+
+  // Handle cross pipe specially
+  if (pipe.isCross) {
+    // Determine if this is horizontal or vertical flow
+    let isHorizontal = (enterDir === 1 || enterDir === 3); // entering from right or left
+    if (isHorizontal) {
+      if (cell.crossFillH) {
+        // Already filled horizontally, game over (can't flow twice same direction)
+        triggerGameOver();
+        return;
+      }
+      cell.crossDirH = enterDir;
+      cell.crossProgressH += (1.0 / flowInterval);
+      if (cell.crossProgressH >= 1) {
+        cell.crossProgressH = 1;
+        cell.crossFillH = true;
+        // Find exit direction (opposite axis)
+        let exitDir = DIR_OPP[enterDir];
+        advanceFlow(r, c, exitDir);
+      }
+    } else {
+      if (cell.crossFillV) {
+        triggerGameOver();
+        return;
+      }
+      cell.crossDirV = enterDir;
+      cell.crossProgressV += (1.0 / flowInterval);
+      if (cell.crossProgressV >= 1) {
+        cell.crossProgressV = 1;
+        cell.crossFillV = true;
+        let exitDir = DIR_OPP[enterDir];
+        advanceFlow(r, c, exitDir);
+      }
+    }
+    // Mark filled if both directions done
+    if (cell.crossFillH && cell.crossFillV) {
+      cell.filled = true;
+      cell.fillProgress = 1;
+    }
+    return;
+  }
+
+  // Normal pipe — fill it
+  cell.fillDir = enterDir;
+  cell.fillProgress += (1.0 / flowInterval);
+
+  if (cell.fillProgress >= 1) {
+    cell.fillProgress = 1;
+    cell.filled = true;
+
+    // Find exit direction
+    let exitDir = -1;
+    for (let d = 0; d < 4; d++) {
+      if (d !== enterDir && pipe.conn[d]) {
+        exitDir = d;
+        break;
+      }
+    }
+
+    if (exitDir === -1) {
+      triggerGameOver();
+      return;
+    }
+
+    advanceFlow(r, c, exitDir);
+  }
+}
+
+function advanceFlow(r, c, exitDir) {
+  pipesFilled++;
+  score += 50;
+  playSound('flow');
+
+  let nextR = r + DIR_DY[exitDir];
+  let nextC = c + DIR_DX[exitDir];
+  let nextEnterDir = DIR_OPP[exitDir];
+
+  // Check if we've reached the minimum and flowed off the edge (success!)
+  if (nextR < 0 || nextR >= GRID_ROWS || nextC < 0 || nextC >= GRID_COLS) {
+    if (pipesFilled >= minPipes) {
+      triggerLevelComplete();
+      return;
+    }
+  }
+
+  flowCurrent = { row: nextR, col: nextC, enterDir: nextEnterDir };
+}
+
+function triggerGameOver() {
+  if (pipesFilled >= minPipes) {
+    triggerLevelComplete();
+    return;
+  }
+  gameState = 'gameOver';
+  gameOverTimer = 120;
+  totalScore += score;
+  playSound('gameOver');
+}
+
+function triggerLevelComplete() {
+  gameState = 'levelComplete';
+  levelCompleteTimer = 120;
+  let bonus = (pipesFilled - minPipes) * 100;
+  score += bonus;
+  totalScore += score;
+  playSound('levelComplete');
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+
+function drawGrid() {
+  // Grid background
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      let x = GRID_PAD_X + c * CELL;
+      let y = GRID_PAD_Y + r * CELL;
+
+      // Cell background
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+
+      let cell = grid[r][c];
+
+      if (cell === 'wall') {
+        drawWall(x, y);
+      } else if (cell && cell.isStart) {
+        drawStartCell(x, y, cell);
+      } else if (cell && cell.pipe) {
+        drawPipe(x, y, cell);
+      }
+    }
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= GRID_ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(GRID_PAD_X, GRID_PAD_Y + r * CELL);
+    ctx.lineTo(GRID_PAD_X + GRID_COLS * CELL, GRID_PAD_Y + r * CELL);
+    ctx.stroke();
+  }
+  for (let c = 0; c <= GRID_COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(GRID_PAD_X + c * CELL, GRID_PAD_Y);
+    ctx.lineTo(GRID_PAD_X + c * CELL, GRID_PAD_Y + GRID_ROWS * CELL);
+    ctx.stroke();
+  }
+
+  // Hover highlight
+  if (gameState === 'playing' && mouseGridRow >= 0 && mouseGridCol >= 0) {
+    let hx = GRID_PAD_X + mouseGridCol * CELL;
+    let hy = GRID_PAD_Y + mouseGridRow * CELL;
+    let cell = grid[mouseGridRow][mouseGridCol];
+    let canPlace = cell === null;
+    ctx.strokeStyle = canPlace ? 'rgba(100,255,100,0.5)' : 'rgba(255,50,50,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(hx+1, hy+1, CELL-2, CELL-2);
+
+    // Ghost preview of current pipe
+    if (canPlace && queue.length > 0) {
+      ctx.globalAlpha = 0.35;
+      drawPipeShape(hx, hy, queue[0], false, 0, -1);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function drawWall(x, y) {
+  ctx.fillStyle = '#0e0e1e';
+  ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+  // X pattern
+  ctx.strokeStyle = '#2a1a1a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x+8, y+8); ctx.lineTo(x+CELL-8, y+CELL-8);
+  ctx.moveTo(x+CELL-8, y+8); ctx.lineTo(x+8, y+CELL-8);
+  ctx.stroke();
+  // Border
+  ctx.strokeStyle = '#3a2a2a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x+2, y+2, CELL-4, CELL-4);
+}
+
+function drawStartCell(x, y, cell) {
+  // Green background
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+
+  // Arrow showing flow direction
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+  let dir = cell.startDir;
+
+  ctx.fillStyle = cell.filled ? '#2288ff' : '#44cc44';
+  ctx.beginPath();
+  if (dir === 0) { // up
+    ctx.moveTo(cx, cy-18); ctx.lineTo(cx-12, cy+8); ctx.lineTo(cx+12, cy+8);
+  } else if (dir === 1) { // right
+    ctx.moveTo(cx+18, cy); ctx.lineTo(cx-8, cy-12); ctx.lineTo(cx-8, cy+12);
+  } else if (dir === 2) { // down
+    ctx.moveTo(cx, cy+18); ctx.lineTo(cx-12, cy-8); ctx.lineTo(cx+12, cy-8);
+  } else { // left
+    ctx.moveTo(cx-18, cy); ctx.lineTo(cx+8, cy-12); ctx.lineTo(cx+8, cy+12);
+  }
+  ctx.fill();
+
+  // "S" label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('START', cx, y + CELL - 6);
+  ctx.textAlign = 'left';
+
+  // Draw the pipe connection from edge to center
+  if (cell.filled) {
+    let oppDir = DIR_OPP[dir];
+    drawHalfPipe(x, y, oppDir, 1, '#2288ff');
+    drawHalfPipe(x, y, dir, 1, '#2288ff');
+  }
+}
+
+function drawPipe(x, y, cell) {
+  let pipe = cell.pipe;
+
+  // Draw the metal pipe shape
+  drawPipeShape(x, y, pipe, cell.filled, cell.fillProgress, cell.fillDir);
+
+  // For cross pipes, draw both fill directions
+  if (pipe.isCross) {
+    drawCrossPipeFill(x, y, cell);
+  }
+}
+
+function drawPipeShape(x, y, pipe, filled, fillProgress, fillDir) {
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+
+  // Pipe color
+  let pipeColor = '#667788';
+  let pipeDark = '#445566';
+  let pipeLight = '#88aacc';
+
+  // Draw each connected side
+  for (let d = 0; d < 4; d++) {
+    if (!pipe.conn[d]) continue;
+    drawPipeArm(x, y, d, pipeColor, pipeDark, pipeLight);
+  }
+
+  // Center junction
+  ctx.fillStyle = pipeColor;
+  ctx.fillRect(cx - PW/2, cy - PW/2, PW, PW);
+  ctx.fillStyle = pipeDark;
+  ctx.fillRect(cx - PW/2, cy - PW/2, PW, 2);
+  ctx.fillStyle = pipeLight;
+  ctx.fillRect(cx - PW/2, cy + PW/2 - 2, PW, 2);
+
+  // Draw water fill for normal pipes
+  if (!pipe.isCross && fillProgress > 0 && fillDir >= 0) {
+    drawNormalFill(x, y, pipe, fillProgress, fillDir);
+  }
+  if (!pipe.isCross && filled && fillDir >= 0) {
+    drawNormalFill(x, y, pipe, 1, fillDir);
+  }
+}
+
+function drawPipeArm(x, y, dir, color, dark, light) {
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+
+  ctx.fillStyle = color;
+  if (dir === 0) { // top
+    ctx.fillRect(cx - PW/2, y, PW, CELL/2);
+    ctx.fillStyle = dark;
+    ctx.fillRect(cx - PW/2, y, 2, CELL/2);
+    ctx.fillStyle = light;
+    ctx.fillRect(cx + PW/2 - 2, y, 2, CELL/2);
+  } else if (dir === 1) { // right
+    ctx.fillRect(cx, cy - PW/2, CELL/2, PW);
+    ctx.fillStyle = dark;
+    ctx.fillRect(cx, cy - PW/2, CELL/2, 2);
+    ctx.fillStyle = light;
+    ctx.fillRect(cx, cy + PW/2 - 2, CELL/2, 2);
+  } else if (dir === 2) { // bottom
+    ctx.fillRect(cx - PW/2, cy, PW, CELL/2);
+    ctx.fillStyle = dark;
+    ctx.fillRect(cx - PW/2, cy, 2, CELL/2);
+    ctx.fillStyle = light;
+    ctx.fillRect(cx + PW/2 - 2, cy, 2, CELL/2);
+  } else { // left
+    ctx.fillRect(x, cy - PW/2, CELL/2, PW);
+    ctx.fillStyle = dark;
+    ctx.fillRect(x, cy - PW/2, CELL/2, 2);
+    ctx.fillStyle = light;
+    ctx.fillRect(x, cy + PW/2 - 2, CELL/2, 2);
+  }
+}
+
+function drawNormalFill(x, y, pipe, progress, enterDir) {
+  // Water fills from enterDir side to exit side
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+  let waterColor = '#2288ff';
+  let waterLight = '#44aaff';
+
+  // Find exit direction
+  let exitDir = -1;
+  for (let d = 0; d < 4; d++) {
+    if (d !== enterDir && pipe.conn[d]) { exitDir = d; break; }
+  }
+  if (exitDir === -1) exitDir = enterDir; // dead end, just fill entry side
+
+  // Draw water from enter side to center (first half), then center to exit (second half)
+  let half1 = Math.min(1, progress * 2);
+  let half2 = Math.max(0, (progress - 0.5) * 2);
+
+  // Entry side fill
+  drawHalfPipe(x, y, enterDir, half1, waterColor);
+  // Center fill
+  if (progress > 0.3) {
+    let cp = Math.min(1, (progress - 0.3) * 2.5);
+    ctx.fillStyle = waterColor;
+    ctx.fillRect(cx - PW/2 + 3, cy - PW/2 + 3, PW - 6, PW - 6);
+  }
+  // Exit side fill
+  if (half2 > 0) {
+    drawHalfPipe(x, y, exitDir, half2, waterColor);
+  }
+}
+
+function drawHalfPipe(x, y, dir, progress, color) {
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+  let hw = PW/2 - 3; // water is narrower than pipe
+
+  ctx.fillStyle = color;
+
+  if (dir === 0) { // from center to top
+    let len = (CELL/2) * progress;
+    ctx.fillRect(cx - hw, cy - len, hw*2, len);
+  } else if (dir === 1) { // from center to right
+    let len = (CELL/2) * progress;
+    ctx.fillRect(cx, cy - hw, len, hw*2);
+  } else if (dir === 2) { // from center to bottom
+    let len = (CELL/2) * progress;
+    ctx.fillRect(cx - hw, cy, hw*2, len);
+  } else { // from center to left
+    let len = (CELL/2) * progress;
+    ctx.fillRect(cx - len, cy - hw, len, hw*2);
+  }
+}
+
+function drawCrossPipeFill(x, y, cell) {
+  let cx = x + CELL/2;
+  let cy = y + CELL/2;
+  let waterColor = '#2288ff';
+  let hw = PW/2 - 3;
+
+  // Horizontal fill
+  if (cell.crossDirH >= 0 && cell.crossProgressH > 0) {
+    let enterDir = cell.crossDirH;
+    let exitDir = DIR_OPP[enterDir];
+    let half1 = Math.min(1, cell.crossProgressH * 2);
+    let half2 = Math.max(0, (cell.crossProgressH - 0.5) * 2);
+    drawHalfPipe(x, y, enterDir, half1, waterColor);
+    if (half2 > 0) drawHalfPipe(x, y, exitDir, half2, waterColor);
+  }
+
+  // Vertical fill
+  if (cell.crossDirV >= 0 && cell.crossProgressV > 0) {
+    let enterDir = cell.crossDirV;
+    let exitDir = DIR_OPP[enterDir];
+    let half1 = Math.min(1, cell.crossProgressV * 2);
+    let half2 = Math.max(0, (cell.crossProgressV - 0.5) * 2);
+    drawHalfPipe(x, y, enterDir, half1, waterColor);
+    if (half2 > 0) drawHalfPipe(x, y, exitDir, half2, waterColor);
+  }
+
+  // Center if either direction has good progress
+  if ((cell.crossProgressH > 0.3) || (cell.crossProgressV > 0.3)) {
+    ctx.fillStyle = waterColor;
+    ctx.fillRect(cx - hw, cy - hw, hw*2, hw*2);
+  }
+}
+
+// ============================================================
+// QUEUE PANEL
+// ============================================================
+
+function drawQueuePanel() {
+  let qx = QUEUE_X;
+  let qy = GRID_PAD_Y;
+
+  // Panel background
+  ctx.fillStyle = '#12122a';
+  ctx.fillRect(qx - 5, qy - 30, QUEUE_W + 10, GRID_ROWS * CELL + 35);
+  ctx.strokeStyle = '#3a3a5a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(qx - 5, qy - 30, QUEUE_W + 10, GRID_ROWS * CELL + 35);
+
+  // "NEXT" label
+  ctx.fillStyle = '#f0a500';
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('NEXT', qx + QUEUE_W/2, qy - 10);
+
+  // Draw queue pipes
+  let pipeSize = 60;
+  for (let i = 0; i < Math.min(queue.length, 5); i++) {
+    let py = qy + 10 + i * (pipeSize + 12);
+    let px = qx + (QUEUE_W - pipeSize) / 2;
+
+    // Box
+    ctx.fillStyle = i === 0 ? '#2a2a4e' : '#1a1a2e';
+    ctx.fillRect(px, py, pipeSize, pipeSize);
+    ctx.strokeStyle = i === 0 ? '#5588ff' : '#3a3a5a';
+    ctx.lineWidth = i === 0 ? 2 : 1;
+    ctx.strokeRect(px, py, pipeSize, pipeSize);
+
+    // Draw pipe preview (scaled to fit the box)
+    drawPipePreview(px, py, pipeSize, queue[i]);
+
+    // "CURRENT" label on first
+    if (i === 0) {
+      ctx.fillStyle = '#5588ff';
+      ctx.font = '9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('▲ CURRENT', qx + QUEUE_W/2, py - 2);
+    }
+  }
+
+  // Discard hint
+  ctx.fillStyle = '#556';
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'center';
+  let bottomY = qy + 10 + 5 * (pipeSize + 12) + 10;
+  ctx.fillText('[SPACE]', qx + QUEUE_W/2, bottomY);
+  ctx.fillText('Discard', qx + QUEUE_W/2, bottomY + 13);
+  ctx.fillText('[R-CLICK]', qx + QUEUE_W/2, bottomY + 30);
+  ctx.fillText('Remove -30', qx + QUEUE_W/2, bottomY + 43);
+  ctx.textAlign = 'left';
+}
+
+function drawPipePreview(bx, by, size, pipe) {
+  // Scale pipe drawing into the preview box
+  let scale = size / CELL;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.scale(scale, scale);
+
+  let pipeColor = '#667788';
+  let pipeDark = '#445566';
+  let pipeLight = '#88aacc';
+
+  for (let d = 0; d < 4; d++) {
+    if (!pipe.conn[d]) continue;
+    drawPipeArm(0, 0, d, pipeColor, pipeDark, pipeLight);
+  }
+
+  // Center
+  let ccx = CELL/2, ccy = CELL/2;
+  ctx.fillStyle = pipeColor;
+  ctx.fillRect(ccx - PW/2, ccy - PW/2, PW, PW);
+
+  ctx.restore();
+}
+
+// ============================================================
+// HUD
+// ============================================================
+
+function drawHUD() {
+  // Top bar
+  ctx.fillStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillRect(0, 0, W, 55);
+
+  ctx.font = 'bold 14px Courier New';
+
+  // Level
+  ctx.fillStyle = '#f0a500';
+  ctx.textAlign = 'left';
+  ctx.fillText('LEVEL ' + level, 15, 22);
+
+  // Score
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('SCORE: ' + (totalScore + score), 15, 42);
+
+  // Pipes filled
+  ctx.textAlign = 'center';
+  let pipeColor = pipesFilled >= minPipes ? '#44ff44' : '#ff8844';
+  ctx.fillStyle = pipeColor;
+  ctx.fillText('PIPES: ' + pipesFilled + '/' + minPipes, W/2, 22);
+
+  // Timer / flow status
+  if (!flowActive && gameState === 'playing') {
+    let secs = Math.ceil(preFlowTimer / 60);
+    let urgent = secs <= 5;
+    ctx.fillStyle = urgent ? '#ff4444' : '#ffcc00';
+    ctx.font = urgent ? 'bold 16px Courier New' : 'bold 14px Courier New';
+    ctx.fillText('FLOW IN: ' + secs + 's', W/2, 42);
+  } else if (flowActive) {
+    ctx.fillStyle = '#2288ff';
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('~~ FLOWING ~~', W/2, 42);
+  }
+
+  // Level info (right side)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#667';
+  ctx.font = '11px Courier New';
+  if (level >= 5) ctx.fillText('CROSS PIPES', W - 15, 22);
+  if (level >= 3) ctx.fillText('OBSTACLES', W - 15, 36);
+  ctx.fillText('SPD: ' + flowSpeed.toFixed(1) + 'x', W - 15, 50);
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// TITLE SCREEN
+// ============================================================
+
+function drawTitleScreen() {
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  titleAnim++;
+
+  // Animated pipe background
+  let time = titleAnim * 0.02;
+  ctx.strokeStyle = '#1a2a4a';
+  ctx.lineWidth = PW;
+  for (let i = 0; i < 8; i++) {
+    let yy = 80 + i * 72;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    for (let xx = 0; xx < W; xx += 4) {
+      ctx.lineTo(xx, yy + Math.sin((xx + titleAnim * 2 + i * 50) * 0.02) * 20);
+    }
+    ctx.stroke();
+  }
+
+  // Animated water flowing through the pipes
+  ctx.strokeStyle = '#1155aa';
+  ctx.lineWidth = PW - 6;
+  for (let i = 0; i < 8; i++) {
+    let yy = 80 + i * 72;
+    let waterStart = ((titleAnim * 3 + i * 80) % (W + 200)) - 100;
+    ctx.beginPath();
+    let started = false;
+    for (let xx = Math.max(0, waterStart); xx < Math.min(W, waterStart + 150); xx += 4) {
+      let yyy = yy + Math.sin((xx + titleAnim * 2 + i * 50) * 0.02) * 20;
+      if (!started) { ctx.moveTo(xx, yyy); started = true; }
+      else ctx.lineTo(xx, yyy);
+    }
+    ctx.stroke();
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 52px Courier New';
+  ctx.fillText('PIPE DREAM', W/2 + 3, H/2 - 60 + 3);
+  ctx.fillStyle = '#f0a500';
+  ctx.fillText('PIPE DREAM', W/2, H/2 - 60);
+
+  ctx.fillStyle = '#88ccff';
+  ctx.font = '16px Courier New';
+  ctx.fillText('A Classic Puzzle Game', W/2, H/2 - 20);
+
+  // Flashing start
+  if (Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText('Click to Start', W/2, H/2 + 40);
+  }
+
+  // Controls
+  ctx.fillStyle = '#6a8aaa';
+  ctx.font = '12px Courier New';
+  ctx.fillText('Left Click: Place  |  Right Click: Remove', W/2, H/2 + 90);
+  ctx.fillText('Space: Discard  |  R: Restart', W/2, H/2 + 110);
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// OVERLAY SCREENS
+// ============================================================
+
+function drawLevelComplete() {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#44ff44';
+  ctx.font = 'bold 36px Courier New';
+  ctx.fillText('LEVEL ' + level, W/2, H/2 - 70);
+  ctx.fillText('COMPLETE!', W/2, H/2 - 30);
+
+  ctx.fillStyle = '#f0a500';
+  ctx.font = '16px Courier New';
+  ctx.fillText('Pipes Filled: ' + pipesFilled, W/2, H/2 + 20);
+
+  let bonus = (pipesFilled - minPipes) * 100;
+  if (bonus > 0) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText('Bonus: +' + bonus, W/2, H/2 + 45);
+  }
+
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('Level Score: ' + score, W/2, H/2 + 75);
+  ctx.fillText('Total: ' + totalScore, W/2, H/2 + 100);
+
+  if (levelCompleteTimer <= 0 && Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Courier New';
+    ctx.fillText('Click for Next Level', W/2, H/2 + 145);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 40px Courier New';
+  ctx.fillText('GAME OVER', W/2, H/2 - 40);
+
+  ctx.fillStyle = '#f0a500';
+  ctx.font = '18px Courier New';
+  ctx.fillText('Pipes: ' + pipesFilled + ' / ' + minPipes + ' needed', W/2, H/2 + 10);
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('Final Score: ' + totalScore, W/2, H/2 + 45);
+  ctx.fillText('Reached Level ' + level, W/2, H/2 + 70);
+
+  if (gameOverTimer <= 0 && Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Courier New';
+    ctx.fillText('Click to Continue', W/2, H/2 + 120);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// PLACE FEEDBACK
+// ============================================================
+
+function updatePlaceFeedback() {
+  for (let i = placeFeedback.length - 1; i >= 0; i--) {
+    placeFeedback[i].timer--;
+    if (placeFeedback[i].timer <= 0) placeFeedback.splice(i, 1);
+  }
+}
+
+function drawPlaceFeedback() {
+  for (let f of placeFeedback) {
+    let alpha = f.timer / 15;
+    let r = 20 + (1 - alpha) * 15;
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.strokeStyle = f.isRemove ? '#ff4444' : '#44ff44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// GAME MANAGEMENT
+// ============================================================
+
+function startGame() {
+  totalScore = 0;
+  initLevel(1);
+  gameState = 'playing';
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+
+function gameLoop() {
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  switch(gameState) {
+    case 'title':
+      drawTitleScreen();
+      break;
+
+    case 'playing':
+      // Handle discard
+      if (keys['Space']) {
+        keys['Space'] = false;
+        if (queue.length > 0) {
+          queue.shift();
+          queue.push(randomPipe());
+          score = Math.max(0, score - 5);
+          playSound('discard');
+        }
+      }
+
+      // Handle restart
+      if (keys['KeyR']) {
+        keys['KeyR'] = false;
+        initLevel(level);
+      }
+
+      // Pre-flow countdown
+      if (!flowActive) {
+        preFlowTimer--;
+        if (preFlowTimer <= 0) {
+          startFlow();
+        }
+      }
+
+      // Flow update
+      if (flowActive) {
+        updateFlow();
+      }
+
+      updatePlaceFeedback();
+
+      // Draw everything
+      drawGrid();
+      drawQueuePanel();
+      drawPlaceFeedback();
+      drawHUD();
+      break;
+
+    case 'levelComplete':
+      drawGrid();
+      drawQueuePanel();
+      drawHUD();
+      drawLevelComplete();
+      if (levelCompleteTimer > 0) levelCompleteTimer--;
+      break;
+
+    case 'gameOver':
+      drawGrid();
+      drawQueuePanel();
+      drawHUD();
+      drawGameOver();
+      if (gameOverTimer > 0) gameOverTimer--;
+      break;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Start!
+gameLoop();
+
+</script>
+</body>
+</html>
