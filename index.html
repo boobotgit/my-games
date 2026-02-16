@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Games</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #ffffff;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #888;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .game-card {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            text-decoration: none;
+            color: #e0e0e0;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .game-card:hover {
+            transform: translateY(-5px);
+            border-color: #e94560;
+            box-shadow: 0 8px 25px rgba(233, 69, 96, 0.3);
+        }
+
+        .game-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .game-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+
+        .game-desc {
+            font-size: 0.9rem;
+            color: #999;
+        }
+
+        footer {
+            margin-top: 50px;
+            color: #555;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>My Games</h1>
+    <p class="subtitle">Pick a game to play!</p>
+
+    <div class="games-grid">
+        <a href="battle-tanks.html" class="game-card">
+            <div class="game-icon">&#127950;</div>
+            <div class="game-title">Battle Tanks</div>
+            <div class="game-desc">Battle City-inspired tank game. Defend your HQ across 3 levels!</div>
+        </a>
+
+        <a href="ice-climber.html" class="game-card">
+            <div class="game-icon">&#9968;</div>
+            <div class="game-title">Ice Climber</div>
+            <div class="game-desc">Retro ice climbing action. Break ice, dodge enemies, grab veggies!</div>
+        </a>
+
+        <a href="1942-shooter.html" class="game-card">
+            <div class="game-icon">&#9992;</div>
+            <div class="game-title">1942 Shooter</div>
+            <div class="game-desc">Classic aerial combat shooter. Take to the skies!</div>
+        </a>
+
+        <a href="pipe-dream.html" class="game-card">
+            <div class="game-icon">&#128295;</div>
+            <div class="game-title">Pipe Dream</div>
+            <div class="game-desc">Connect the pipes before the water flows!</div>
+        </a>
+    </div>
+
+    <footer>Made with fun</footer>
+</body>
+</html>
