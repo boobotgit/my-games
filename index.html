@@ -1,127 +1,287 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Games</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Games</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        body {
-            background-color: #1a1a2e;
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 40px 20px;
-        }
+    body {
+      background-color: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
 
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            color: #ffffff;
-            text-align: center;
-        }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      color: #ffffff;
+      text-align: center;
+    }
 
-        .subtitle {
-            font-size: 1.1rem;
-            color: #888;
-            margin-bottom: 40px;
-            text-align: center;
-        }
+    .subtitle {
+      font-size: 1.1rem;
+      color: #888;
+      margin-bottom: 28px;
+      text-align: center;
+    }
 
-        .games-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            max-width: 800px;
-            width: 100%;
-        }
+    /* ── Device toggle tabs ── */
+    .view-toggle {
+      display: flex;
+      gap: 0;
+      border: 2px solid #0f3460;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 36px;
+    }
 
-        .game-card {
-            background: #16213e;
-            border: 2px solid #0f3460;
-            border-radius: 12px;
-            padding: 30px;
-            text-align: center;
-            text-decoration: none;
-            color: #e0e0e0;
-            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
-        }
+    .view-btn {
+      padding: 10px 28px;
+      background: transparent;
+      color: #888;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s, color 0.2s;
+    }
 
-        .game-card:hover {
-            transform: translateY(-5px);
-            border-color: #e94560;
-            box-shadow: 0 8px 25px rgba(233, 69, 96, 0.3);
-        }
+    .view-btn.active {
+      background: #0f3460;
+      color: #fff;
+    }
 
-        .game-icon {
-            font-size: 3rem;
-            margin-bottom: 15px;
-        }
+    .view-btn:hover:not(.active) {
+      background: rgba(15, 52, 96, 0.4);
+      color: #ccc;
+    }
 
-        .game-title {
-            font-size: 1.4rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #ffffff;
-        }
+    /* ── Auto-detected banner ── */
+    .detected-banner {
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: -22px;
+      margin-bottom: 22px;
+      text-align: center;
+    }
+    .detected-banner span {
+      color: #4a9eff;
+    }
 
-        .game-desc {
-            font-size: 0.9rem;
-            color: #999;
-        }
+    /* ── Game grid ── */
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      max-width: 860px;
+      width: 100%;
+    }
 
-        footer {
-            margin-top: 50px;
-            color: #555;
-            font-size: 0.85rem;
-        }
-    </style>
+    .game-card {
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      padding: 28px 24px;
+      text-align: center;
+      text-decoration: none;
+      color: #e0e0e0;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+
+    .game-card:hover {
+      transform: translateY(-5px);
+      border-color: #e94560;
+      box-shadow: 0 8px 25px rgba(233, 69, 96, 0.3);
+    }
+
+    .game-icon {
+      font-size: 2.8rem;
+      margin-bottom: 14px;
+    }
+
+    .game-title {
+      font-size: 1.35rem;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .game-desc {
+      font-size: 0.88rem;
+      color: #999;
+      line-height: 1.45;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 0.68rem;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-mobile {
+      background: #1a4a3a;
+      color: #3ddc84;
+      border: 1px solid #3ddc84;
+    }
+    .badge-desktop {
+      background: #1a2a4a;
+      color: #4a9eff;
+      border: 1px solid #4a9eff;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #555;
+      max-width: 400px;
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+    .empty-state h3 { color: #888; margin-bottom: 10px; font-size: 1.2rem; }
+    .empty-state p { font-size: 0.9rem; line-height: 1.5; }
+
+    /* ── View sections ── */
+    .view { display: none; width: 100%; max-width: 860px; }
+    .view.active { display: block; }
+
+    footer {
+      margin-top: 56px;
+      color: #444;
+      font-size: 0.82rem;
+    }
+  </style>
 </head>
 <body>
-    <h1>My Games</h1>
-    <p class="subtitle">Pick a game to play!</p>
 
+  <h1>🕹️ My Games</h1>
+  <p class="subtitle">Pick a game to play!</p>
+
+  <!-- Toggle tabs -->
+  <div class="view-toggle">
+    <button class="view-btn" id="btn-mobile" onclick="setView('mobile')">
+      📱 Mobile
+    </button>
+    <button class="view-btn" id="btn-desktop" onclick="setView('desktop')">
+      🖥️ Desktop
+    </button>
+  </div>
+
+  <p class="detected-banner" id="detected-banner"></p>
+
+  <!-- MOBILE VIEW -->
+  <div class="view" id="view-mobile">
     <div class="games-grid">
-        <a href="battle-tanks.html" class="game-card">
-            <div class="game-icon">&#127950;</div>
-            <div class="game-title">Battle Tanks</div>
-            <div class="game-desc">Battle City-inspired tank game. Defend your HQ across 3 levels!</div>
-        </a>
 
-        <a href="ice-climber.html" class="game-card">
-            <div class="game-icon">&#9968;</div>
-            <div class="game-title">Ice Climber</div>
-            <div class="game-desc">Retro ice climbing action. Break ice, dodge enemies, grab veggies!</div>
-        </a>
+      <a href="1942-shooter-mobile.html" class="game-card">
+        <span class="badge badge-mobile">Touch Ready</span>
+        <div class="game-icon">✈️</div>
+        <div class="game-title">1942 Shooter</div>
+        <div class="game-desc">Classic aerial combat. Virtual joystick, auto-fire, roll &amp; bomb buttons!</div>
+      </a>
 
-        <a href="1942-shooter.html" class="game-card">
-            <div class="game-icon">&#9992;</div>
-            <div class="game-title">1942 Shooter</div>
-            <div class="game-desc">Classic aerial combat shooter. Take to the skies!</div>
-        </a>
+      <!-- More mobile games will go here -->
+      <div class="game-card" style="opacity:0.35; cursor:default; pointer-events:none;">
+        <span class="badge badge-mobile">Coming Soon</span>
+        <div class="game-icon">🎮</div>
+        <div class="game-title">More Coming Soon</div>
+        <div class="game-desc">More touch-friendly games are on the way!</div>
+      </div>
 
-        <a href="pipe-dream.html" class="game-card">
-            <div class="game-icon">&#128295;</div>
-            <div class="game-title">Pipe Dream</div>
-            <div class="game-desc">Connect the pipes before the water flows!</div>
-        </a>
-
-        <a href="street-fighter.html" class="game-card">
-            <div class="game-icon">&#129354;</div>
-            <div class="game-title">Street Fighter II</div>
-            <div class="game-desc">Classic 2D fighting game. 4 fighters, special moves, vs CPU!</div>
-        </a>
     </div>
+  </div>
 
-    <footer>Made with fun</footer>
+  <!-- DESKTOP VIEW -->
+  <div class="view" id="view-desktop">
+    <div class="games-grid">
+
+      <a href="battle-tanks.html" class="game-card">
+        <span class="badge badge-desktop">Keyboard</span>
+        <div class="game-icon">🎮</div>
+        <div class="game-title">Battle Tanks</div>
+        <div class="game-desc">Battle City-inspired tank game. Defend your HQ across 3 levels!</div>
+      </a>
+
+      <a href="ice-climber.html" class="game-card">
+        <span class="badge badge-desktop">Keyboard</span>
+        <div class="game-icon">⛰️</div>
+        <div class="game-title">Ice Climber</div>
+        <div class="game-desc">Retro ice climbing action. Break ice, dodge enemies, grab veggies!</div>
+      </a>
+
+      <a href="1942-shooter.html" class="game-card">
+        <span class="badge badge-desktop">Keyboard</span>
+        <div class="game-icon">✈️</div>
+        <div class="game-title">1942 Shooter</div>
+        <div class="game-desc">Classic aerial combat shooter. Arrow keys + Space/Z/X. Take to the skies!</div>
+      </a>
+
+      <a href="pipe-dream.html" class="game-card">
+        <span class="badge badge-desktop">Keyboard</span>
+        <div class="game-icon">🔧</div>
+        <div class="game-title">Pipe Dream</div>
+        <div class="game-desc">Connect the pipes before the water flows!</div>
+      </a>
+
+      <a href="street-fighter.html" class="game-card">
+        <span class="badge badge-desktop">Keyboard</span>
+        <div class="game-icon">🥊</div>
+        <div class="game-title">Street Fighter II</div>
+        <div class="game-desc">Classic 2D fighting game. 4 fighters, special moves, vs CPU!</div>
+      </a>
+
+    </div>
+  </div>
+
+  <footer>Made with fun ✨</footer>
+
+  <script>
+    // ── Device detection ──────────────────────────────────────────
+    // Use pointer coarseness (touchscreen) as the primary signal.
+    // A coarse pointer = touchscreen device = mobile.
+    function isMobileDevice() {
+      const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+      const narrowScreen  = window.innerWidth < 768;
+      return coarsePointer || narrowScreen;
+    }
+
+    // ── View management ───────────────────────────────────────────
+    function setView(view) {
+      document.getElementById('view-mobile').classList.toggle('active', view === 'mobile');
+      document.getElementById('view-desktop').classList.toggle('active', view === 'desktop');
+      document.getElementById('btn-mobile').classList.toggle('active', view === 'mobile');
+      document.getElementById('btn-desktop').classList.toggle('active', view === 'desktop');
+    }
+
+    // ── Auto-detect on load ───────────────────────────────────────
+    (function() {
+      const mobile = isMobileDevice();
+      setView(mobile ? 'mobile' : 'desktop');
+
+      const banner = document.getElementById('detected-banner');
+      if (mobile) {
+        banner.innerHTML = 'Showing <span>touch-friendly</span> games for your device — <a href="#" style="color:#4a9eff;text-decoration:none;" onclick="setView(\'desktop\');return false;">switch to Desktop view</a>';
+      } else {
+        banner.innerHTML = 'Showing <span>desktop</span> games for your device — <a href="#" style="color:#3ddc84;text-decoration:none;" onclick="setView(\'mobile\');return false;">switch to Mobile view</a>';
+      }
+    })();
+  </script>
+
 </body>
 </html>
