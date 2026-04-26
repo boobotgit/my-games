@@ -30,11 +30,39 @@
     width: 100%; height: 100%;
     z-index: 10;
   }
+  /* Back-to-home button — sits above everything in the top-left corner.
+     Uses safe-area-inset so it clears the iPhone notch / Dynamic Island. */
+  #backBtn {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: calc(env(safe-area-inset-left, 0px) + 8px);
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 22px;
+    padding: 9px 16px 9px 12px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* min 44px tap target per Apple HIG */
+    min-height: 38px;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.2);
+  }
+  #backBtn:active {
+    background: rgba(0, 0, 0, 0.8);
+    transform: scale(0.95);
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="touchLayer"></div>
+<a id="backBtn" href="index.html">&#x2190; Home</a>
 <script>
 // ============================================================
 // 1942 - PACIFIC AIR BATTLE (MOBILE VERSION)
