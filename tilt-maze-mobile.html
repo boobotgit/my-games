@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tilt Maze">
+<meta name="theme-color" content="#1a1208">
+<title>Tilt Maze</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1208;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    position: fixed;
+    top: 0; left: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  /* ── Top HUD bar (during play) ── */
+  #hud {
+    position: fixed;
+    z-index: 20;
+    top: 0; left: 0;
+    width: 100%;
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px 12px;
+    pointer-events: none;
+  }
+  #hud.show { display: flex; }
+  #homeBtn {
+    pointer-events: auto;
+    background: rgba(0,0,0,0.45);
+    color: #f0d9a8;
+    border: 1px solid #c79a63;
+    border-radius: 8px;
+    font-size: 13px;
+    padding: 5px 10px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  #levelLabel {
+    color: #f0d9a8;
+    font-size: 15px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.35);
+    padding: 5px 12px;
+    border-radius: 8px;
+  }
+
+  /* ── Full-screen overlays (menu / win) ── */
+  .overlay {
+    position: fixed;
+    z-index: 30;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 30px;
+    background: radial-gradient(circle at 50% 35%, #2a1e0e 0%, #140d05 80%);
+    color: #f0d9a8;
+  }
+  .overlay.show { display: flex; }
+  .overlay h1 {
+    font-size: 2.4rem;
+    margin-bottom: 14px;
+    color: #ffe9bf;
+    letter-spacing: 0.02em;
+  }
+  .overlay p {
+    font-size: 1.05rem;
+    line-height: 1.5;
+    color: #cbb389;
+    max-width: 320px;
+    margin-bottom: 10px;
+  }
+  .overlay .hint {
+    font-size: 0.82rem;
+    color: #8a7656;
+    margin-top: 18px;
+  }
+  .btn {
+    margin-top: 26px;
+    padding: 15px 34px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1a1208;
+    background: linear-gradient(#ffd98a, #e0a64f);
+    border: none;
+    border-radius: 40px;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(224,166,79,0.35);
+    font-family: inherit;
+  }
+  .btn:active { transform: translateY(2px); }
+  .ball-emoji { font-size: 3.2rem; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- Top HUD -->
+<div id="hud">
+  <a id="homeBtn" href="index.html">&#8962; Home</a>
+  <span id="levelLabel">Level 1 / 3</span>
+  <span style="width:64px"></span><!-- spacer to balance the Home button -->
+</div>
+
+<!-- Start menu -->
+<div id="menu" class="overlay show">
+  <div class="ball-emoji">&#x1F3B1;</div>
+  <h1>Tilt Maze</h1>
+  <p>Tilt your phone to roll the ball into the hole. Clear an open board, then escape two mazes.</p>
+  <button id="startBtn" class="btn">Enable Tilt &amp; Play</button>
+  <p class="hint">No tilt sensor? Use the arrow keys on a keyboard.</p>
+</div>
+
+<!-- Win screen -->
+<div id="win" class="overlay">
+  <div class="ball-emoji">&#x1F3C6;</div>
+  <h1>You did it!</h1>
+  <p>You rolled through all three levels.</p>
+  <button id="againBtn" class="btn">Play Again</button>
+</div>
+
+<script>
+// ============================================================
+// TILT MAZE — MOBILE (gyroscope ball game)
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+const menuEl = document.getElementById('menu');
+const winEl = document.getElementById('win');
+const levelLabel = document.getElementById('levelLabel');
+
+// ── Tunables ───────────────────────────────────────────────
+const TILT_ACCEL = 40;    // accel (field units/s²) per degree of tilt
+const FRICTION   = 4;     // velocity damping per second
+const MAXSPEED   = 300;   // speed cap (field units/s)
+const REST       = 0.15;  // wall bounce restitution
+const KEY_TILT   = 18;    // simulated tilt (deg) when an arrow key is held
+const MAX_TILT   = 45;    // clamp gyro tilt to this many degrees
+const SUBSTEPS   = 4;
+
+// ── State ──────────────────────────────────────────────────
+let state = 'menu';       // 'menu' | 'playing' | 'falling' | 'win'
+let level = 1;
+let FIELD_W = 400, FIELD_H = 600;
+let walls = [];           // [{x,y,w,h}]
+let ball = null;          // {x,y,vx,vy,r,baseR}
+let hole = null;          // {x,y,r}
+let cellSize = 0;         // wall ridge sizing hint (0 = level 1 border style)
+let toast = null;         // {text, t}
+let fall = null;          // {t, sx, sy, sr}
+
+// Tilt inputs
+let gTiltX = 0, gTiltY = 0;   // from gyroscope
+const keys = { left:false, right:false, up:false, down:false };
+
+// Scaling
+let scale = 1, offsetX = 0, offsetY = 0, screenW = 0, screenH = 0;
+
+// ============================================================
+// RESPONSIVE SCALING — board letterboxed & centered
+// ============================================================
+function resize() {
+  screenW = window.innerWidth;
+  screenH = window.innerHeight;
+  scale = Math.min(screenW / FIELD_W, screenH / FIELD_H);
+  offsetX = (screenW - FIELD_W * scale) / 2;
+  offsetY = (screenH - FIELD_H * scale) / 2;
+  canvas.width = screenW;
+  canvas.height = screenH;
+}
+window.addEventListener('resize', resize);
+
+// ============================================================
+// MAZE GENERATION (recursive backtracker → perfect maze)
+// Returns a (2*cols+1) x (2*rows+1) grid; true = wall.
+// ============================================================
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function genMaze(cols, rows) {
+  const gw = 2 * cols + 1, gh = 2 * rows + 1;
+  const wall = Array.from({ length: gh }, () => Array(gw).fill(true));
+  const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const stack = [[0, 0]];
+  visited[0][0] = true;
+  wall[1][1] = false;
+  while (stack.length) {
+    const [cx, cy] = stack[stack.length - 1];
+    const dirs = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]]);
+    let moved = false;
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited[ny][nx]) {
+        visited[ny][nx] = true;
+        wall[2 * cy + 1 + dy][2 * cx + 1 + dx] = false; // knock down wall between
+        wall[2 * ny + 1][2 * nx + 1] = false;           // carve target cell
+        stack.push([nx, ny]);
+        moved = true;
+        break;
+      }
+    }
+    if (!moved) stack.pop();
+  }
+  return { wall, gw, gh };
+}
+
+// ============================================================
+// LEVEL BUILDERS
+// ============================================================
+function loadLevel(n) {
+  level = n;
+  if (n === 1) buildOpenLevel();
+  else if (n === 2) buildMazeLevel(4, 6);
+  else buildMazeLevel(5, 8);
+
+  resize();
+  state = 'playing';
+  toast = { text: 'Level ' + n, t: 1.4 };
+  levelLabel.textContent = 'Level ' + n + ' / 3';
+  hud.classList.add('show');
+}
+
+function buildOpenLevel() {
+  FIELD_W = 400; FIELD_H = 600;
+  cellSize = 0;
+  const m = 24; // border thickness
+  walls = [
+    { x: 0, y: 0, w: FIELD_W, h: m },
+    { x: 0, y: FIELD_H - m, w: FIELD_W, h: m },
+    { x: 0, y: 0, w: m, h: FIELD_H },
+    { x: FIELD_W - m, y: 0, w: m, h: FIELD_H },
+  ];
+  const r = 16;
+  ball = { x: FIELD_W / 2, y: m + 40, vx: 0, vy: 0, r, baseR: r };
+  const hr = 28;
+  let hx, hy;
+  do {
+    hx = m + hr + Math.random() * (FIELD_W - 2 * m - 2 * hr);
+    hy = m + hr + Math.random() * (FIELD_H - 2 * m - 2 * hr);
+  } while (Math.hypot(hx - ball.x, hy - ball.y) < 180);
+  hole = { x: hx, y: hy, r: hr };
+}
+
+function buildMazeLevel(cols, rows) {
+  const { wall, gw, gh } = genMaze(cols, rows);
+  const cs = 400 / gw;
+  cellSize = cs;
+  FIELD_W = gw * cs;
+  FIELD_H = gh * cs;
+  walls = [];
+  for (let y = 0; y < gh; y++)
+    for (let x = 0; x < gw; x++)
+      if (wall[y][x]) walls.push({ x: x * cs, y: y * cs, w: cs, h: cs });
+
+  const r = cs * 0.30;
+  ball = { x: 1.5 * cs, y: 1.5 * cs, vx: 0, vy: 0, r, baseR: r };
+  const hgx = 2 * cols - 1, hgy = 2 * rows - 1;
+  hole = { x: (hgx + 0.5) * cs, y: (hgy + 0.5) * cs, r: cs * 0.40 };
+}
+
+// ============================================================
+// PHYSICS
+// ============================================================
+function currentTilt() {
+  let tx = 0, ty = 0;
+  if (keys.left)  tx -= KEY_TILT;
+  if (keys.right) tx += KEY_TILT;
+  if (keys.up)    ty -= KEY_TILT;
+  if (keys.down)  ty += KEY_TILT;
+  if (tx !== 0 || ty !== 0) return [tx, ty]; // keyboard overrides gyro
+  return [gTiltX, gTiltY];
+}
+
+function resolveCircleRect(b, r) {
+  const cx = Math.max(r.x, Math.min(b.x, r.x + r.w));
+  const cy = Math.max(r.y, Math.min(b.y, r.y + r.h));
+  let dx = b.x - cx, dy = b.y - cy;
+  let d2 = dx * dx + dy * dy;
+  if (d2 > b.r * b.r) return;
+  let nx, ny, overlap;
+  const d = Math.sqrt(d2);
+  if (d > 0.0001) {
+    nx = dx / d; ny = dy / d; overlap = b.r - d;
+  } else {
+    // center inside the rect — push out the nearest edge
+    const left = b.x - r.x, right = (r.x + r.w) - b.x;
+    const top = b.y - r.y, bot = (r.y + r.h) - b.y;
+    const mn = Math.min(left, right, top, bot);
+    if (mn === left)      { nx = -1; ny = 0; }
+    else if (mn === right){ nx = 1;  ny = 0; }
+    else if (mn === top)  { nx = 0;  ny = -1; }
+    else                  { nx = 0;  ny = 1; }
+    overlap = b.r + mn;
+  }
+  b.x += nx * overlap;
+  b.y += ny * overlap;
+  const vn = b.vx * nx + b.vy * ny;
+  if (vn < 0) { b.vx -= (1 + REST) * vn * nx; b.vy -= (1 + REST) * vn * ny; }
+}
+
+function update(dt) {
+  const [tx, ty] = currentTilt();
+  const sdt = dt / SUBSTEPS;
+  for (let s = 0; s < SUBSTEPS; s++) {
+    ball.vx += tx * TILT_ACCEL * sdt;
+    ball.vy += ty * TILT_ACCEL * sdt;
+    const f = Math.max(0, 1 - FRICTION * sdt);
+    ball.vx *= f; ball.vy *= f;
+    const sp = Math.hypot(ball.vx, ball.vy);
+    if (sp > MAXSPEED) { ball.vx *= MAXSPEED / sp; ball.vy *= MAXSPEED / sp; }
+    ball.x += ball.vx * sdt;
+    ball.y += ball.vy * sdt;
+    for (const w of walls) resolveCircleRect(ball, w);
+  }
+  // Fall-in check
+  if (Math.hypot(ball.x - hole.x, ball.y - hole.y) < hole.r - ball.r * 0.6) {
+    state = 'falling';
+    fall = { t: 0, sx: ball.x, sy: ball.y, sr: ball.r };
+  }
+}
+
+function updateFalling(dt) {
+  fall.t += dt;
+  const k = Math.min(1, fall.t / 0.5);
+  ball.x = fall.sx + (hole.x - fall.sx) * k;
+  ball.y = fall.sy + (hole.y - fall.sy) * k;
+  ball.r = fall.sr * (1 - k);
+  if (fall.t >= 0.5) {
+    if (level >= 3) {
+      state = 'win';
+      hud.classList.remove('show');
+      winEl.classList.add('show');
+    } else {
+      loadLevel(level + 1);
+    }
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function draw() {
+  // Backdrop (screen space)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#140d05';
+  ctx.fillRect(0, 0, screenW, screenH);
+
+  // Field space
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+
+  // Board (wood)
+  const g = ctx.createLinearGradient(0, 0, FIELD_W, FIELD_H);
+  g.addColorStop(0, '#e6c184');
+  g.addColorStop(1, '#c79a63');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+
+  // Subtle wood grain stripes
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.strokeStyle = '#7a5631';
+  ctx.lineWidth = 2;
+  for (let y = 8; y < FIELD_H; y += 16) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + Math.sin(y * 0.05) * 3);
+    ctx.lineTo(FIELD_W, y - Math.sin(y * 0.05) * 3);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Hole (dark sink with rim shadow)
+  const hg = ctx.createRadialGradient(hole.x, hole.y, 1, hole.x, hole.y, hole.r);
+  hg.addColorStop(0, '#000');
+  hg.addColorStop(0.7, '#1c130a');
+  hg.addColorStop(1, '#5a4326');
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(60,40,18,0.6)';
+  ctx.stroke();
+
+  // Walls (wooden ridges with 3D edges)
+  for (const w of walls) {
+    ctx.fillStyle = '#6e4a2b';
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    ctx.fillStyle = 'rgba(255,225,170,0.30)'; // top-left light
+    ctx.fillRect(w.x, w.y, w.w, 2);
+    ctx.fillRect(w.x, w.y, 2, w.h);
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';        // bottom-right dark
+    ctx.fillRect(w.x, w.y + w.h - 2, w.w, 2);
+    ctx.fillRect(w.x + w.w - 2, w.y, 2, w.h);
+  }
+
+  // Ball
+  if (ball.r > 0.5) {
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(ball.x + ball.r * 0.25, ball.y + ball.r * 0.35, ball.r * 0.95, ball.r * 0.75, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // metallic body
+    const bg = ctx.createRadialGradient(
+      ball.x - ball.r * 0.35, ball.y - ball.r * 0.35, ball.r * 0.1,
+      ball.x, ball.y, ball.r);
+    bg.addColorStop(0, '#ffffff');
+    bg.addColorStop(0.35, '#cfd4da');
+    bg.addColorStop(1, '#6b7077');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+    // highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(ball.x - ball.r * 0.32, ball.y - ball.r * 0.32, ball.r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Level toast
+  if (toast && toast.t > 0) {
+    const a = Math.min(1, toast.t);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    drawRoundRect(FIELD_W / 2 - 90, FIELD_H / 2 - 34, 180, 68, 14);
+    ctx.fill();
+    ctx.fillStyle = '#ffe9bf';
+    ctx.font = 'bold 30px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(toast.text, FIELD_W / 2, FIELD_H / 2);
+    ctx.restore();
+  }
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let lastT = 0;
+function loop(now) {
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (dt > 0.05) dt = 0.05;
+
+  if (state === 'playing') update(dt);
+  else if (state === 'falling') updateFalling(dt);
+
+  if (toast && toast.t > 0) toast.t -= dt;
+
+  if (state !== 'menu' && state !== 'win') draw();
+  requestAnimationFrame(loop);
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+function onOrient(e) {
+  if (e.gamma == null || e.beta == null) return;
+  // True-flat neutral: phone face-up (gamma≈0, beta≈0) ⇒ ball rests.
+  gTiltX = Math.max(-MAX_TILT, Math.min(MAX_TILT, e.gamma));
+  gTiltY = Math.max(-MAX_TILT, Math.min(MAX_TILT, e.beta));
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft')  { keys.left = true;  e.preventDefault(); }
+  if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+  if (e.key === 'ArrowUp')    { keys.up = true;    e.preventDefault(); }
+  if (e.key === 'ArrowDown')  { keys.down = true;  e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft')  keys.left = false;
+  if (e.key === 'ArrowRight') keys.right = false;
+  if (e.key === 'ArrowUp')    keys.up = false;
+  if (e.key === 'ArrowDown')  keys.down = false;
+});
+
+async function startGame() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res === 'granted') window.addEventListener('deviceorientation', onOrient);
+    } catch (err) { /* permission denied — keyboard fallback still works */ }
+  } else {
+    window.addEventListener('deviceorientation', onOrient);
+  }
+  menuEl.classList.remove('show');
+  winEl.classList.remove('show');
+  gTiltX = 0; gTiltY = 0;
+  loadLevel(1);
+  lastT = performance.now();
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
