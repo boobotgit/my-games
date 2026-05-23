@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pipe Dream">
+<meta name="theme-color" content="#0a0a1a">
+<title>Pipe Dream</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #0a0a1a;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    position: fixed;
+    top: 0; left: 0;
+    font-family: 'Courier New', monospace;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #touchLayer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 10;
+  }
+  #homeBtn {
+    position: fixed;
+    z-index: 20;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: 10px;
+    background: rgba(0,0,0,0.55);
+    color: #f0a500;
+    border: 1px solid #f0a500;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    padding: 5px 10px;
+    cursor: pointer;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="touchLayer"></div>
+<a id="homeBtn" href="index.html">&#8962; Home</a>
+
+<script>
+// ============================================================
+// PIPE DREAM — MOBILE VERSION
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const touchLayer = document.getElementById('touchLayer');
+
+// ============================================================
+// LAYOUT (virtual coordinate system; VW maps to screen width)
+// ============================================================
+
+const GRID_COLS = 7;
+const GRID_ROWS = 7;
+const VW = 420;                       // virtual width == screen width
+const CELL = 54;
+const GRID_W = GRID_COLS * CELL;       // 378
+const GRID_PAD_X = (VW - GRID_W) / 2;  // 21
+const GRID_PAD_Y = 86;                 // HUD space on top (clears notch)
+const GRID_BOTTOM = GRID_PAD_Y + GRID_ROWS * CELL; // 86 + 378 = 464
+
+// Pipe geometry inside a cell
+const PW = 16;                         // pipe thickness
+const PM = (CELL - PW) / 2;            // margin to center pipe
+
+// Queue strip (horizontal, below the grid)
+const QUEUE_SIZE = 6;
+const QUEUE_SHOW = 6;
+const Q_BOX = 50;
+const Q_GAP = 6;
+const Q_TOTAL_W = QUEUE_SHOW * Q_BOX + (QUEUE_SHOW - 1) * Q_GAP; // 330
+const Q_X = (VW - Q_TOTAL_W) / 2;      // 45
+const Q_LABEL_Y = GRID_BOTTOM + 24;
+const Q_Y = GRID_BOTTOM + 32;
+const Q_BOTTOM = Q_Y + Q_BOX;
+
+// Minimum virtual content height (so buttons never clip on short screens)
+const CONTENT_MIN_H = Q_BOTTOM + 24 + 58 + 36;
+
+// ============================================================
+// RESPONSIVE SCALING
+// ============================================================
+
+let scale = 1;
+let offsetX = 0, offsetY = 0;
+let screenW = 0, screenH = 0;
+let H = CONTENT_MIN_H; // full screen height in virtual coords (recomputed in resize)
+
+function resize() {
+  screenW = window.innerWidth;
+  screenH = window.innerHeight;
+  scale = screenW / VW;
+  let maxScale = screenH / CONTENT_MIN_H;
+  if (scale > maxScale) scale = maxScale;
+
+  canvas.width = screenW;
+  canvas.height = screenH;
+  offsetX = (screenW - VW * scale) / 2;
+  offsetY = 0;
+  canvas.style.left = '0px';
+  canvas.style.top = '0px';
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+
+  H = screenH / scale;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function clearBg(color) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ============================================================
+// PIPE DEFINITIONS
+// conn: which sides connect [top, right, bottom, left]
+// ============================================================
+
+const PIPE_TYPES = {
+  horiz:  { id:'horiz',  conn:[false,true,false,true],  label:'━' },
+  vert:   { id:'vert',   conn:[true,false,true,false],  label:'┃' },
+  elbow_tr: { id:'elbow_tr', conn:[true,true,false,false],  label:'┗' },
+  elbow_tl: { id:'elbow_tl', conn:[true,false,false,true],  label:'┛' },
+  elbow_br: { id:'elbow_br', conn:[false,true,true,false],  label:'┏' },
+  elbow_bl: { id:'elbow_bl', conn:[false,false,true,true],  label:'┓' },
+  cross:  { id:'cross',  conn:[true,true,true,true], label:'╋', isCross:true },
+};
+
+// Direction helpers: 0=top, 1=right, 2=bottom, 3=left
+const DIR_DX = [0, 1, 0, -1];
+const DIR_DY = [-1, 0, 1, 0];
+const DIR_OPP = [2, 3, 0, 1];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+
+let gameState = 'title'; // title, playing, levelComplete, gameOver
+let level = 1;
+let score = 0;
+let totalScore = 0;
+
+let grid = [];
+let queue = [];
+
+let startRow = 0, startCol = 0, startDir = 0;
+
+let flowActive = false;
+let preFlowTimer = 0;
+const PRE_FLOW_TIME_BASE = 30;
+let flowSpeed = 1;
+let flowInterval = 0;
+let flowCurrent = null;
+let pipesFilled = 0;
+let minPipes = 0;
+let gameOverTimer = 0;
+let levelCompleteTimer = 0;
+
+let titleAnim = 0;
+let placeFeedback = [];
+
+let removeMode = false; // when true, tapping a placed pipe removes it
+
+// Audio
+let audioCtx = null;
+let audioEnabled = false;
+
+// ============================================================
+// AUDIO
+// ============================================================
+
+function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.value = 0; o.start(); o.stop(audioCtx.currentTime + 0.05);
+    audioEnabled = true;
+  } catch(e) {}
+}
+
+function beep(freq, start, dur, vol, wave) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value = freq;
+  o.type = wave || 'square';
+  g.gain.setValueAtTime(vol || 0.1, start);
+  g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+  o.start(start); o.stop(start + dur);
+}
+
+function playSound(type) {
+  if (!audioCtx || !audioEnabled) return;
+  audioCtx.resume();
+  let t = audioCtx.currentTime;
+  switch(type) {
+    case 'place':
+      beep(600, t, 0.05, 0.08);
+      beep(800, t+0.03, 0.04, 0.06);
+      break;
+    case 'discard':
+      beep(300, t, 0.06, 0.06, 'triangle');
+      beep(200, t+0.04, 0.06, 0.05, 'triangle');
+      break;
+    case 'flow':
+      beep(500, t, 0.08, 0.05, 'sine');
+      beep(700, t+0.05, 0.06, 0.04, 'sine');
+      break;
+    case 'cantPlace':
+      beep(150, t, 0.1, 0.08, 'sawtooth');
+      break;
+    case 'toggle':
+      beep(440, t, 0.05, 0.06, 'square');
+      break;
+    case 'levelComplete':
+      beep(523, t, 0.12, 0.1); beep(659, t+0.12, 0.12, 0.1);
+      beep(784, t+0.24, 0.12, 0.1); beep(1047, t+0.36, 0.25, 0.12);
+      break;
+    case 'gameOver':
+      beep(400, t, 0.15, 0.1); beep(300, t+0.15, 0.15, 0.1);
+      beep(200, t+0.3, 0.15, 0.1); beep(100, t+0.45, 0.3, 0.08);
+      break;
+  }
+}
+
+// ============================================================
+// LEVEL SETUP
+// ============================================================
+
+function initLevel(lvl) {
+  level = lvl;
+  grid = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) grid[r][c] = null;
+  }
+
+  let obstacleCount = 0;
+  if (level >= 3) obstacleCount = Math.min(level - 1, 10);
+
+  let edge = Math.floor(Math.random() * 4);
+  if (edge === 0) {
+    startRow = 0; startCol = 1 + Math.floor(Math.random() * (GRID_COLS - 2));
+    startDir = 2;
+  } else if (edge === 1) {
+    startCol = GRID_COLS - 1; startRow = 1 + Math.floor(Math.random() * (GRID_ROWS - 2));
+    startDir = 3;
+  } else if (edge === 2) {
+    startRow = GRID_ROWS - 1; startCol = 1 + Math.floor(Math.random() * (GRID_COLS - 2));
+    startDir = 0;
+  } else {
+    startCol = 0; startRow = 1 + Math.floor(Math.random() * (GRID_ROWS - 2));
+    startDir = 1;
+  }
+
+  grid[startRow][startCol] = { pipe: null, isStart: true, startDir: startDir, filled: false, fillProgress: 0 };
+
+  let placed = 0, attempts = 0;
+  while (placed < obstacleCount && attempts < 200) {
+    let r = Math.floor(Math.random() * GRID_ROWS);
+    let c = Math.floor(Math.random() * GRID_COLS);
+    if (grid[r][c] === null) { grid[r][c] = 'wall'; placed++; }
+    attempts++;
+  }
+
+  queue = [];
+  for (let i = 0; i < QUEUE_SIZE; i++) queue.push(randomPipe());
+
+  flowActive = false;
+  let preFlowSeconds = Math.max(12, PRE_FLOW_TIME_BASE - (level - 1) * 2);
+  preFlowTimer = preFlowSeconds * 60;
+  flowSpeed = 0.8 + level * 0.15;
+  if (flowSpeed > 3) flowSpeed = 3;
+  flowInterval = Math.floor(60 / flowSpeed);
+  flowCurrent = null;
+  pipesFilled = 0;
+  minPipes = Math.min(5 + level * 2, 25);
+  gameOverTimer = 0;
+  levelCompleteTimer = 0;
+  placeFeedback = [];
+  removeMode = false;
+  score = 0;
+}
+
+function randomPipe() {
+  if (level >= 5 && Math.random() < 0.125) return PIPE_TYPES['cross'];
+  let basic = ['horiz','vert','elbow_tr','elbow_tl','elbow_br','elbow_bl'];
+  return PIPE_TYPES[basic[Math.floor(Math.random() * basic.length)]];
+}
+
+// ============================================================
+// INPUT — TAP HANDLING
+// ============================================================
+
+function touchToGame(tx, ty) {
+  return { x: (tx - offsetX) / scale, y: (ty - offsetY) / scale };
+}
+
+function pointInRect(px, py, r) {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+// Button rects (game coords) — anchored toward bottom for thumb reach,
+// but never above the queue strip.
+function getButtonRects() {
+  let bw = 168, bh = 58, gap = 20;
+  let totalW = bw * 2 + gap;
+  let x0 = (VW - totalW) / 2;
+  let safeBottom = 36;
+  let y = H - bh - safeBottom;
+  let minY = Q_BOTTOM + 24;
+  if (y < minY) y = minY;
+  return {
+    discard: { x: x0, y: y, w: bw, h: bh },
+    remove:  { x: x0 + bw + gap, y: y, w: bw, h: bh },
+  };
+}
+
+function handleTap(gx, gy) {
+  if (!audioEnabled) initAudio();
+
+  if (gameState === 'title') { startGame(); return; }
+  if (gameState === 'levelComplete') {
+    if (levelCompleteTimer <= 0) { initLevel(level + 1); gameState = 'playing'; }
+    return;
+  }
+  if (gameState === 'gameOver') {
+    if (gameOverTimer <= 0) gameState = 'title';
+    return;
+  }
+  if (gameState !== 'playing') return;
+
+  // Buttons
+  let btns = getButtonRects();
+  if (pointInRect(gx, gy, btns.discard)) { doDiscard(); return; }
+  if (pointInRect(gx, gy, btns.remove)) {
+    removeMode = !removeMode;
+    playSound('toggle');
+    return;
+  }
+
+  // Grid
+  let c = Math.floor((gx - GRID_PAD_X) / CELL);
+  let r = Math.floor((gy - GRID_PAD_Y) / CELL);
+  if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) return;
+
+  if (removeMode) doRemove(r, c);
+  else doPlace(r, c);
+}
+
+function doPlace(r, c) {
+  let cell = grid[r][c];
+  if (cell === 'wall' || (cell && cell.isStart) || (cell && cell.pipe)) {
+    playSound('cantPlace');
+    return;
+  }
+
+  let pipeType = queue[0];
+  grid[r][c] = {
+    pipe: pipeType,
+    filled: false,
+    fillProgress: 0,
+    fillDir: -1,
+    crossFillH: false, crossFillV: false,
+    crossProgressH: 0, crossProgressV: 0,
+    crossDirH: -1, crossDirV: -1,
+  };
+
+  queue.shift();
+  queue.push(randomPipe());
+
+  let px = GRID_PAD_X + c * CELL + CELL/2;
+  let py = GRID_PAD_Y + r * CELL + CELL/2;
+  placeFeedback.push({ x:px, y:py, timer:15 });
+
+  playSound('place');
+  score += 10;
+}
+
+function doRemove(r, c) {
+  let cell = grid[r][c];
+  if (!cell || !cell.pipe || cell.filled) { playSound('cantPlace'); return; }
+  if (cell.pipe.isCross && (cell.crossProgressH > 0 || cell.crossProgressV > 0)) { playSound('cantPlace'); return; }
+  if (cell.fillProgress > 0) { playSound('cantPlace'); return; }
+
+  grid[r][c] = null;
+  score = Math.max(0, score - 30);
+  playSound('discard');
+
+  let px = GRID_PAD_X + c * CELL + CELL/2;
+  let py = GRID_PAD_Y + r * CELL + CELL/2;
+  placeFeedback.push({ x:px, y:py, timer:15, isRemove:true });
+}
+
+function doDiscard() {
+  if (queue.length > 0) {
+    queue.shift();
+    queue.push(randomPipe());
+    score = Math.max(0, score - 5);
+    playSound('discard');
+  }
+}
+
+// Touch (preventDefault stops the synthesized mouse event so we don't double-fire)
+touchLayer.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  for (let t of e.changedTouches) {
+    let gp = touchToGame(t.clientX, t.clientY);
+    handleTap(gp.x, gp.y);
+  }
+}, { passive: false });
+
+// Mouse fallback (desktop / preview)
+touchLayer.addEventListener('mousedown', function(e) {
+  let gp = touchToGame(e.clientX, e.clientY);
+  handleTap(gp.x, gp.y);
+});
+
+// Keyboard fallback (desktop testing)
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); if (gameState === 'playing') doDiscard(); }
+  if (e.code === 'KeyR' && gameState === 'playing') initLevel(level);
+});
+
+// ============================================================
+// FLOW SYSTEM
+// ============================================================
+
+function startFlow() {
+  flowActive = true;
+  let nextR = startRow + DIR_DY[startDir];
+  let nextC = startCol + DIR_DX[startDir];
+  let enterDir = DIR_OPP[startDir];
+  flowCurrent = { row: nextR, col: nextC, enterDir: enterDir };
+  if (grid[startRow][startCol]) {
+    grid[startRow][startCol].filled = true;
+    grid[startRow][startCol].fillProgress = 1;
+  }
+}
+
+function updateFlow() {
+  if (!flowActive || !flowCurrent) return;
+
+  let r = flowCurrent.row;
+  let c = flowCurrent.col;
+
+  if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) { triggerGameOver(); return; }
+
+  let cell = grid[r][c];
+  if (!cell || cell === 'wall' || !cell.pipe) { triggerGameOver(); return; }
+
+  let pipe = cell.pipe;
+  let enterDir = flowCurrent.enterDir;
+  if (!pipe.conn[enterDir]) { triggerGameOver(); return; }
+
+  if (pipe.isCross) {
+    let isHorizontal = (enterDir === 1 || enterDir === 3);
+    if (isHorizontal) {
+      if (cell.crossFillH) { triggerGameOver(); return; }
+      cell.crossDirH = enterDir;
+      cell.crossProgressH += (1.0 / flowInterval);
+      if (cell.crossProgressH >= 1) {
+        cell.crossProgressH = 1; cell.crossFillH = true;
+        advanceFlow(r, c, DIR_OPP[enterDir]);
+      }
+    } else {
+      if (cell.crossFillV) { triggerGameOver(); return; }
+      cell.crossDirV = enterDir;
+      cell.crossProgressV += (1.0 / flowInterval);
+      if (cell.crossProgressV >= 1) {
+        cell.crossProgressV = 1; cell.crossFillV = true;
+        advanceFlow(r, c, DIR_OPP[enterDir]);
+      }
+    }
+    if (cell.crossFillH && cell.crossFillV) { cell.filled = true; cell.fillProgress = 1; }
+    return;
+  }
+
+  cell.fillDir = enterDir;
+  cell.fillProgress += (1.0 / flowInterval);
+  if (cell.fillProgress >= 1) {
+    cell.fillProgress = 1;
+    cell.filled = true;
+    let exitDir = -1;
+    for (let d = 0; d < 4; d++) {
+      if (d !== enterDir && pipe.conn[d]) { exitDir = d; break; }
+    }
+    if (exitDir === -1) { triggerGameOver(); return; }
+    advanceFlow(r, c, exitDir);
+  }
+}
+
+function advanceFlow(r, c, exitDir) {
+  pipesFilled++;
+  score += 50;
+  playSound('flow');
+
+  let nextR = r + DIR_DY[exitDir];
+  let nextC = c + DIR_DX[exitDir];
+  let nextEnterDir = DIR_OPP[exitDir];
+
+  if (nextR < 0 || nextR >= GRID_ROWS || nextC < 0 || nextC >= GRID_COLS) {
+    if (pipesFilled >= minPipes) { triggerLevelComplete(); return; }
+  }
+  flowCurrent = { row: nextR, col: nextC, enterDir: nextEnterDir };
+}
+
+function triggerGameOver() {
+  if (pipesFilled >= minPipes) { triggerLevelComplete(); return; }
+  gameState = 'gameOver';
+  gameOverTimer = 120;
+  totalScore += score;
+  playSound('gameOver');
+}
+
+function triggerLevelComplete() {
+  gameState = 'levelComplete';
+  levelCompleteTimer = 120;
+  let bonus = (pipesFilled - minPipes) * 100;
+  score += bonus;
+  totalScore += score;
+  playSound('levelComplete');
+}
+
+// ============================================================
+// DRAWING — GRID & PIPES
+// ============================================================
+
+function drawGrid() {
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      let x = GRID_PAD_X + c * CELL;
+      let y = GRID_PAD_Y + r * CELL;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+
+      let cell = grid[r][c];
+      if (cell === 'wall') drawWall(x, y);
+      else if (cell && cell.isStart) drawStartCell(x, y, cell);
+      else if (cell && cell.pipe) drawPipe(x, y, cell);
+    }
+  }
+
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= GRID_ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(GRID_PAD_X, GRID_PAD_Y + r * CELL);
+    ctx.lineTo(GRID_PAD_X + GRID_COLS * CELL, GRID_PAD_Y + r * CELL);
+    ctx.stroke();
+  }
+  for (let c = 0; c <= GRID_COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(GRID_PAD_X + c * CELL, GRID_PAD_Y);
+    ctx.lineTo(GRID_PAD_X + c * CELL, GRID_PAD_Y + GRID_ROWS * CELL);
+    ctx.stroke();
+  }
+
+  // Border around the playfield
+  ctx.strokeStyle = removeMode ? '#ff5544' : '#334';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(GRID_PAD_X, GRID_PAD_Y, GRID_W, GRID_ROWS * CELL);
+}
+
+function drawWall(x, y) {
+  ctx.fillStyle = '#0e0e1e';
+  ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+  ctx.strokeStyle = '#2a1a1a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x+8, y+8); ctx.lineTo(x+CELL-8, y+CELL-8);
+  ctx.moveTo(x+CELL-8, y+8); ctx.lineTo(x+8, y+CELL-8);
+  ctx.stroke();
+  ctx.strokeStyle = '#3a2a2a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x+2, y+2, CELL-4, CELL-4);
+}
+
+function drawStartCell(x, y, cell) {
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+
+  let cx = x + CELL/2, cy = y + CELL/2;
+  let dir = cell.startDir;
+  ctx.fillStyle = cell.filled ? '#2288ff' : '#44cc44';
+  ctx.beginPath();
+  if (dir === 0) { ctx.moveTo(cx, cy-15); ctx.lineTo(cx-10, cy+7); ctx.lineTo(cx+10, cy+7); }
+  else if (dir === 1) { ctx.moveTo(cx+15, cy); ctx.lineTo(cx-7, cy-10); ctx.lineTo(cx-7, cy+10); }
+  else if (dir === 2) { ctx.moveTo(cx, cy+15); ctx.lineTo(cx-10, cy-7); ctx.lineTo(cx+10, cy-7); }
+  else { ctx.moveTo(cx-15, cy); ctx.lineTo(cx+7, cy-10); ctx.lineTo(cx+7, cy+10); }
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('START', cx, y + CELL - 5);
+  ctx.textAlign = 'left';
+
+  if (cell.filled) {
+    let oppDir = DIR_OPP[dir];
+    drawHalfPipe(x, y, oppDir, 1, '#2288ff');
+    drawHalfPipe(x, y, dir, 1, '#2288ff');
+  }
+}
+
+function drawPipe(x, y, cell) {
+  drawPipeShape(x, y, cell.pipe, cell.filled, cell.fillProgress, cell.fillDir);
+  if (cell.pipe.isCross) drawCrossPipeFill(x, y, cell);
+}
+
+function drawPipeShape(x, y, pipe, filled, fillProgress, fillDir) {
+  let cx = x + CELL/2, cy = y + CELL/2;
+  let pipeColor = '#667788', pipeDark = '#445566', pipeLight = '#88aacc';
+
+  for (let d = 0; d < 4; d++) {
+    if (!pipe.conn[d]) continue;
+    drawPipeArm(x, y, d, pipeColor, pipeDark, pipeLight);
+  }
+
+  ctx.fillStyle = pipeColor;
+  ctx.fillRect(cx - PW/2, cy - PW/2, PW, PW);
+  ctx.fillStyle = pipeDark;
+  ctx.fillRect(cx - PW/2, cy - PW/2, PW, 2);
+  ctx.fillStyle = pipeLight;
+  ctx.fillRect(cx - PW/2, cy + PW/2 - 2, PW, 2);
+
+  if (!pipe.isCross && fillProgress > 0 && fillDir >= 0) drawNormalFill(x, y, pipe, fillProgress, fillDir);
+  if (!pipe.isCross && filled && fillDir >= 0) drawNormalFill(x, y, pipe, 1, fillDir);
+}
+
+function drawPipeArm(x, y, dir, color, dark, light) {
+  let cx = x + CELL/2, cy = y + CELL/2;
+  ctx.fillStyle = color;
+  if (dir === 0) {
+    ctx.fillRect(cx - PW/2, y, PW, CELL/2);
+    ctx.fillStyle = dark; ctx.fillRect(cx - PW/2, y, 2, CELL/2);
+    ctx.fillStyle = light; ctx.fillRect(cx + PW/2 - 2, y, 2, CELL/2);
+  } else if (dir === 1) {
+    ctx.fillRect(cx, cy - PW/2, CELL/2, PW);
+    ctx.fillStyle = dark; ctx.fillRect(cx, cy - PW/2, CELL/2, 2);
+    ctx.fillStyle = light; ctx.fillRect(cx, cy + PW/2 - 2, CELL/2, 2);
+  } else if (dir === 2) {
+    ctx.fillRect(cx - PW/2, cy, PW, CELL/2);
+    ctx.fillStyle = dark; ctx.fillRect(cx - PW/2, cy, 2, CELL/2);
+    ctx.fillStyle = light; ctx.fillRect(cx + PW/2 - 2, cy, 2, CELL/2);
+  } else {
+    ctx.fillRect(x, cy - PW/2, CELL/2, PW);
+    ctx.fillStyle = dark; ctx.fillRect(x, cy - PW/2, CELL/2, 2);
+    ctx.fillStyle = light; ctx.fillRect(x, cy + PW/2 - 2, CELL/2, 2);
+  }
+}
+
+function drawNormalFill(x, y, pipe, progress, enterDir) {
+  let cx = x + CELL/2, cy = y + CELL/2;
+  let waterColor = '#2288ff';
+  let exitDir = -1;
+  for (let d = 0; d < 4; d++) {
+    if (d !== enterDir && pipe.conn[d]) { exitDir = d; break; }
+  }
+  if (exitDir === -1) exitDir = enterDir;
+
+  let half2 = Math.max(0, (progress - 0.5) * 2);
+  drawHalfPipe(x, y, enterDir, Math.min(1, progress * 2), waterColor);
+  if (progress > 0.3) {
+    ctx.fillStyle = waterColor;
+    ctx.fillRect(cx - PW/2 + 3, cy - PW/2 + 3, PW - 6, PW - 6);
+  }
+  if (half2 > 0) drawHalfPipe(x, y, exitDir, half2, waterColor);
+}
+
+function drawHalfPipe(x, y, dir, progress, color) {
+  let cx = x + CELL/2, cy = y + CELL/2;
+  let hw = PW/2 - 3;
+  ctx.fillStyle = color;
+  let len = (CELL/2) * progress;
+  if (dir === 0) ctx.fillRect(cx - hw, cy - len, hw*2, len);
+  else if (dir === 1) ctx.fillRect(cx, cy - hw, len, hw*2);
+  else if (dir === 2) ctx.fillRect(cx - hw, cy, hw*2, len);
+  else ctx.fillRect(cx - len, cy - hw, len, hw*2);
+}
+
+function drawCrossPipeFill(x, y, cell) {
+  let cx = x + CELL/2, cy = y + CELL/2;
+  let waterColor = '#2288ff';
+  let hw = PW/2 - 3;
+  if (cell.crossDirH >= 0 && cell.crossProgressH > 0) {
+    let enterDir = cell.crossDirH, exitDir = DIR_OPP[enterDir];
+    let half2 = Math.max(0, (cell.crossProgressH - 0.5) * 2);
+    drawHalfPipe(x, y, enterDir, Math.min(1, cell.crossProgressH * 2), waterColor);
+    if (half2 > 0) drawHalfPipe(x, y, exitDir, half2, waterColor);
+  }
+  if (cell.crossDirV >= 0 && cell.crossProgressV > 0) {
+    let enterDir = cell.crossDirV, exitDir = DIR_OPP[enterDir];
+    let half2 = Math.max(0, (cell.crossProgressV - 0.5) * 2);
+    drawHalfPipe(x, y, enterDir, Math.min(1, cell.crossProgressV * 2), waterColor);
+    if (half2 > 0) drawHalfPipe(x, y, exitDir, half2, waterColor);
+  }
+  if (cell.crossProgressH > 0.3 || cell.crossProgressV > 0.3) {
+    ctx.fillStyle = waterColor;
+    ctx.fillRect(cx - hw, cy - hw, hw*2, hw*2);
+  }
+}
+
+// ============================================================
+// DRAWING — QUEUE STRIP
+// ============================================================
+
+function drawQueueStrip() {
+  ctx.fillStyle = '#f0a500';
+  ctx.font = 'bold 13px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('NEXT PIPES', VW/2, Q_LABEL_Y);
+  ctx.textAlign = 'left';
+
+  for (let i = 0; i < Math.min(queue.length, QUEUE_SHOW); i++) {
+    let bx = Q_X + i * (Q_BOX + Q_GAP);
+    let by = Q_Y;
+    ctx.fillStyle = i === 0 ? '#2a2a4e' : '#1a1a2e';
+    ctx.fillRect(bx, by, Q_BOX, Q_BOX);
+    ctx.strokeStyle = i === 0 ? '#5588ff' : '#3a3a5a';
+    ctx.lineWidth = i === 0 ? 3 : 1;
+    ctx.strokeRect(bx, by, Q_BOX, Q_BOX);
+    drawPipePreview(bx, by, Q_BOX, queue[i]);
+  }
+
+  // "CURRENT" marker on the first box
+  ctx.fillStyle = '#5588ff';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('▼ PLACING', Q_X + Q_BOX/2, Q_Y - 2);
+  ctx.textAlign = 'left';
+}
+
+function drawPipePreview(bx, by, size, pipe) {
+  let s = size / CELL;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.scale(s, s);
+  let pipeColor = '#667788', pipeDark = '#445566', pipeLight = '#88aacc';
+  for (let d = 0; d < 4; d++) {
+    if (!pipe.conn[d]) continue;
+    drawPipeArm(0, 0, d, pipeColor, pipeDark, pipeLight);
+  }
+  let ccx = CELL/2, ccy = CELL/2;
+  ctx.fillStyle = pipeColor;
+  ctx.fillRect(ccx - PW/2, ccy - PW/2, PW, PW);
+  ctx.restore();
+}
+
+// ============================================================
+// DRAWING — BUTTONS
+// ============================================================
+
+function drawButtons() {
+  let btns = getButtonRects();
+  drawButton(btns.discard, 'DISCARD', '-5 pts', false, '#88aacc', '#3a3a5a', '#1a1a2e');
+  drawButton(btns.remove, 'REMOVE',
+    removeMode ? 'TAP TO DELETE' : '-30 pts',
+    removeMode, '#ff8866', '#ff5544', '#3a1a1a');
+}
+
+function drawButton(r, label, sub, active, fg, border, bg) {
+  ctx.fillStyle = active ? bg : '#16162a';
+  roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill();
+  ctx.lineWidth = active ? 3 : 2;
+  ctx.strokeStyle = active ? border : '#3a3a5a';
+  roundRect(r.x, r.y, r.w, r.h, 10); ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = active ? fg : '#aabbcc';
+  ctx.font = 'bold 20px Courier New';
+  ctx.fillText(label, r.x + r.w/2, r.y + r.h/2 - 1);
+  ctx.fillStyle = active ? fg : '#667';
+  ctx.font = '11px Courier New';
+  ctx.fillText(sub, r.x + r.w/2, r.y + r.h/2 + 17);
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// HUD
+// ============================================================
+
+function drawHUD() {
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(-100, 0, VW + 200, GRID_PAD_Y - 6);
+
+  ctx.font = 'bold 13px Courier New';
+
+  // Level (left, clear of Home button)
+  ctx.fillStyle = '#f0a500';
+  ctx.textAlign = 'left';
+  ctx.fillText('LVL ' + level, 92, 44);
+
+  // Score (left, second row)
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('SCORE ' + (totalScore + score), 92, 66);
+
+  // Pipes (center)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = pipesFilled >= minPipes ? '#44ff44' : '#ff8844';
+  ctx.fillText('PIPES ' + pipesFilled + '/' + minPipes, VW/2, 44);
+
+  // Flow status (center, second row)
+  if (!flowActive && gameState === 'playing') {
+    let secs = Math.ceil(preFlowTimer / 60);
+    let urgent = secs <= 5;
+    ctx.fillStyle = urgent ? '#ff4444' : '#ffcc00';
+    ctx.font = urgent ? 'bold 15px Courier New' : 'bold 13px Courier New';
+    ctx.fillText('FLOW IN ' + secs + 's', VW/2, 66);
+  } else if (flowActive) {
+    ctx.fillStyle = '#2288ff';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillText('~~ FLOWING ~~', VW/2, 66);
+  }
+
+  // Speed (right)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#667';
+  ctx.font = '11px Courier New';
+  ctx.fillText('SPD ' + flowSpeed.toFixed(1) + 'x', VW - 12, 44);
+  if (level >= 5) ctx.fillText('CROSS', VW - 12, 64);
+  else if (level >= 3) ctx.fillText('WALLS', VW - 12, 64);
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// PLACE FEEDBACK
+// ============================================================
+
+function updatePlaceFeedback() {
+  for (let i = placeFeedback.length - 1; i >= 0; i--) {
+    placeFeedback[i].timer--;
+    if (placeFeedback[i].timer <= 0) placeFeedback.splice(i, 1);
+  }
+}
+
+function drawPlaceFeedback() {
+  for (let f of placeFeedback) {
+    let alpha = f.timer / 15;
+    let rad = 18 + (1 - alpha) * 14;
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.strokeStyle = f.isRemove ? '#ff4444' : '#44ff44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, rad, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// TITLE & OVERLAY SCREENS
+// ============================================================
+
+function drawTitleScreen() {
+  clearBg('#0a0a1a');
+  titleAnim++;
+
+  // Animated pipes background
+  ctx.strokeStyle = '#1a2a4a';
+  ctx.lineWidth = PW;
+  for (let i = 0; i < 9; i++) {
+    let yy = 60 + i * 70;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    for (let xx = 0; xx < VW; xx += 4) {
+      ctx.lineTo(xx, yy + Math.sin((xx + titleAnim * 2 + i * 50) * 0.025) * 16);
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#1155aa';
+  ctx.lineWidth = PW - 6;
+  for (let i = 0; i < 9; i++) {
+    let yy = 60 + i * 70;
+    let waterStart = ((titleAnim * 3 + i * 80) % (VW + 200)) - 100;
+    ctx.beginPath();
+    let started = false;
+    for (let xx = Math.max(0, waterStart); xx < Math.min(VW, waterStart + 120); xx += 4) {
+      let yyy = yy + Math.sin((xx + titleAnim * 2 + i * 50) * 0.025) * 16;
+      if (!started) { ctx.moveTo(xx, yyy); started = true; } else ctx.lineTo(xx, yyy);
+    }
+    ctx.stroke();
+  }
+
+  let cy = H * 0.32;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 44px Courier New';
+  ctx.fillText('PIPE', VW/2 + 2, cy + 2);
+  ctx.fillText('DREAM', VW/2 + 2, cy + 50 + 2);
+  ctx.fillStyle = '#f0a500';
+  ctx.fillText('PIPE', VW/2, cy);
+  ctx.fillText('DREAM', VW/2, cy + 50);
+
+  ctx.fillStyle = '#88ccff';
+  ctx.font = '15px Courier New';
+  ctx.fillText('A Classic Puzzle Game', VW/2, cy + 88);
+
+  if (Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px Courier New';
+    ctx.fillText('TAP TO START', VW/2, cy + 150);
+  }
+
+  ctx.fillStyle = '#6a8aaa';
+  ctx.font = '13px Courier New';
+  let iy = cy + 210;
+  ctx.fillText('TAP a cell to place a pipe', VW/2, iy);
+  ctx.fillText('DISCARD: skip the current pipe', VW/2, iy + 24);
+  ctx.fillText('REMOVE: delete a placed pipe', VW/2, iy + 48);
+  ctx.fillStyle = '#8899bb';
+  ctx.font = '12px Courier New';
+  ctx.fillText('Fill enough pipes before the', VW/2, iy + 80);
+  ctx.fillText('water starts flowing!', VW/2, iy + 98);
+
+  ctx.textAlign = 'left';
+}
+
+function drawLevelComplete() {
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(-100, 0, VW + 200, H + 10);
+
+  let cy = H/2;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#44ff44';
+  ctx.font = 'bold 34px Courier New';
+  ctx.fillText('LEVEL ' + level, VW/2, cy - 70);
+  ctx.fillText('COMPLETE!', VW/2, cy - 32);
+
+  ctx.fillStyle = '#f0a500';
+  ctx.font = '16px Courier New';
+  ctx.fillText('Pipes Filled: ' + pipesFilled, VW/2, cy + 16);
+
+  let bonus = (pipesFilled - minPipes) * 100;
+  if (bonus > 0) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText('Bonus: +' + bonus, VW/2, cy + 42);
+  }
+
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('Total: ' + totalScore, VW/2, cy + 74);
+
+  if (levelCompleteTimer <= 0 && Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 17px Courier New';
+    ctx.fillText('TAP FOR NEXT LEVEL', VW/2, cy + 120);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(-100, 0, VW + 200, H + 10);
+
+  let cy = H/2;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 38px Courier New';
+  ctx.fillText('GAME OVER', VW/2, cy - 40);
+
+  ctx.fillStyle = '#f0a500';
+  ctx.font = '16px Courier New';
+  ctx.fillText('Pipes: ' + pipesFilled + ' / ' + minPipes + ' needed', VW/2, cy + 6);
+  ctx.fillStyle = '#88ccff';
+  ctx.fillText('Final Score: ' + totalScore, VW/2, cy + 36);
+  ctx.fillText('Reached Level ' + level, VW/2, cy + 60);
+
+  if (gameOverTimer <= 0 && Math.floor(Date.now()/500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 17px Courier New';
+    ctx.fillText('TAP TO CONTINUE', VW/2, cy + 108);
+  }
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// GAME MANAGEMENT & MAIN LOOP
+// ============================================================
+
+function startGame() {
+  totalScore = 0;
+  initLevel(1);
+  gameState = 'playing';
+}
+
+function gameLoop() {
+  clearBg('#0a0a1a');
+
+  switch(gameState) {
+    case 'title':
+      drawTitleScreen();
+      break;
+
+    case 'playing':
+      if (!flowActive) {
+        preFlowTimer--;
+        if (preFlowTimer <= 0) startFlow();
+      }
+      if (flowActive) updateFlow();
+      updatePlaceFeedback();
+
+      drawGrid();
+      drawPlaceFeedback();
+      drawQueueStrip();
+      drawButtons();
+      drawHUD();
+      break;
+
+    case 'levelComplete':
+      drawGrid();
+      drawQueueStrip();
+      drawButtons();
+      drawHUD();
+      drawLevelComplete();
+      if (levelCompleteTimer > 0) levelCompleteTimer--;
+      break;
+
+    case 'gameOver':
+      drawGrid();
+      drawQueueStrip();
+      drawButtons();
+      drawHUD();
+      drawGameOver();
+      if (gameOverTimer > 0) gameOverTimer--;
+      break;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
