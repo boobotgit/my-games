@@ -171,6 +171,8 @@
       { type: 'ammo',   x: 10.5, y: 3.0,  alive: true, picked: false },   // same room, just past the gun
       { type: 'ammo',   x: 16.0, y: 2.5,  alive: true, picked: false },   // rock room
       { type: 'health', x: 14.0, y: 7.0,  alive: true, picked: false },   // in the arena, handy before the fight
+      // Exit airlock beacon (a visible marker on the win tile, bottom-right)
+      { type: 'exit',   x: 18.5, y: 11.5, alive: true, picked: false },
       // Aliens (the arena to the right)
       mkAlien(16.5, 8.0),
       mkAlien(17.0, 11.0),
@@ -353,7 +355,7 @@
 
     // ── Pickups (auto when close) ──
     for (const e of entities) {
-      if (e.picked || e.type === 'alien') continue;
+      if (e.picked || e.type === 'alien' || e.type === 'exit') continue;
       const d2 = (e.x - player.x) ** 2 + (e.y - player.y) ** 2;
       if (d2 < 0.4 * 0.4) collectPickup(e);
     }
@@ -431,8 +433,14 @@
       const ty = Math.floor(player.y + sin * d);
       if (tileAt(tx, ty) === 5) {
         const door = doors[doorKey(tx, ty)];
-        if (door && !door.opening && (door.open < 1 || door.closing)) {
-          door.opening = true; door.closing = false; sfx.door();
+        if (door) {
+          // Toggle: if it's open / opening, close it now; otherwise open it.
+          const headingOpen = door.opening || (door.open > 0.1 && !door.closing);
+          if (headingOpen) {
+            if (!doorTileOccupied(tx, ty)) { door.opening = false; door.closing = true; sfx.door(); }
+          } else {
+            door.opening = true; door.closing = false; sfx.door();
+          }
         }
         return;
       }
@@ -732,6 +740,7 @@
       if (e.type === 'gun')    { sizeScale = 0.62; vOffset = 0.22; }
       if (e.type === 'ammo')   { sizeScale = 0.50; vOffset = 0.26; }
       if (e.type === 'health') { sizeScale = 0.50; vOffset = 0.26; }
+      if (e.type === 'exit')   { sizeScale = 1.0;  vOffset = 0.0; }
       if (e.type === 'alien')  { sizeScale = 0.92; vOffset = 0.02 + Math.sin(e.bob) * 0.02; }
 
       const dw = spriteW * sizeScale;
@@ -807,6 +816,24 @@
       ctx.fillStyle = f([20,200,80]);
       ctx.fillRect(x + w*0.43, y + h*0.42, w*0.14, h*0.3);     // green cross V
       ctx.fillRect(x + w*0.34, y + h*0.51, w*0.32, h*0.12);    // green cross H
+    } else if (e.type === 'exit') {
+      // Glowing green airlock — the win marker, visible from across the room
+      const g2 = 0.5 + 0.5 * pulse;
+      ctx.fillStyle = 'rgba(40,255,120,' + (0.28 * pulse * fog) + ')';
+      ctx.fillRect(x + w*0.06, y + h*0.06, w*0.88, h*0.92);    // glow halo
+      ctx.fillStyle = f([18,80,40]);
+      ctx.fillRect(x + w*0.22, y + h*0.10, w*0.56, h*0.86);    // dark door frame
+      ctx.fillStyle = 'rgba(70,255,150,' + (g2 * fog) + ')';
+      ctx.fillRect(x + w*0.30, y + h*0.16, w*0.40, h*0.74);    // glowing portal
+      // big up-arrow = "this way out"
+      ctx.fillStyle = f([8,50,26]);
+      const acx = x + w*0.5;
+      ctx.beginPath();
+      ctx.moveTo(acx, y + h*0.26);                             // arrow tip
+      ctx.lineTo(x + w*0.34, y + h*0.48);                      // bottom-left
+      ctx.lineTo(x + w*0.66, y + h*0.48);                      // bottom-right
+      ctx.closePath(); ctx.fill();
+      ctx.fillRect(acx - w*0.06, y + h*0.46, w*0.12, h*0.28);  // arrow shaft
     } else if (e.type === 'alien') {
       const hit = e.hitFlash > 0;
       const bodyC = hit ? [255,210,210] : [70,180,70];
