@@ -97,6 +97,16 @@
   const MAP_H = MAP.length;
   const MAP_W = MAP[0].length;
 
+  // ── Fog-of-war: which tiles have been seen (for the minimap) ──
+  let explored = [];
+  function initExplored() {
+    explored = [];
+    for (let y = 0; y < MAP_H; y++) {
+      explored[y] = [];
+      for (let x = 0; x < MAP_W; x++) explored[y][x] = false;
+    }
+  }
+
   function tileAt(x, y) {
     const ix = Math.floor(x), iy = Math.floor(y);
     if (ix < 0 || iy < 0 || ix >= MAP_W || iy >= MAP_H) return 1;
@@ -194,12 +204,9 @@
       if (c === 'Enter' || c === 'Space') { state = STATE.TITLE; }
       return;
     }
-    // In play:
-    if (c === 'KeyE') interactQueued = true;
+    // In play:  E & Space ALWAYS = use/open doors;  fire/punch = Ctrl / F / click
+    if (c === 'KeyE' || c === 'Space') interactQueued = true;
     if (c === 'KeyF' || c === 'ControlLeft' || c === 'ControlRight') fireQueued = true;
-    if (c === 'Space') { /* Space = interact when no gun, fire when armed */
-      if (player.hasGun) fireQueued = true; else interactQueued = true;
-    }
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -272,7 +279,8 @@
     for (const k in doors) { const d = doors[k]; d.open = 0; d.opening = false; d.closing = false; d.stay = 0; }
     buildEntities();
     objective = OBJ.GUN;
-    weaponBob = 0; weaponKick = 0; muzzle = 0; punchAnim = 0;
+    weaponBob = 0; weaponKick = 0; muzzle = 0; punchAnim = 0; punchHand = 0;
+    initExplored();
     state = STATE.PLAY;
   }
 
@@ -281,7 +289,7 @@
   let objective = OBJ.GUN;
 
   // ── Weapon view animation ────────────────────────────────────────────────
-  let weaponBob = 0, weaponKick = 0, muzzle = 0, punchAnim = 0;
+  let weaponBob = 0, weaponKick = 0, muzzle = 0, punchAnim = 0, punchHand = 0; // hand: 0=right,1=left
 
   // ── Z-buffer for sprite occlusion ───────────────────────────────────────
   const zbuf = new Float32Array(W);
@@ -389,6 +397,12 @@
       sfx.win(); state = STATE.WIN;
     }
 
+    // ── Reveal the tiles immediately around the player on the minimap ──
+    const ptx = Math.floor(player.x), pty = Math.floor(player.y);
+    for (let yy = pty - 1; yy <= pty + 1; yy++)
+      for (let xx = ptx - 1; xx <= ptx + 1; xx++)
+        if (xx >= 0 && xx < MAP_W && yy >= 0 && yy < MAP_H) explored[yy][xx] = true;
+
     // ── Timers ──
     if (player.hurtFlash > 0) player.hurtFlash -= dt;
     if (player.contactCooldown > 0) player.contactCooldown -= dt;
@@ -480,6 +494,7 @@
   function tryMelee() {
     if (player.meleeCd > 0) return;
     player.meleeCd = 0.45;
+    punchHand ^= 1;          // alternate which fist swings
     punchAnim = 1.0;
     sfx.punch();
     // hit the closest alien in a short, wide cone directly in front
@@ -574,6 +589,9 @@
     // ── HUD ──
     drawHUD();
 
+    // ── Minimap (fog-of-war) ──
+    if (state === STATE.PLAY) drawMinimap();
+
     // ── Overlays ──
     if (state === STATE.WIN)  drawEnd(true);
     if (state === STATE.LOSE) drawEnd(false);
@@ -604,6 +622,8 @@
         if (sideDistX < sideDistY) { sideDistX += deltaX; mapX += stepX; side = 0; }
         else                       { sideDistY += deltaY; mapY += stepY; side = 1; }
         tile = tileAt(mapX, mapY);
+        // reveal every cell this ray passes through (incl. the wall it hits)
+        if (mapX >= 0 && mapX < MAP_W && mapY >= 0 && mapY < MAP_H) explored[mapY][mapX] = true;
         if (tile === 5) {
           // door: only blocks the portion that isn't open (slide effect)
           const op = doorOpenAmount(mapX, mapY);
@@ -819,23 +839,25 @@
     const bob = Math.sin(weaponBob) * 4 * S;
 
     if (!player.hasGun) {
-      // ── Bare fists ── thrust upward when punching (punchAnim 1 -> 0)
+      // ── Bare fists ── only the active hand thrusts up; hands alternate
       const px = W / 2;
       const py = VIEW_H - 4 + bob;
-      const lunge = punchAnim * 46 * S;
+      const lunge = punchAnim * 50 * S;
+      const leftLunge  = (punchHand === 1) ? lunge : 0;   // 1 = left swings
+      const rightLunge = (punchHand === 0) ? lunge : 0;   // 0 = right swings
       const fw = 40 * S, fh = 34 * S;
       // forearms
       ctx.fillStyle = '#7a5a3e';
-      ctx.fillRect(px - 64*S, py + 8*S - lunge*0.6, 28*S, 34*S);
-      ctx.fillRect(px + 38*S, py + 4*S - lunge,     26*S, 38*S);
+      ctx.fillRect(px - 64*S, py + 8*S - leftLunge,  28*S, 34*S);
+      ctx.fillRect(px + 38*S, py + 8*S - rightLunge, 26*S, 34*S);
       // fists
       ctx.fillStyle = '#caa07a';
-      ctx.fillRect(px - 70*S, py - 24*S - lunge*0.6, fw, fh);   // left fist
-      ctx.fillRect(px + 30*S, py - 30*S - lunge,     fw, fh);   // right fist (leads)
+      ctx.fillRect(px - 70*S, py - 24*S - leftLunge,  fw, fh);   // left fist
+      ctx.fillRect(px + 30*S, py - 24*S - rightLunge, fw, fh);   // right fist
       // knuckle shading
       ctx.fillStyle = '#9c7252';
-      ctx.fillRect(px - 70*S, py - 24*S - lunge*0.6, fw, 6*S);
-      ctx.fillRect(px + 30*S, py - 30*S - lunge,     fw, 6*S);
+      ctx.fillRect(px - 70*S, py - 24*S - leftLunge,  fw, 6*S);
+      ctx.fillRect(px + 30*S, py - 24*S - rightLunge, fw, 6*S);
       return;
     }
 
@@ -991,10 +1013,52 @@
     ctx.textAlign = 'left';
   }
 
+  // ── Minimap (top-left) — only explored tiles are shown; rest stays black ──
+  function drawMinimap() {
+    const cell = Math.max(3, Math.round(4 * S));
+    const ox = Math.round(6 * S), oy = Math.round(6 * S);
+    const mw = MAP_W * cell, mh = MAP_H * cell;
+    const b = Math.round(2 * S);
+    // panel background + frame
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(ox - b, oy - b, mw + 2*b, mh + 2*b);
+    ctx.strokeStyle = 'rgba(255,150,90,0.55)';
+    ctx.lineWidth = Math.max(1, S);
+    ctx.strokeRect(ox - b, oy - b, mw + 2*b, mh + 2*b);
+
+    for (let y = 0; y < MAP_H; y++) {
+      for (let x = 0; x < MAP_W; x++) {
+        if (!explored[y][x]) continue;            // unexplored = blacked out
+        const t = MAP[y][x];
+        let col;
+        if (t === 0)      col = '#3a241a';        // floor
+        else if (t === 5) col = '#e0a83a';        // door (amber)
+        else if (t === 9) col = '#3ad17a';        // exit (green)
+        else              col = '#8a8a95';        // wall
+        ctx.fillStyle = col;
+        ctx.fillRect(ox + x*cell, oy + y*cell, cell - 1, cell - 1);
+      }
+    }
+
+    // player marker + heading
+    const pxp = ox + player.x * cell, pyp = oy + player.y * cell;
+    ctx.strokeStyle = '#ffdf6a';
+    ctx.lineWidth = Math.max(1, S);
+    ctx.beginPath();
+    ctx.moveTo(pxp, pyp);
+    ctx.lineTo(pxp + Math.cos(player.dir) * cell * 1.4, pyp + Math.sin(player.dir) * cell * 1.4);
+    ctx.stroke();
+    ctx.fillStyle = '#ff3a2a';
+    ctx.beginPath();
+    ctx.arc(pxp, pyp, Math.max(1.5, cell * 0.36), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   //  MAIN LOOP
   // ─────────────────────────────────────────────────────────────────────────
   initDoors();
+  initExplored();
   buildEntities();
   let last = performance.now();
   function loop(now) {
@@ -1010,6 +1074,7 @@
 
   // expose a tiny hook for automated testing in the preview tool
   window.__mars = { player, get state(){return state;}, get entities(){return entities;}, doors, startGame, keys,
+                    get punchHand(){return punchHand;}, get explored(){return explored;},
                     fire(){ if(player.hasGun){player.ammo=Math.max(player.ammo,1);fireQueued=true;} },
                     interact(){ interactQueued = true; } };
 })();
