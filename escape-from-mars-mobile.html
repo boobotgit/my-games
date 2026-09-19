@@ -340,6 +340,26 @@
   const tilt = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, active: false };
   const baseline = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, set: false };
   let needBaseline = false;
+
+  // Which way round the phone is held in landscape. Holding it the other way
+  // is the same pose rotated 180 deg on the screen, which mirrors both pitch and
+  // steering, so we flip both back. +1 = the side the controls were tuned on
+  // (world-up toward the phone's portrait-right edge, i.e. top of phone on the left).
+  let side = 1;
+  function landscapeSide() {
+    if (Math.abs(baseline.ux) > 0.2) return baseline.ux > 0 ? 1 : -1;   // gravity says clearly
+    // Phone held nearly flat: gravity can't tell, so ask the OS which way the screen is turned
+    const a = (screen.orientation && typeof screen.orientation.angle === 'number')
+      ? screen.orientation.angle : window.orientation;
+    return (a === 270 || a === -90) ? -1 : 1;
+  }
+  // Turning the phone around mid-game: re-zero neutral (and side) to the new hold
+  const recalibrate = () => { if (tilt.active) needBaseline = true; };
+  window.addEventListener('orientationchange', recalibrate);
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener('change', recalibrate);
+  }
+
   function onOrient(e) {
     if (e.beta == null || e.gamma == null) return;
     const b = e.beta * DEG, g = e.gamma * DEG;
@@ -349,6 +369,7 @@
     tilt.uz =  Math.cos(g) * Math.cos(b);
     if (needBaseline) {
       Object.assign(baseline, { beta: e.beta, gamma: e.gamma, ux: tilt.ux, uy: tilt.uy, uz: tilt.uz, set: true });
+      side = landscapeSide();
       needBaseline = false;
     }
   }
@@ -515,8 +536,8 @@
         if (a <= dead) return 0;
         return Math.min(1, (a - dead) / (full - dead)) * Math.sign(d);
       };
-      const dPitch = pitchFromNeutral() * PITCH_DIR;
-      const dTurn  = steerFromNeutral() * TURN_DIR;
+      const dPitch = pitchFromNeutral() * PITCH_DIR * side;
+      const dTurn  = steerFromNeutral() * TURN_DIR  * side;
       fwd = ramp(dPitch);
       turn = ramp(dTurn, TURN_DEAD, TURN_FULL);
       strafe = 0;
@@ -1313,7 +1334,7 @@
   // expose a tiny hook for automated testing in the preview tool
   window.__mars = { player, get state(){return state;}, get entities(){return entities;}, doors, startGame, keys,
                     get punchHand(){return punchHand;}, get explored(){return explored;},
-                    get tilt(){return tilt;}, get baseline(){return baseline;},
+                    get tilt(){return tilt;}, get baseline(){return baseline;}, get side(){return side;},
                     fire(){ if(player.hasGun){player.ammo=Math.max(player.ammo,1);fireQueued=true;} },
                     interact(){ interactQueued = true; } };
 })();
