@@ -324,19 +324,45 @@
   });
 
   // ── Tilt controls (deviceorientation) — calibrated to the hold angle at start ──
-  // Landscape mapping (TUNABLE — can't be tested without a real device):
-  //   pitch the phone forward/back  -> move forward/back   (default: gamma axis)
-  //   bank/turn the phone left/right -> turn left/right     (default: beta axis)
-  // If movement feels swapped or reversed on the phone, flip these:
-  const PITCH_AXIS = 'gamma', TURN_AXIS = 'beta';   // swap to 'beta'/'gamma' if needed
-  const PITCH_DIR  = 1, TURN_DIR = 1;               // set to -1 to invert a direction
-  const tilt = { beta: 0, gamma: 0, active: false };
-  const baseline = { beta: 0, gamma: 0, set: false };
+  // Landscape mapping (confirmed on iPhone):
+  //   pitch the phone forward/back  -> move forward/back
+  //   bank it like a steering wheel -> turn left/right
+  //
+  // We don't use beta/gamma directly. When the screen passes exactly vertical,
+  // gamma can't go past +/-90, so the phone re-describes the same pose: gamma
+  // flips sign and beta jumps ~180 deg. Walking backward tilts toward vertical,
+  // so full-speed backward used to read as a full-speed turn (and a lurch
+  // forward). Instead we track which way world-up points in the phone's own
+  // axes, which is smooth through vertical. Wherever beta/gamma didn't flip,
+  // this gives exactly the same readings as before.
+  const PITCH_DIR = 1, TURN_DIR = 1;                // set to -1 to invert a direction
+  const DEG = Math.PI / 180;
+  const tilt = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, active: false };
+  const baseline = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, set: false };
   let needBaseline = false;
   function onOrient(e) {
     if (e.beta == null || e.gamma == null) return;
+    const b = e.beta * DEG, g = e.gamma * DEG;
     tilt.beta = e.beta; tilt.gamma = e.gamma; tilt.active = true;
-    if (needBaseline) { baseline.beta = e.beta; baseline.gamma = e.gamma; baseline.set = true; needBaseline = false; }
+    tilt.ux = -Math.sin(g) * Math.cos(b);    // world-up in phone axes
+    tilt.uy =  Math.sin(b);
+    tilt.uz =  Math.cos(g) * Math.cos(b);
+    if (needBaseline) {
+      Object.assign(baseline, { beta: e.beta, gamma: e.gamma, ux: tilt.ux, uy: tilt.uy, uz: tilt.uz, set: true });
+      needBaseline = false;
+    }
+  }
+  // Pitch: rotation about the phone's long axis since the neutral hold (degrees)
+  function pitchFromNeutral() {
+    const cross = baseline.ux * tilt.uz - baseline.uz * tilt.ux;
+    const dot   = baseline.ux * tilt.ux + baseline.uz * tilt.uz;
+    return Math.atan2(cross, dot) / DEG;
+  }
+  // Steering: how far the long axis is banked since the neutral hold (degrees).
+  // Pure pitching doesn't change this, so walking can never cause turning.
+  function steerFromNeutral() {
+    const asinDeg = v => Math.asin(Math.max(-1, Math.min(1, v))) / DEG;
+    return asinDeg(tilt.uy) - asinDeg(baseline.uy);
   }
   const tiltNote = document.getElementById('tiltNote');
   function showTiltNote(msg) { tiltNote.textContent = msg; tiltNote.hidden = !msg; }
@@ -482,15 +508,15 @@
     if (tilt.active && baseline.set) {
       // Degrees from the neutral hold: nothing inside DEAD, full speed at FULL.
       // Turning has a wider curve than walking — it felt too twitchy on the phone.
-      const DEAD = 7,      FULL = 24;        // walk forward/back
+      const DEAD = 7,      FULL = 20;        // walk forward/back
       const TURN_DEAD = 8, TURN_FULL = 40;   // turn left/right (gentler)
       const ramp = (d, dead = DEAD, full = FULL) => {
         const a = Math.abs(d);
         if (a <= dead) return 0;
         return Math.min(1, (a - dead) / (full - dead)) * Math.sign(d);
       };
-      const dPitch = (tilt[PITCH_AXIS] - baseline[PITCH_AXIS]) * PITCH_DIR;
-      const dTurn  = (tilt[TURN_AXIS]  - baseline[TURN_AXIS])  * TURN_DIR;
+      const dPitch = pitchFromNeutral() * PITCH_DIR;
+      const dTurn  = steerFromNeutral() * TURN_DIR;
       fwd = ramp(dPitch);
       turn = ramp(dTurn, TURN_DEAD, TURN_FULL);
       strafe = 0;
