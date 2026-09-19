@@ -79,6 +79,27 @@
   }
   .btn:active { filter: brightness(1.5); transform: scale(0.94); }
 
+  /* Full-screen tap target for the title / end screens. It is a real <button>
+     because iOS only shows the motion-permission prompt for a click, never for a
+     canvas touchstart. Hidden during play so it can't swallow FIRE/USE taps. */
+  #tapStart {
+    position: fixed; inset: 0; z-index: 20;
+    background: transparent; border: 0; padding: 0; margin: 0; outline: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+  body.playing #tapStart { display: none; }
+
+  /* Tells the player when tilt could not be turned on, instead of failing silently */
+  #tiltNote {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    z-index: 35; max-width: 70vw;
+    background: rgba(60,10,4,0.92); color: #ffd2b0;
+    border: 1px solid #ff5a2a; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; line-height: 1.35; text-align: center;
+  }
+
   /* ── Rotate-to-landscape overlay (shown in portrait) ── */
   #rotate {
     position: fixed; inset: 0; z-index: 50;
@@ -102,6 +123,10 @@
   <!-- Touch buttons: FIRE/PUNCH on the LEFT, USE/OPEN on the RIGHT -->
   <div class="btn" id="btnFire">FIRE</div>
   <div class="btn" id="btnUse">USE</div>
+
+  <!-- Title / end-screen tap target (see #tapStart CSS) -->
+  <button id="tapStart" aria-label="Start game"></button>
+  <div id="tiltNote" hidden></div>
 
   <!-- Portrait blocker -->
   <div id="rotate">
@@ -290,12 +315,13 @@
   bindBtn(btnFire, () => { fireQueued = true; });      // fire ray-gun, or punch if unarmed
   bindBtn(btnUse,  () => { interactQueued = true; });  // open / close / toggle doors
 
-  // Tapping the screen advances title / end screens (and starts play w/ tilt enabled)
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
+  // Tapping the screen advances title / end screens (and starts play w/ tilt enabled).
+  // This MUST be a click on a real button: iOS only opens the motion-permission
+  // prompt from a click, and quietly refuses one requested from touchstart.
+  document.getElementById('tapStart').addEventListener('click', () => {
     if (state === STATE.TITLE) beginPlay();
     else if (state === STATE.WIN || state === STATE.LOSE) state = STATE.TITLE;
-  }, { passive: false });
+  });
 
   // ── Tilt controls (deviceorientation) — calibrated to the hold angle at start ──
   // Landscape mapping (TUNABLE — can't be tested without a real device):
@@ -312,18 +338,38 @@
     tilt.beta = e.beta; tilt.gamma = e.gamma; tilt.active = true;
     if (needBaseline) { baseline.beta = e.beta; baseline.gamma = e.gamma; baseline.set = true; needBaseline = false; }
   }
+  const tiltNote = document.getElementById('tiltNote');
+  function showTiltNote(msg) { tiltNote.textContent = msg; tiltNote.hidden = !msg; }
+
+  // On a touch device, warn if no tilt readings arrive even though we're listening
+  function checkTiltArrives() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;   // desktop: keyboard is expected
+    setTimeout(() => {
+      if (!tilt.active) showTiltNote('No tilt readings from this device yet. Try reloading the page.');
+    }, 2500);
+  }
+
+  function startListening() {
+    window.addEventListener('deviceorientation', onOrient);   // same fn twice = no-op on replays
+    showTiltNote('');
+    checkTiltArrives();
+  }
+
   function enableTilt() {
     needBaseline = true;   // re-zero to however the phone is held right now
-    try {
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then(res => { if (res === 'granted') window.addEventListener('deviceorientation', onOrient); })
-          .catch(() => {});
-      } else if (typeof DeviceOrientationEvent !== 'undefined') {
-        window.addEventListener('deviceorientation', onOrient);
-      }
-    } catch (err) {}
+    if (typeof DeviceOrientationEvent === 'undefined') return;   // no sensor API: keyboard only
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+: must run synchronously inside the click that started the game
+      DeviceOrientationEvent.requestPermission()
+        .then(res => {
+          if (res === 'granted') startListening();
+          else showTiltNote('Tilt access was denied, so the game cannot read the motion of your phone. ' +
+                            'Fully close Safari, reopen this page and tap Allow.');
+        })
+        .catch(err => showTiltNote('Could not turn on tilt: ' + ((err && err.message) || err)));
+    } else {
+      startListening();   // Android / older iOS: no permission needed
+    }
   }
   function beginPlay() { initAudio(); enableTilt(); startGame(); }
 
