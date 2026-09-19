@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Escape from Mars">
+<meta name="theme-color" content="#2a0f08">
+<title>Escape from Mars (Mobile)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #ffcaa0;
+    position: fixed;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  #wrap {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #2a0f08 0%, #000 80%);
+  }
+  /* Landscape: fill the screen keeping the 960x600 (1.6) aspect, letterboxed */
+  #screen {
+    width: min(100vw, 160vh);
+    aspect-ratio: 960 / 600;
+    height: auto;
+    background: #000;
+  }
+  #home {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: calc(env(safe-area-inset-left, 0px) + 8px);
+    z-index: 30;
+    background: rgba(20,8,4,0.8);
+    color: #ffb37a;
+    border: 1px solid #6b2d18;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    text-decoration: none;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Touch action buttons (only shown during play) ── */
+  .btn {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    width: 92px; height: 92px;
+    border-radius: 50%;
+    display: none;                 /* shown via body.playing */
+    align-items: center; justify-content: center;
+    font-family: 'Courier New', monospace;
+    font-weight: bold; font-size: 15px;
+    color: #fff;
+    z-index: 25;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    text-align: center; line-height: 1.1;
+  }
+  body.playing .btn { display: flex; }
+  #btnFire {
+    left: calc(env(safe-area-inset-left, 0px) + 22px);
+    background: radial-gradient(circle at 40% 35%, rgba(90,230,160,0.55), rgba(10,60,45,0.65));
+    border: 2px solid rgba(120,255,200,0.8);
+  }
+  #btnUse {
+    right: calc(env(safe-area-inset-right, 0px) + 22px);
+    background: radial-gradient(circle at 40% 35%, rgba(255,190,90,0.5), rgba(70,40,10,0.65));
+    border: 2px solid rgba(255,200,120,0.85);
+  }
+  .btn:active { filter: brightness(1.5); transform: scale(0.94); }
+
+  /* ── Rotate-to-landscape overlay (shown in portrait) ── */
+  #rotate {
+    position: fixed; inset: 0; z-index: 50;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #0a0402; color: #ffb37a; text-align: center; padding: 30px;
+  }
+  #rotate .ph { font-size: 64px; animation: spin 2s ease-in-out infinite; }
+  #rotate h2 { color: #ff5a2a; margin: 14px 0 6px; font-size: 22px; letter-spacing: 0.05em; }
+  #rotate p { font-size: 14px; color: #cda; }
+  @keyframes spin { 0%,40%{transform:rotate(0)} 60%,100%{transform:rotate(90deg)} }
+  body.portrait #rotate { display: flex; }
+</style>
+</head>
+<body>
+  <a id="home" href="index.html">⌂ Home</a>
+  <div id="wrap">
+    <canvas id="screen" width="960" height="600"></canvas>
+  </div>
+
+  <!-- Touch buttons: FIRE/PUNCH on the LEFT, USE/OPEN on the RIGHT -->
+  <div class="btn" id="btnFire">FIRE</div>
+  <div class="btn" id="btnUse">USE</div>
+
+  <!-- Portrait blocker -->
+  <div id="rotate">
+    <div class="ph">📱</div>
+    <h2>ROTATE YOUR PHONE</h2>
+    <p>Escape from Mars plays in landscape.</p>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Escape from Mars — Wolfenstein 3D-style raycasting shooter
+  //  Single file, no external assets. Canvas graphics + Web Audio sound.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;    // internal render width
+  const H = canvas.height;   // internal render height
+  const S = W / 480;         // UI scale: layout was designed for 480x300
+  ctx.imageSmoothingEnabled = true;
+
+  // ── Game state machine ──────────────────────────────────────────────────
+  const STATE = { TITLE: 'title', PLAY: 'play', WIN: 'win', LOSE: 'lose' };
+  let state = STATE.TITLE;
+
+  // ── Map ───────────────────────────────────────────────────────────────────
+  //  Tile codes:
+  //   0 = empty floor
+  //   1 = facility metal wall
+  //   2 = rusty Mars-rock wall
+  //   3 = panel wall (with stripes)
+  //   4 = window wall (Mars sky outside)
+  //   5 = DOOR (airlock, openable)
+  //   9 = EXIT airlock (reach to win)
+  //  Layout: spawn room (left) -> hall -> door -> gun room -> hall -> arena -> exit
+  const MAP = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,1,0,0,0,0,0,0,1,2,2,2,2,2,2,1],
+    [1,0,0,0,0,1,0,0,0,0,0,0,1,2,0,0,0,0,2,1],
+    [1,0,0,0,0,5,0,0,0,0,0,0,5,0,0,0,0,0,2,1],
+    [1,0,0,0,0,1,0,0,0,0,0,0,1,2,0,0,0,0,2,1],
+    [1,1,1,5,1,1,1,1,1,1,1,4,1,2,2,2,5,2,2,1],
+    [1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1],
+    [1,3,3,3,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,3,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1],
+    [1,3,0,0,0,0,0,1,1,1,5,1,1,0,0,0,0,0,0,1],
+    [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,0,9,1],
+    [1,3,3,3,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  ];
+  const MAP_H = MAP.length;
+  const MAP_W = MAP[0].length;
+
+  // ── Fog-of-war: which tiles have been seen (for the minimap) ──
+  let explored = [];
+  function initExplored() {
+    explored = [];
+    for (let y = 0; y < MAP_H; y++) {
+      explored[y] = [];
+      for (let x = 0; x < MAP_W; x++) explored[y][x] = false;
+    }
+  }
+
+  function tileAt(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    if (ix < 0 || iy < 0 || ix >= MAP_W || iy >= MAP_H) return 1;
+    return MAP[iy][ix];
+  }
+
+  // ── Doors ───────────────────────────────────────────────────────────────
+  //  Each door tile (code 5) gets an entry tracking open amount (0=closed,1=open)
+  const doors = {};          // key "x,y" -> { x, y, open: 0..1, opening: bool }
+  function doorKey(x, y) { return x + ',' + y; }
+  function initDoors() {
+    for (let y = 0; y < MAP_H; y++) {
+      for (let x = 0; x < MAP_W; x++) {
+        if (MAP[y][x] === 5) doors[doorKey(x, y)] = { x, y, open: 0, opening: false, closing: false, stay: 0 };
+      }
+    }
+  }
+  function doorOpenAmount(x, y) {
+    const d = doors[doorKey(x, y)];
+    return d ? d.open : 0;
+  }
+  // Is the player or a live alien standing in this door's tile? (don't close on them)
+  function doorTileOccupied(tx, ty) {
+    if (Math.floor(player.x) === tx && Math.floor(player.y) === ty) return true;
+    for (const e of entities) {
+      if (e.type === 'alien' && e.alive &&
+          Math.floor(e.x) === tx && Math.floor(e.y) === ty) return true;
+    }
+    return false;
+  }
+  // A tile blocks movement/rays if it's a wall, or a door that isn't fully open
+  function isSolidForMove(x, y) {
+    const t = tileAt(x, y);
+    if (t === 0 || t === 9) return false;
+    if (t === 5) return doorOpenAmount(Math.floor(x), Math.floor(y)) < 0.9;
+    return true;
+  }
+
+  // ── Player ──────────────────────────────────────────────────────────────
+  const FOV = Math.PI / 3;            // 60°
+  const player = {
+    x: 2.5, y: 2.5, dir: 0,
+    moveSpeed: 2.6,                   // tiles / second
+    turnSpeed: 2.6,                   // radians / second
+    radius: 0.22,
+    health: 100, maxHealth: 100,
+    ammo: 0,
+    hasGun: false,
+    score: 0,
+    hurtFlash: 0,                     // red screen flash timer
+    contactCooldown: 0,
+    meleeCd: 0,                       // punch cooldown
+  };
+
+  // ── Entities (sprites) ────────────────────────────────────────────────────
+  //  type: 'gun' | 'ammo' | 'health' | 'alien'
+  let entities = [];
+  function buildEntities() {
+    entities = [
+      // Pickups
+      { type: 'gun',    x: 8.5,  y: 2.5,  alive: true, picked: false },   // straight ahead through the first door
+      { type: 'ammo',   x: 10.5, y: 3.0,  alive: true, picked: false },   // same room, just past the gun
+      { type: 'ammo',   x: 16.0, y: 2.5,  alive: true, picked: false },   // rock room
+      { type: 'health', x: 14.0, y: 7.0,  alive: true, picked: false },   // in the arena, handy before the fight
+      // Exit airlock beacon (a visible marker on the win tile, bottom-right)
+      { type: 'exit',   x: 18.5, y: 11.5, alive: true, picked: false },
+      // Aliens (the arena to the right)
+      mkAlien(16.5, 8.0),
+      mkAlien(17.0, 11.0),
+    ];
+  }
+  function mkAlien(x, y) {
+    return {
+      type: 'alien', x, y, alive: true,
+      health: 60, maxHealth: 60,
+      speed: 1.15, radius: 0.3,
+      awake: false, hitFlash: 0, attackCd: 0,
+      bob: Math.random() * Math.PI * 2,
+    };
+  }
+
+  // ── Input ───────────────────────────────────────────────────────────────
+  const keys = {};
+  let fireQueued = false;
+  let interactQueued = false;
+
+  window.addEventListener('keydown', (e) => {
+    const c = e.code;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(c)) e.preventDefault();
+    keys[c] = true;
+
+    if (state === STATE.TITLE) {
+      if (c === 'Enter' || c === 'Space') beginPlay();
+      return;
+    }
+    if (state === STATE.WIN || state === STATE.LOSE) {
+      if (c === 'Enter' || c === 'Space') { state = STATE.TITLE; }
+      return;
+    }
+    // In play:  E & Space ALWAYS = use/open doors;  fire/punch = Ctrl / F / click
+    if (c === 'KeyE' || c === 'Space') interactQueued = true;
+    if (c === 'KeyF' || c === 'ControlLeft' || c === 'ControlRight') fireQueued = true;
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (state === STATE.TITLE) { beginPlay(); return; }
+    if (state === STATE.WIN || state === STATE.LOSE) { state = STATE.TITLE; return; }
+    if (e.button === 0) fireQueued = true;   // fire if armed, otherwise punch (mouse/preview)
+  });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ── Touch action buttons: FIRE/PUNCH (left) · USE/OPEN (right) ──
+  const btnFire = document.getElementById('btnFire');
+  const btnUse  = document.getElementById('btnUse');
+  function bindBtn(el, fn) {
+    const h = (e) => { e.preventDefault(); e.stopPropagation(); if (state === STATE.PLAY) fn(); };
+    el.addEventListener('touchstart', h, { passive: false });
+    el.addEventListener('mousedown', h);
+  }
+  bindBtn(btnFire, () => { fireQueued = true; });      // fire ray-gun, or punch if unarmed
+  bindBtn(btnUse,  () => { interactQueued = true; });  // open / close / toggle doors
+
+  // Tapping the screen advances title / end screens (and starts play w/ tilt enabled)
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (state === STATE.TITLE) beginPlay();
+    else if (state === STATE.WIN || state === STATE.LOSE) state = STATE.TITLE;
+  }, { passive: false });
+
+  // ── Tilt controls (deviceorientation) — calibrated to the hold angle at start ──
+  // Landscape mapping (TUNABLE — can't be tested without a real device):
+  //   pitch the phone forward/back  -> move forward/back   (default: gamma axis)
+  //   bank/turn the phone left/right -> turn left/right     (default: beta axis)
+  // If movement feels swapped or reversed on the phone, flip these:
+  const PITCH_AXIS = 'gamma', TURN_AXIS = 'beta';   // swap to 'beta'/'gamma' if needed
+  const PITCH_DIR  = 1, TURN_DIR = 1;               // set to -1 to invert a direction
+  const tilt = { beta: 0, gamma: 0, active: false };
+  const baseline = { beta: 0, gamma: 0, set: false };
+  let needBaseline = false;
+  function onOrient(e) {
+    if (e.beta == null || e.gamma == null) return;
+    tilt.beta = e.beta; tilt.gamma = e.gamma; tilt.active = true;
+    if (needBaseline) { baseline.beta = e.beta; baseline.gamma = e.gamma; baseline.set = true; needBaseline = false; }
+  }
+  function enableTilt() {
+    needBaseline = true;   // re-zero to however the phone is held right now
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(res => { if (res === 'granted') window.addEventListener('deviceorientation', onOrient); })
+          .catch(() => {});
+      } else if (typeof DeviceOrientationEvent !== 'undefined') {
+        window.addEventListener('deviceorientation', onOrient);
+      }
+    } catch (err) {}
+  }
+  function beginPlay() { initAudio(); enableTilt(); startGame(); }
+
+  // ── Portrait blocker ──
+  function updateOrientation() {
+    const portrait = window.matchMedia('(orientation: portrait)').matches ||
+                     window.innerHeight > window.innerWidth;
+    document.body.classList.toggle('portrait', portrait);
+  }
+  window.addEventListener('resize', updateOrientation);
+  window.addEventListener('orientationchange', () => setTimeout(updateOrientation, 200));
+  updateOrientation();
+
+  // ── Audio (procedural, Web Audio) ─────────────────────────────────────────
+  let actx = null;
+  function initAudio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { actx = null; }
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+  }
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.2, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noiseBurst(dur, vol, hp) {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const n = Math.floor(actx.sampleRate * dur);
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const g = actx.createGain(); g.gain.value = vol || 0.2;
+    if (hp) { const f = actx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; src.connect(f).connect(g).connect(actx.destination); }
+    else src.connect(g).connect(actx.destination);
+    src.start(t);
+  }
+  const sfx = {
+    door()   { tone(140, 0.5, 'sawtooth', 0.18, 60); noiseBurst(0.45, 0.08, 500); },
+    pickup() { tone(520, 0.08, 'square', 0.2); setTimeout(()=>tone(780, 0.12, 'square', 0.2), 70); },
+    gun()    { tone(900, 0.18, 'sawtooth', 0.22, 180); noiseBurst(0.1, 0.12, 1200); },
+    empty()  { tone(120, 0.06, 'square', 0.12); },
+    alienHit(){ tone(300, 0.12, 'sawtooth', 0.2, 120); },
+    alienWake(){ tone(200, 0.25, 'square', 0.18, 420); },
+    alienDie(){ tone(420, 0.5, 'sawtooth', 0.22, 50); noiseBurst(0.4, 0.12, 300); },
+    hurt()   { tone(160, 0.2, 'square', 0.22, 80); noiseBurst(0.15, 0.1, 200); },
+    win()    { [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,0.25,'triangle',0.22), i*140)); },
+    lose()   { [330,247,165].forEach((f,i)=>setTimeout(()=>tone(f,0.4,'sawtooth',0.2,f*0.7), i*220)); },
+    step()   { noiseBurst(0.05, 0.04, 400); },
+    punch()  { noiseBurst(0.12, 0.13, 600); tone(110, 0.1, 'square', 0.12, 70); },
+  };
+
+  // ── Start / reset ──────────────────────────────────────────────────────────
+  function startGame() {
+    initAudio();
+    player.x = 2.5; player.y = 2.5; player.dir = 0;
+    player.health = player.maxHealth; player.ammo = 0; player.hasGun = false;
+    player.score = 0; player.hurtFlash = 0; player.contactCooldown = 0;
+    player.meleeCd = 0;
+    // reset doors
+    for (const k in doors) { const d = doors[k]; d.open = 0; d.opening = false; d.closing = false; d.stay = 0; }
+    buildEntities();
+    objective = OBJ.GUN;
+    weaponBob = 0; weaponKick = 0; muzzle = 0; punchAnim = 0; punchHand = 0;
+    initExplored();
+    state = STATE.PLAY;
+  }
+
+  // ── Objectives ──────────────────────────────────────────────────────────────
+  const OBJ = { GUN: 'Find the alien ray-gun', KILL: 'Eliminate the Martians', ESCAPE: 'Reach the exit airlock' };
+  let objective = OBJ.GUN;
+
+  // ── Weapon view animation ────────────────────────────────────────────────
+  let weaponBob = 0, weaponKick = 0, muzzle = 0, punchAnim = 0, punchHand = 0; // hand: 0=right,1=left
+
+  // ── Z-buffer for sprite occlusion ───────────────────────────────────────
+  const zbuf = new Float32Array(W);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  UPDATE
+  // ─────────────────────────────────────────────────────────────────────────
+  let stepTimer = 0;
+  function update(dt) {
+    if (state !== STATE.PLAY) return;
+
+    // ── Turn & move ── tilt-driven on mobile; keyboard fallback (desktop/preview) ──
+    let turn = 0, fwd = 0, strafe = 0;
+
+    // Keyboard fallback (used when there's no gyro, e.g. the preview tool)
+    if (keys['ArrowLeft'])  turn -= 1;
+    if (keys['ArrowRight']) turn += 1;
+    if (keys['KeyW'] || keys['ArrowUp'])   fwd += 1;
+    if (keys['KeyS'] || keys['ArrowDown']) fwd -= 1;
+    if (keys['KeyA']) strafe -= 1;
+    if (keys['KeyD']) strafe += 1;
+
+    // Tilt overrides when the gyroscope is active and calibrated
+    if (tilt.active && baseline.set) {
+      const DEAD = 7;    // deg of tolerance around the neutral hold (not too sensitive)
+      const FULL = 32;   // deg past the dead-zone that gives full speed
+      const ramp = (d) => {
+        const a = Math.abs(d);
+        if (a <= DEAD) return 0;
+        return Math.min(1, (a - DEAD) / (FULL - DEAD)) * Math.sign(d);
+      };
+      const dPitch = (tilt[PITCH_AXIS] - baseline[PITCH_AXIS]) * PITCH_DIR;
+      const dTurn  = (tilt[TURN_AXIS]  - baseline[TURN_AXIS])  * TURN_DIR;
+      fwd = ramp(dPitch);
+      turn = ramp(dTurn);
+      strafe = 0;
+    }
+
+    player.dir += turn * player.turnSpeed * dt;
+    const cos = Math.cos(player.dir), sin = Math.sin(player.dir);
+    let dx = (cos * fwd - sin * strafe) * player.moveSpeed * dt;
+    let dy = (sin * fwd + cos * strafe) * player.moveSpeed * dt;
+    moveWithCollision(player, dx, dy);
+
+    // footstep sound
+    if (Math.abs(fwd) > 0.05 || Math.abs(strafe) > 0.05) {
+      stepTimer -= dt;
+      if (stepTimer <= 0) { sfx.step(); stepTimer = 0.32; }
+    } else stepTimer = 0;
+
+    // ── Doors: open, hold a few seconds, then auto-close (never on someone) ──
+    const DOOR_SPEED = 2.2, DOOR_HOLD = 4.0;
+    for (const k in doors) {
+      const d = doors[k];
+      if (d.opening) {
+        d.open = Math.min(1, d.open + dt * DOOR_SPEED);
+        if (d.open >= 1) { d.opening = false; d.stay = DOOR_HOLD; }
+      } else if (d.closing) {
+        if (doorTileOccupied(d.x, d.y)) { d.closing = false; d.opening = true; }  // re-open, don't crush
+        else {
+          d.open = Math.max(0, d.open - dt * DOOR_SPEED);
+          if (d.open <= 0) d.closing = false;
+        }
+      } else if (d.open >= 1) {
+        d.stay -= dt;
+        if (d.stay <= 0 && !doorTileOccupied(d.x, d.y)) d.closing = true;
+      }
+    }
+
+    // ── Interact (E / Space-when-unarmed) ──
+    if (interactQueued) { interactQueued = false; tryInteract(); }
+
+    // ── Fire ──
+    if (fireQueued) { fireQueued = false; tryFire(); }
+
+    // ── Pickups (auto when close) ──
+    for (const e of entities) {
+      if (e.picked || e.type === 'alien' || e.type === 'exit') continue;
+      const d2 = (e.x - player.x) ** 2 + (e.y - player.y) ** 2;
+      if (d2 < 0.4 * 0.4) collectPickup(e);
+    }
+
+    // ── Aliens ──
+    let aliensLeft = 0;
+    for (const e of entities) {
+      if (e.type !== 'alien' || !e.alive) continue;
+      aliensLeft++;
+      e.bob += dt * 4;
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      if (e.attackCd > 0) e.attackCd -= dt;
+
+      const dxp = player.x - e.x, dyp = player.y - e.y;
+      const dist = Math.hypot(dxp, dyp);
+
+      // wake up if player is near & roughly visible
+      if (!e.awake && dist < 6.5 && hasLineOfSight(e.x, e.y, player.x, player.y)) {
+        e.awake = true; sfx.alienWake();
+      }
+      if (e.awake) {
+        // move toward player
+        if (dist > 0.6) {
+          const ux = dxp / dist, uy = dyp / dist;
+          moveWithCollision(e, ux * e.speed * dt, uy * e.speed * dt);
+        }
+        // contact damage
+        if (dist < 0.7 && e.attackCd <= 0) {
+          damagePlayer(12);
+          e.attackCd = 0.8;
+        }
+      }
+    }
+
+    // ── Objective progression ──
+    if (objective === OBJ.GUN && player.hasGun) objective = OBJ.KILL;
+    if (objective === OBJ.KILL && aliensLeft === 0) objective = OBJ.ESCAPE;
+
+    // ── Reach exit airlock ──
+    if (objective === OBJ.ESCAPE && tileAt(player.x, player.y) === 9) {
+      sfx.win(); state = STATE.WIN;
+    }
+
+    // ── Reveal the tiles immediately around the player on the minimap ──
+    const ptx = Math.floor(player.x), pty = Math.floor(player.y);
+    for (let yy = pty - 1; yy <= pty + 1; yy++)
+      for (let xx = ptx - 1; xx <= ptx + 1; xx++)
+        if (xx >= 0 && xx < MAP_W && yy >= 0 && yy < MAP_H) explored[yy][xx] = true;
+
+    // ── Timers ──
+    if (player.hurtFlash > 0) player.hurtFlash -= dt;
+    if (player.contactCooldown > 0) player.contactCooldown -= dt;
+    if (player.meleeCd > 0) player.meleeCd -= dt;
+    if (weaponKick > 0) weaponKick = Math.max(0, weaponKick - dt * 5);
+    if (muzzle > 0) muzzle = Math.max(0, muzzle - dt * 8);
+    if (punchAnim > 0) punchAnim = Math.max(0, punchAnim - dt * 6);
+    if (fwd || strafe) weaponBob += dt * 8; // bob while walking
+  }
+
+  function moveWithCollision(ent, dx, dy) {
+    const r = ent.radius;
+    // X axis
+    let nx = ent.x + dx;
+    if (!isSolidForMove(nx + Math.sign(dx) * r, ent.y)) ent.x = nx;
+    // Y axis
+    let ny = ent.y + dy;
+    if (!isSolidForMove(ent.x, ny + Math.sign(dy) * r)) ent.y = ny;
+  }
+
+  function tryInteract() {
+    // open a door directly in front of (or adjacent to) the player
+    const cos = Math.cos(player.dir), sin = Math.sin(player.dir);
+    for (let d = 0.3; d <= 1.3; d += 0.25) {
+      const tx = Math.floor(player.x + cos * d);
+      const ty = Math.floor(player.y + sin * d);
+      if (tileAt(tx, ty) === 5) {
+        const door = doors[doorKey(tx, ty)];
+        if (door) {
+          // Toggle: if it's open / opening, close it now; otherwise open it.
+          const headingOpen = door.opening || (door.open > 0.1 && !door.closing);
+          if (headingOpen) {
+            if (!doorTileOccupied(tx, ty)) { door.opening = false; door.closing = true; sfx.door(); }
+          } else {
+            door.opening = true; door.closing = false; sfx.door();
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  function collectPickup(e) {
+    e.picked = true;
+    sfx.pickup();
+    if (e.type === 'gun') {
+      player.hasGun = true;
+      player.ammo += 12;
+      weaponKick = 0.6;
+    } else if (e.type === 'ammo') {
+      player.ammo += 8;
+    } else if (e.type === 'health') {
+      player.health = Math.min(player.maxHealth, player.health + 30);
+    }
+  }
+
+  function tryFire() {
+    if (!player.hasGun) { tryMelee(); return; }   // no gun yet → throw a punch
+    if (player.ammo <= 0) { sfx.empty(); return; }
+    player.ammo--;
+    weaponKick = 1.0; muzzle = 1.0;
+    sfx.gun();
+
+    // Hitscan along center of view; pick the closest alien within a small cone
+    // that isn't blocked by a wall.
+    let best = null, bestDist = Infinity;
+    for (const e of entities) {
+      if (e.type !== 'alien' || !e.alive) continue;
+      const dxp = e.x - player.x, dyp = e.y - player.y;
+      const dist = Math.hypot(dxp, dyp);
+      let ang = Math.atan2(dyp, dxp) - player.dir;
+      while (ang < -Math.PI) ang += Math.PI * 2;
+      while (ang >  Math.PI) ang -= Math.PI * 2;
+      // angular half-size of the alien shrinks with distance
+      const halfCone = Math.max(0.06, Math.atan2(e.radius, dist));
+      if (Math.abs(ang) <= halfCone && dist < 14 && hasLineOfSight(player.x, player.y, e.x, e.y)) {
+        if (dist < bestDist) { bestDist = dist; best = e; }
+      }
+    }
+    if (best) {
+      best.health -= 34;
+      best.hitFlash = 0.18;
+      best.awake = true;
+      if (best.health <= 0) {
+        best.alive = false;
+        player.score += 100;
+        sfx.alienDie();
+      } else {
+        sfx.alienHit();
+      }
+    }
+  }
+
+  // Bare-hands attack used when the player has no gun yet.
+  function tryMelee() {
+    if (player.meleeCd > 0) return;
+    player.meleeCd = 0.45;
+    punchHand ^= 1;          // alternate which fist swings
+    punchAnim = 1.0;
+    sfx.punch();
+    // hit the closest alien in a short, wide cone directly in front
+    let best = null, bestDist = Infinity;
+    for (const e of entities) {
+      if (e.type !== 'alien' || !e.alive) continue;
+      const dxp = e.x - player.x, dyp = e.y - player.y;
+      const dist = Math.hypot(dxp, dyp);
+      let ang = Math.atan2(dyp, dxp) - player.dir;
+      while (ang < -Math.PI) ang += Math.PI * 2;
+      while (ang >  Math.PI) ang -= Math.PI * 2;
+      if (dist < 1.1 && Math.abs(ang) < 0.7 && hasLineOfSight(player.x, player.y, e.x, e.y)) {
+        if (dist < bestDist) { bestDist = dist; best = e; }
+      }
+    }
+    if (best) {
+      best.health -= 18;
+      best.hitFlash = 0.18;
+      best.awake = true;
+      // small knockback
+      const k = 0.2 / (bestDist || 1);
+      moveWithCollision(best, (best.x - player.x) * k, (best.y - player.y) * k);
+      if (best.health <= 0) { best.alive = false; player.score += 50; sfx.alienDie(); }
+      else sfx.alienHit();
+    }
+  }
+
+  function damagePlayer(amt) {
+    player.health -= amt;
+    player.hurtFlash = 0.4;
+    sfx.hurt();
+    if (player.health <= 0) {
+      player.health = 0;
+      sfx.lose();
+      state = STATE.LOSE;
+    }
+  }
+
+  // DDA line-of-sight: true if no solid wall between (x0,y0) and (x1,y1)
+  function hasLineOfSight(x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const dist = Math.hypot(dx, dy);
+    const steps = Math.ceil(dist / 0.05);
+    const sx = dx / steps, sy = dy / steps;
+    let cx = x0, cy = y0;
+    for (let i = 0; i < steps; i++) {
+      cx += sx; cy += sy;
+      const t = tileAt(cx, cy);
+      if (t === 0 || t === 9) continue;
+      if (t === 5) { if (doorOpenAmount(Math.floor(cx), Math.floor(cy)) < 0.9) return false; continue; }
+      return false; // wall
+    }
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+  const HUD_H = Math.round(46 * S);  // bottom HUD height in internal px
+  const VIEW_H = H - HUD_H;          // 3D viewport height
+
+  function render() {
+    if (state === STATE.TITLE) { drawTitle(); return; }
+
+    // ── Ceiling & floor ──
+    // Ceiling (dark facility) gradient
+    let g = ctx.createLinearGradient(0, 0, 0, VIEW_H / 2);
+    g.addColorStop(0, '#15110f'); g.addColorStop(1, '#3a1c10');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, VIEW_H / 2);
+    // Floor (Mars red) gradient
+    g = ctx.createLinearGradient(0, VIEW_H / 2, 0, VIEW_H);
+    g.addColorStop(0, '#5a2410'); g.addColorStop(1, '#1c0a05');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, VIEW_H / 2, W, VIEW_H / 2);
+
+    // ── Walls (raycast) ──
+    castWalls();
+
+    // ── Sprites (entities) ──
+    drawSprites();
+
+    // ── Weapon view ──
+    drawWeapon();
+
+    // ── Hurt flash ──
+    if (player.hurtFlash > 0) {
+      ctx.fillStyle = 'rgba(200,20,0,' + (0.45 * player.hurtFlash / 0.4) + ')';
+      ctx.fillRect(0, 0, W, VIEW_H);
+    }
+
+    // ── HUD ──
+    drawHUD();
+
+    // ── Minimap (fog-of-war) ──
+    if (state === STATE.PLAY) drawMinimap();
+
+    // ── Overlays ──
+    if (state === STATE.WIN)  drawEnd(true);
+    if (state === STATE.LOSE) drawEnd(false);
+  }
+
+  function castWalls() {
+    const cos = Math.cos(player.dir), sin = Math.sin(player.dir);
+    for (let col = 0; col < W; col++) {
+      // camera-space x in [-1, 1]
+      const camX = (2 * col / W) - 1;
+      const rdx = cos - sin * Math.tan(FOV / 2) * camX;
+      const rdy = sin + cos * Math.tan(FOV / 2) * camX;
+      // normalize-ish (we use perpendicular distance below so length unimportant)
+      const rayDirX = rdx, rayDirY = rdy;
+
+      let mapX = Math.floor(player.x), mapY = Math.floor(player.y);
+      const deltaX = Math.abs(1 / (rayDirX || 1e-9));
+      const deltaY = Math.abs(1 / (rayDirY || 1e-9));
+      let stepX, stepY, sideDistX, sideDistY;
+      if (rayDirX < 0) { stepX = -1; sideDistX = (player.x - mapX) * deltaX; }
+      else             { stepX = 1;  sideDistX = (mapX + 1 - player.x) * deltaX; }
+      if (rayDirY < 0) { stepY = -1; sideDistY = (player.y - mapY) * deltaY; }
+      else             { stepY = 1;  sideDistY = (mapY + 1 - player.y) * deltaY; }
+
+      let hit = 0, side = 0, tile = 0;
+      let doorShift = 0;
+      for (let guard = 0; guard < 64 && !hit; guard++) {
+        if (sideDistX < sideDistY) { sideDistX += deltaX; mapX += stepX; side = 0; }
+        else                       { sideDistY += deltaY; mapY += stepY; side = 1; }
+        tile = tileAt(mapX, mapY);
+        // reveal every cell this ray passes through (incl. the wall it hits)
+        if (mapX >= 0 && mapX < MAP_W && mapY >= 0 && mapY < MAP_H) explored[mapY][mapX] = true;
+        if (tile === 5) {
+          // door: only blocks the portion that isn't open (slide effect)
+          const op = doorOpenAmount(mapX, mapY);
+          if (op < 0.9) { hit = 1; doorShift = op; }
+        } else if (tile !== 0 && tile !== 9) {
+          hit = 1;
+        }
+      }
+
+      // perpendicular distance (no fisheye)
+      let perp;
+      if (side === 0) perp = (mapX - player.x + (1 - stepX) / 2) / (rayDirX || 1e-9);
+      else            perp = (mapY - player.y + (1 - stepY) / 2) / (rayDirY || 1e-9);
+      perp = Math.abs(perp);
+      if (perp < 0.01) perp = 0.01;
+      zbuf[col] = perp;
+
+      const lineH = Math.floor(VIEW_H / perp);
+      let drawStart = Math.floor(-lineH / 2 + VIEW_H / 2);
+      let drawEnd = Math.floor(lineH / 2 + VIEW_H / 2);
+      if (drawStart < 0) drawStart = 0;
+      if (drawEnd >= VIEW_H) drawEnd = VIEW_H - 1;
+
+      // base color by tile type
+      let base = wallColor(tile, mapX, mapY);
+      // darken Y-sides for depth
+      let shade = side === 1 ? 0.72 : 1.0;
+      // distance fog
+      const fog = Math.max(0.25, Math.min(1, 1.6 / perp));
+      let [r, gg, b] = base;
+      r *= shade * fog; gg *= shade * fog; b *= shade * fog;
+
+      // Wall slice
+      const sliceH = drawEnd - drawStart;
+      ctx.fillStyle = 'rgb(' + (r|0) + ',' + (gg|0) + ',' + (b|0) + ')';
+      ctx.fillRect(col, drawStart, 1, sliceH);
+
+      // ── Texture detailing ──
+      const wallX = side === 0
+        ? player.y + perp * rayDirY
+        : player.x + perp * rayDirX;
+      const tx = wallX - Math.floor(wallX);
+
+      if (tile === 3 || tile === 1) {
+        // vertical panel seams
+        if (tx < 0.06 || tx > 0.94) {
+          ctx.fillStyle = 'rgba(0,0,0,' + (0.4 * fog) + ')';
+          ctx.fillRect(col, drawStart, 1, sliceH);
+        }
+      } else if (tile === 5) {
+        // DOOR: dark recessed frame + caution hazard stripes + glowing porthole
+        if (tx < 0.08 || tx > 0.92) {
+          ctx.fillStyle = 'rgba(15,10,0,' + fog + ')';            // metal frame
+          ctx.fillRect(col, drawStart, 1, sliceH);
+        } else {
+          // horizontal caution stripes
+          ctx.fillStyle = 'rgba(18,12,0,' + (0.9 * fog) + ')';
+          const nb = 6;
+          for (let k = 0; k < nb; k++) {
+            const y0 = drawStart + sliceH * (k / nb);
+            ctx.fillRect(col, y0, 1, Math.max(1, sliceH * 0.05));
+          }
+          // central porthole window (cyan glow) so it reads as a door
+          if (tx > 0.36 && tx < 0.64) {
+            ctx.fillStyle = 'rgba(120,225,215,' + fog + ')';
+            ctx.fillRect(col, drawStart + sliceH * 0.32, 1, sliceH * 0.2);
+            ctx.fillStyle = 'rgba(15,10,0,' + fog + ')';          // porthole rim
+            ctx.fillRect(col, drawStart + sliceH * 0.30, 1, Math.max(1, sliceH * 0.02));
+            ctx.fillRect(col, drawStart + sliceH * 0.52, 1, Math.max(1, sliceH * 0.02));
+          }
+        }
+      }
+    }
+  }
+
+  function wallColor(tile, mx, my) {
+    switch (tile) {
+      case 1: return [120, 120, 130];   // facility metal (grey-blue)
+      case 2: return [150, 70, 40];     // rusty Mars rock
+      case 3: return [90, 95, 110];     // panel wall
+      case 4: return [70, 130, 170];    // window (sky-ish — special-cased below)
+      case 5: return [180, 130, 40];    // door (amber/warning)
+      default: return [110, 110, 110];
+    }
+  }
+
+  // ── Sprites ──────────────────────────────────────────────────────────────
+  function drawSprites() {
+    const cos = Math.cos(player.dir), sin = Math.sin(player.dir);
+    // sort far -> near
+    const vis = entities.filter(e => (e.type === 'alien' ? e.alive : !e.picked));
+    vis.sort((a, b) => ((b.x-player.x)**2+(b.y-player.y)**2) - ((a.x-player.x)**2+(a.y-player.y)**2));
+
+    const tanHalf = Math.tan(FOV / 2);
+    for (const e of vis) {
+      const dx = e.x - player.x, dy = e.y - player.y;
+      // transform to camera space
+      const dist = dx * cos + dy * sin;             // forward distance
+      const sideD = -dx * sin + dy * cos;           // lateral
+      if (dist <= 0.1) continue;                    // behind
+      const screenX = (W / 2) * (1 + (sideD / dist) / tanHalf);
+      const spriteH = Math.floor(VIEW_H / dist);
+      const spriteW = spriteH;
+
+      let sizeScale = 1, vOffset = 0;
+      if (e.type === 'gun')    { sizeScale = 0.62; vOffset = 0.22; }
+      if (e.type === 'ammo')   { sizeScale = 0.50; vOffset = 0.26; }
+      if (e.type === 'health') { sizeScale = 0.50; vOffset = 0.26; }
+      if (e.type === 'exit')   { sizeScale = 1.0;  vOffset = 0.0; }
+      if (e.type === 'alien')  { sizeScale = 0.92; vOffset = 0.02 + Math.sin(e.bob) * 0.02; }
+
+      const dw = spriteW * sizeScale;
+      const dh = spriteH * sizeScale;
+      const cx = screenX;
+      const cyCenter = VIEW_H / 2 + spriteH * vOffset;
+      const left = Math.floor(cx - dw / 2);
+      const top = Math.floor(cyCenter - dh / 2);
+
+      drawSpriteShape(e, left, top, dw, dh, dist);
+    }
+  }
+
+  // Draw a procedural shape, occluded by walls via the z-buffer.
+  // Optimized: paint once per CONTIGUOUS RUN of visible columns (clip to the run)
+  // instead of redrawing the whole shape for every 1px column.
+  function drawSpriteShape(e, left, top, dw, dh, dist) {
+    const fog = Math.max(0.3, Math.min(1, 2.0 / dist));
+    const startCol = Math.max(0, Math.floor(left));
+    const endCol = Math.min(W, Math.floor(left + dw));
+    let run = -1;
+    for (let sx = startCol; sx <= endCol; sx++) {
+      const visible = sx < endCol && dist < zbuf[sx];   // not occluded by wall
+      if (visible && run < 0) {
+        run = sx;                                        // run starts
+      } else if (!visible && run >= 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(run, top, sx - run, dh);
+        ctx.clip();
+        paintSprite(e, left, top, dw, dh, fog);
+        ctx.restore();
+        run = -1;                                        // run ends
+      }
+    }
+  }
+
+  function paintSprite(e, x, y, w, h, fog) {
+    const f = (c) => 'rgba(' + Math.floor(c[0]*fog) + ',' + Math.floor(c[1]*fog) + ',' + Math.floor(c[2]*fog) + ',1)';
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 240);
+    if (e.type === 'gun') {
+      // pulsing glow halo so it's easy to spot
+      ctx.fillStyle = 'rgba(70,255,180,' + (0.22 * pulse * fog) + ')';
+      ctx.fillRect(x + w*0.04, y + h*0.28, w*0.92, h*0.52);
+      // Alien ray-gun: chunky teal/green blaster
+      ctx.fillStyle = f([55,210,150]);
+      ctx.fillRect(x + w*0.16, y + h*0.42, w*0.56, h*0.24);    // body
+      ctx.fillStyle = f([35,150,115]);
+      ctx.fillRect(x + w*0.58, y + h*0.46, w*0.34, h*0.16);    // barrel
+      ctx.fillStyle = f([25,95,80]);
+      ctx.fillRect(x + w*0.24, y + h*0.60, w*0.18, h*0.32);    // grip
+      ctx.fillStyle = f([180,255,225]);
+      ctx.fillRect(x + w*0.30, y + h*0.46, w*0.30, h*0.06);    // top highlight
+      ctx.fillStyle = 'rgba(190,255,225,' + (pulse * fog) + ')';
+      ctx.fillRect(x + w*0.88, y + h*0.48, w*0.10, h*0.12);    // muzzle glow (pulsing)
+    } else if (e.type === 'ammo') {
+      // Energy cell: a glowing battery with a lightning bolt — clearly "ammo"
+      ctx.fillStyle = 'rgba(90,210,255,' + (0.22 * pulse * fog) + ')';
+      ctx.fillRect(x + w*0.16, y + h*0.16, w*0.68, h*0.74);    // glow halo
+      ctx.fillStyle = f([30,70,110]);
+      ctx.fillRect(x + w*0.30, y + h*0.26, w*0.40, h*0.58);    // casing
+      ctx.fillStyle = f([185,205,225]);
+      ctx.fillRect(x + w*0.42, y + h*0.19, w*0.16, h*0.08);    // top terminal
+      ctx.fillStyle = 'rgba(120,235,255,' + ((0.6 + 0.4*pulse) * fog) + ')';
+      ctx.fillRect(x + w*0.36, y + h*0.34, w*0.28, h*0.42);    // glowing core
+      ctx.fillStyle = f([10,30,50]);                            // lightning bolt
+      ctx.fillRect(x + w*0.50, y + h*0.36, w*0.05, h*0.16);
+      ctx.fillRect(x + w*0.45, y + h*0.50, w*0.05, h*0.14);
+      ctx.fillRect(x + w*0.46, y + h*0.47, w*0.09, h*0.05);
+    } else if (e.type === 'health') {
+      ctx.fillStyle = f([240,240,240]);
+      ctx.fillRect(x + w*0.25, y + h*0.35, w*0.5, h*0.45);     // canister
+      ctx.fillStyle = f([20,200,80]);
+      ctx.fillRect(x + w*0.43, y + h*0.42, w*0.14, h*0.3);     // green cross V
+      ctx.fillRect(x + w*0.34, y + h*0.51, w*0.32, h*0.12);    // green cross H
+    } else if (e.type === 'exit') {
+      // Glowing green airlock — the win marker, visible from across the room
+      const g2 = 0.5 + 0.5 * pulse;
+      ctx.fillStyle = 'rgba(40,255,120,' + (0.28 * pulse * fog) + ')';
+      ctx.fillRect(x + w*0.06, y + h*0.06, w*0.88, h*0.92);    // glow halo
+      ctx.fillStyle = f([18,80,40]);
+      ctx.fillRect(x + w*0.22, y + h*0.10, w*0.56, h*0.86);    // dark door frame
+      ctx.fillStyle = 'rgba(70,255,150,' + (g2 * fog) + ')';
+      ctx.fillRect(x + w*0.30, y + h*0.16, w*0.40, h*0.74);    // glowing portal
+      // big up-arrow = "this way out"
+      ctx.fillStyle = f([8,50,26]);
+      const acx = x + w*0.5;
+      ctx.beginPath();
+      ctx.moveTo(acx, y + h*0.26);                             // arrow tip
+      ctx.lineTo(x + w*0.34, y + h*0.48);                      // bottom-left
+      ctx.lineTo(x + w*0.66, y + h*0.48);                      // bottom-right
+      ctx.closePath(); ctx.fill();
+      ctx.fillRect(acx - w*0.06, y + h*0.46, w*0.12, h*0.28);  // arrow shaft
+    } else if (e.type === 'alien') {
+      const hit = e.hitFlash > 0;
+      const bodyC = hit ? [255,210,210] : [70,180,70];
+      const darkC = hit ? [220,150,150] : [40,120,40];
+      // head/body blob
+      ctx.fillStyle = f(bodyC);
+      ctx.fillRect(x + w*0.28, y + h*0.18, w*0.44, h*0.5);     // torso
+      ctx.beginPath();
+      ctx.fillStyle = f(bodyC);
+      ctx.ellipse(x + w*0.5, y + h*0.2, w*0.26, h*0.18, 0, 0, Math.PI*2);
+      ctx.fill();
+      // eyes (big alien eyes)
+      ctx.fillStyle = hit ? 'rgba(80,0,0,1)' : 'rgba(20,20,30,1)';
+      ctx.beginPath(); ctx.ellipse(x+w*0.42, y+h*0.2, w*0.07, h*0.06, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x+w*0.58, y+h*0.2, w*0.07, h*0.06, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(x+w*0.40, y+h*0.18, w*0.02, h*0.02);
+      ctx.fillRect(x+w*0.56, y+h*0.18, w*0.02, h*0.02);
+      // tentacle legs
+      ctx.fillStyle = f(darkC);
+      const sway = Math.sin(e.bob) * w * 0.05;
+      ctx.fillRect(x + w*0.34 + sway, y + h*0.66, w*0.08, h*0.3);
+      ctx.fillRect(x + w*0.46,        y + h*0.66, w*0.08, h*0.32);
+      ctx.fillRect(x + w*0.58 - sway, y + h*0.66, w*0.08, h*0.3);
+    }
+  }
+
+  // ── Weapon view (ray-gun, or bare fists when unarmed) ─────────────────────
+  function drawWeapon() {
+    const bob = Math.sin(weaponBob) * 4 * S;
+
+    if (!player.hasGun) {
+      // ── Bare fists ── only the active hand thrusts up; hands alternate
+      const px = W / 2;
+      const py = VIEW_H - 4 + bob;
+      const lunge = punchAnim * 50 * S;
+      const leftLunge  = (punchHand === 1) ? lunge : 0;   // 1 = left swings
+      const rightLunge = (punchHand === 0) ? lunge : 0;   // 0 = right swings
+      const fw = 40 * S, fh = 34 * S;
+      // forearms
+      ctx.fillStyle = '#7a5a3e';
+      ctx.fillRect(px - 64*S, py + 8*S - leftLunge,  28*S, 34*S);
+      ctx.fillRect(px + 38*S, py + 8*S - rightLunge, 26*S, 34*S);
+      // fists
+      ctx.fillStyle = '#caa07a';
+      ctx.fillRect(px - 70*S, py - 24*S - leftLunge,  fw, fh);   // left fist
+      ctx.fillRect(px + 30*S, py - 24*S - rightLunge, fw, fh);   // right fist
+      // knuckle shading
+      ctx.fillStyle = '#9c7252';
+      ctx.fillRect(px - 70*S, py - 24*S - leftLunge,  fw, 6*S);
+      ctx.fillRect(px + 30*S, py - 24*S - rightLunge, fw, 6*S);
+      return;
+    }
+
+    // ── Ray-gun ──
+    const kick = weaponKick * 16 * S;
+    const baseX = W / 2;
+    const baseY = VIEW_H - 4 + kick;
+    ctx.fillStyle = '#1d6e58';
+    ctx.fillRect(baseX - 26*S, baseY - 30*S + bob, 52*S, 40*S);
+    ctx.fillStyle = '#27a07e';
+    ctx.fillRect(baseX - 18*S, baseY - 56*S + bob, 36*S, 30*S);   // barrel block
+    ctx.fillStyle = '#0e3a2e';
+    ctx.fillRect(baseX - 8*S, baseY - 70*S + bob, 16*S, 18*S);    // muzzle
+    ctx.fillStyle = '#0a2a22';
+    ctx.fillRect(baseX - 30*S, baseY - 6*S + bob, 14*S, 22*S);    // grip
+    // muzzle flash
+    if (muzzle > 0) {
+      const r = (10 + muzzle * 22) * S;
+      const my = baseY - 64*S + bob;
+      const grd = ctx.createRadialGradient(baseX, my, 2, baseX, my, r);
+      grd.addColorStop(0, 'rgba(200,255,220,' + muzzle + ')');
+      grd.addColorStop(0.5, 'rgba(60,230,160,' + (muzzle*0.7) + ')');
+      grd.addColorStop(1, 'rgba(0,255,140,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(baseX, my, r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  // ── HUD ────────────────────────────────────────────────────────────────────
+  function drawHUD() {
+    const y0 = VIEW_H;
+    // bar background
+    ctx.fillStyle = '#0d0604';
+    ctx.fillRect(0, y0, W, HUD_H);
+    ctx.fillStyle = '#3a1a0e';
+    ctx.fillRect(0, y0, W, 2 * S);
+
+    ctx.textBaseline = 'middle';
+    ctx.font = (10*S) + 'px "Courier New", monospace';
+
+    // Health
+    ctx.fillStyle = '#ff7a4a';
+    ctx.fillText('OXYGEN', 8*S, y0 + 12*S);
+    const hpW = 70*S;
+    ctx.fillStyle = '#330d05';
+    ctx.fillRect(8*S, y0 + 20*S, hpW, 10*S);
+    ctx.fillStyle = player.health > 30 ? '#33d17a' : '#e8412e';
+    ctx.fillRect(8*S, y0 + 20*S, hpW * (player.health / player.maxHealth), 10*S);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(Math.ceil(player.health) + '%', 84*S, y0 + 25*S);
+
+    // Ammo (always shown — energy cells stack up even before you find the gun)
+    ctx.font = (10*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#ff7a4a';
+    ctx.fillText('AMMO', 130*S, y0 + 12*S);
+    ctx.fillStyle = '#ffe07a';
+    ctx.font = 'bold ' + (16*S) + 'px "Courier New", monospace';
+    ctx.fillText(String(player.ammo), 130*S, y0 + 28*S);
+
+    // Score
+    ctx.font = (10*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#ff7a4a';
+    ctx.fillText('SCORE', 190*S, y0 + 12*S);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + (14*S) + 'px "Courier New", monospace';
+    ctx.fillText(String(player.score).padStart(5, '0'), 190*S, y0 + 28*S);
+
+    // Weapon icon
+    ctx.font = (9*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#9ad';
+    ctx.fillText(player.hasGun ? 'RAY-GUN' : 'FISTS', 270*S, y0 + 12*S);
+    if (player.hasGun) {
+      ctx.fillStyle = '#27a07e';
+      ctx.fillRect(270*S, y0 + 20*S, 22*S, 8*S);
+      ctx.fillStyle = '#0e3a2e';
+      ctx.fillRect(290*S, y0 + 22*S, 8*S, 4*S);
+    } else {
+      ctx.fillStyle = '#caa07a';                     // little fist icon
+      ctx.fillRect(270*S, y0 + 19*S, 14*S, 11*S);
+      ctx.fillStyle = '#9c7252';
+      ctx.fillRect(270*S, y0 + 19*S, 14*S, 3*S);
+    }
+
+    // Objective hint
+    ctx.font = (10*S) + 'px "Courier New", monospace';
+    ctx.fillStyle = '#ffd0a0';
+    ctx.textAlign = 'right';
+    ctx.fillText('▸ ' + objective, W - 8*S, y0 + 24*S);
+    ctx.textAlign = 'left';
+  }
+
+  // ── Title screen ────────────────────────────────────────────────────────────
+  let titleT = 0;
+  function drawTitle() {
+    ctx.fillStyle = '#0a0402';
+    ctx.fillRect(0, 0, W, H);
+    // Mars planet
+    const cxp = W * 0.5, cyp = H * 0.34, rp = 52*S;
+    const grd = ctx.createRadialGradient(cxp - 16*S, cyp - 16*S, 6*S, cxp, cyp, rp);
+    grd.addColorStop(0, '#ff9b5c'); grd.addColorStop(0.6, '#c4502a'); grd.addColorStop(1, '#5e1f0e');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(cxp, cyp, rp, 0, Math.PI*2); ctx.fill();
+    // craters
+    ctx.fillStyle = 'rgba(80,25,10,0.6)';
+    ctx.beginPath(); ctx.arc(cxp-18*S, cyp+8*S, 8*S, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cxp+20*S, cyp-12*S, 5*S, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cxp+10*S, cyp+22*S, 6*S, 0, 7); ctx.fill();
+    // stars
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 40; i++) {
+      const sx = (i * 977) % W, sy = (i * 613) % (H*0.6);
+      ctx.globalAlpha = 0.3 + 0.5 * Math.abs(Math.sin(titleT + i));
+      ctx.fillRect(sx, sy, 1*S, 1*S);
+    }
+    ctx.globalAlpha = 1;
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff5a2a';
+    ctx.font = 'bold ' + (30*S) + 'px "Courier New", monospace';
+    ctx.fillText('ESCAPE FROM MARS', W/2, H*0.62);
+    ctx.fillStyle = '#ffb37a';
+    ctx.font = (11*S) + 'px "Courier New", monospace';
+    ctx.fillText('A red planet survival shooter', W/2, H*0.69);
+
+    // Controls
+    ctx.fillStyle = '#cda';
+    ctx.font = (9*S) + 'px "Courier New", monospace';
+    ctx.fillText('TILT to move:  forward / back = walk,   turn = look around', W/2, H*0.79);
+    ctx.fillText('◀ FIRE (punch until you find the ray-gun)      USE / open doors ▶', W/2, H*0.84);
+
+    // Prompt
+    ctx.fillStyle = (Math.floor(titleT*2) % 2) ? '#fff' : '#ff8a4a';
+    ctx.font = 'bold ' + (12*S) + 'px "Courier New", monospace';
+    ctx.fillText('TAP TO START — hold your phone comfortably', W/2, H*0.92);
+    ctx.fillStyle = '#9a8';
+    ctx.font = (8*S) + 'px "Courier New", monospace';
+    ctx.fillText('(that hold becomes your neutral position)', W/2, H*0.965);
+    ctx.textAlign = 'left';
+  }
+
+  // ── End screens ─────────────────────────────────────────────────────────────
+  function drawEnd(won) {
+    ctx.fillStyle = won ? 'rgba(5,20,10,0.82)' : 'rgba(30,4,2,0.82)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = won ? '#5fffaf' : '#ff5a3a';
+    ctx.font = 'bold ' + (26*S) + 'px "Courier New", monospace';
+    ctx.fillText(won ? 'YOU ESCAPED MARS!' : 'MISSION FAILED', W/2, H*0.4);
+    ctx.fillStyle = '#fff';
+    ctx.font = (13*S) + 'px "Courier New", monospace';
+    ctx.fillText('Score: ' + player.score, W/2, H*0.52);
+    ctx.fillStyle = '#ffb37a';
+    ctx.font = (11*S) + 'px "Courier New", monospace';
+    ctx.fillText('Press Enter or click to return to title', W/2, H*0.62);
+    ctx.textAlign = 'left';
+  }
+
+  // ── Minimap (top-left) — only explored tiles are shown; rest stays black ──
+  function drawMinimap() {
+    const cell = Math.max(3, Math.round(4 * S));
+    const ox = Math.round(6 * S), oy = Math.round(6 * S);
+    const mw = MAP_W * cell, mh = MAP_H * cell;
+    const b = Math.round(2 * S);
+    // panel background + frame
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(ox - b, oy - b, mw + 2*b, mh + 2*b);
+    ctx.strokeStyle = 'rgba(255,150,90,0.55)';
+    ctx.lineWidth = Math.max(1, S);
+    ctx.strokeRect(ox - b, oy - b, mw + 2*b, mh + 2*b);
+
+    for (let y = 0; y < MAP_H; y++) {
+      for (let x = 0; x < MAP_W; x++) {
+        if (!explored[y][x]) continue;            // unexplored = blacked out
+        const t = MAP[y][x];
+        let col;
+        if (t === 0)      col = '#3a241a';        // floor
+        else if (t === 5) col = '#e0a83a';        // door (amber)
+        else if (t === 9) col = '#3ad17a';        // exit (green)
+        else              col = '#8a8a95';        // wall
+        ctx.fillStyle = col;
+        ctx.fillRect(ox + x*cell, oy + y*cell, cell - 1, cell - 1);
+      }
+    }
+
+    // player marker + heading
+    const pxp = ox + player.x * cell, pyp = oy + player.y * cell;
+    ctx.strokeStyle = '#ffdf6a';
+    ctx.lineWidth = Math.max(1, S);
+    ctx.beginPath();
+    ctx.moveTo(pxp, pyp);
+    ctx.lineTo(pxp + Math.cos(player.dir) * cell * 1.4, pyp + Math.sin(player.dir) * cell * 1.4);
+    ctx.stroke();
+    ctx.fillStyle = '#ff3a2a';
+    ctx.beginPath();
+    ctx.arc(pxp, pyp, Math.max(1.5, cell * 0.36), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  MAIN LOOP
+  // ─────────────────────────────────────────────────────────────────────────
+  initDoors();
+  initExplored();
+  buildEntities();
+  let last = performance.now();
+  function loop(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.05) dt = 0.05;        // clamp big gaps
+    titleT += dt;
+    update(dt);
+    render();
+    // show the FIRE/USE buttons only while actually playing
+    document.body.classList.toggle('playing', state === STATE.PLAY);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // expose a tiny hook for automated testing in the preview tool
+  window.__mars = { player, get state(){return state;}, get entities(){return entities;}, doors, startGame, keys,
+                    get punchHand(){return punchHand;}, get explored(){return explored;},
+                    get tilt(){return tilt;}, get baseline(){return baseline;},
+                    fire(){ if(player.hasGun){player.ammo=Math.max(player.ammo,1);fireQueued=true;} },
+                    interact(){ interactQueued = true; } };
+})();
+</script>
+</body>
+</html>
