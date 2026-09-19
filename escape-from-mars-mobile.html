@@ -482,7 +482,7 @@
     if (tilt.active && baseline.set) {
       // Degrees from the neutral hold: nothing inside DEAD, full speed at FULL.
       // Turning has a wider curve than walking — it felt too twitchy on the phone.
-      const DEAD = 7,      FULL = 32;        // walk forward/back
+      const DEAD = 7,      FULL = 24;        // walk forward/back
       const TURN_DEAD = 8, TURN_FULL = 40;   // turn left/right (gentler)
       const ramp = (d, dead = DEAD, full = FULL) => {
         const a = Math.abs(d);
