@@ -325,24 +325,46 @@
     }
 
     // ── View management ───────────────────────────────────────────
-    function setView(view) {
-      document.getElementById('view-mobile').classList.toggle('active', view === 'mobile');
-      document.getElementById('view-desktop').classList.toggle('active', view === 'desktop');
-      document.getElementById('btn-mobile').classList.toggle('active', view === 'mobile');
-      document.getElementById('btn-desktop').classList.toggle('active', view === 'desktop');
+    // `auto` is true only for the initial device-detected view; once the visitor
+    // picks a view themselves we drop the "for your device" wording, since the
+    // view no longer describes their device.
+    function setView(view, auto) {
+      const mobile = view === 'mobile';
+      document.getElementById('view-mobile').classList.toggle('active', mobile);
+      document.getElementById('view-desktop').classList.toggle('active', !mobile);
+      document.getElementById('btn-mobile').classList.toggle('active', mobile);
+      document.getElementById('btn-desktop').classList.toggle('active', !mobile);
+      updateBanner(mobile, auto === true);
     }
 
-    // ── Auto-detect on load ───────────────────────────────────────
-    (function() {
-      const mobile = isMobileDevice();
-      setView(mobile ? 'mobile' : 'desktop');
-
+    // Banner always describes the view on screen and offers the other one.
+    function updateBanner(mobile, auto) {
       const banner = document.getElementById('detected-banner');
-      if (mobile) {
-        banner.innerHTML = 'Showing <span>touch-friendly</span> games for your device — <a href="#" style="color:#4a9eff;text-decoration:none;" onclick="setView(\'desktop\');return false;">switch to Desktop view</a>';
-      } else {
-        banner.innerHTML = 'Showing <span>desktop</span> games for your device — <a href="#" style="color:#3ddc84;text-decoration:none;" onclick="setView(\'mobile\');return false;">switch to Mobile view</a>';
-      }
+      banner.textContent = 'Showing ';
+
+      const kind = document.createElement('span');
+      kind.textContent = mobile ? 'touch-friendly' : 'desktop';
+      banner.appendChild(kind);
+
+      banner.appendChild(document.createTextNode(
+        auto ? ' games for your device — ' : ' games — '
+      ));
+
+      const link = document.createElement('a');
+      link.href = '#';
+      link.style.color = mobile ? '#4a9eff' : '#3ddc84';
+      link.style.textDecoration = 'none';
+      link.textContent = mobile ? 'switch to Desktop view' : 'switch to Mobile view';
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        setView(mobile ? 'desktop' : 'mobile');
+      });
+      banner.appendChild(link);
+    }
+
+    // Auto-detect on load
+    (function() {
+      setView(isMobileDevice() ? 'mobile' : 'desktop', true);
     })();
   </script>
 
