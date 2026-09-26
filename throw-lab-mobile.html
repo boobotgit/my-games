@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1220">
+<title>Throw Lab</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #131c2e; --panel2: #1a2540; --line: #26345a;
+    --text: #e6ecf8; --dim: #8a98b8; --cyan: #3fd8ff; --amber: #ffb547;
+    --red: #ff5d6c; --green: #57e39b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+  body { overflow-x: hidden; overscroll-behavior: none; }
+  .num { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  #homeBtn {
+    position: fixed; z-index: 50; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px);
+    background: rgba(0,0,0,0.45); color: var(--dim); border: 1px solid var(--line);
+    border-radius: 8px; font-size: 13px; padding: 5px 10px; text-decoration: none;
+  }
+  .screen { display: none; min-height: 100vh; min-height: 100dvh;
+    padding: calc(env(safe-area-inset-top, 0px) + 52px) 16px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+  .screen.show { display: block; }
+  h1 { font-size: 34px; letter-spacing: -0.5px; }
+  h1 span { color: var(--cyan); }
+  .sub { color: var(--dim); font-size: 15px; line-height: 1.45; margin-top: 8px; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 16px;
+    font-size: 17px; font-weight: 700; color: #06101f; background: var(--cyan); margin-top: 18px; font-family: inherit; }
+  .btn.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); font-weight: 600; }
+  .btn.red { background: var(--red); color: #fff; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-top: 14px; }
+  .steps { margin-top: 18px; }
+  .steps li { list-style: none; display: flex; gap: 12px; align-items: flex-start; margin: 12px 0; color: var(--text); font-size: 15px; line-height: 1.4; }
+  .steps b { flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--cyan); display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .note { color: var(--dim); font-size: 13px; margin-top: 12px; line-height: 1.45; }
+  .err { color: var(--red); }
+
+  /* live sensor panel */
+  .live-title { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; }
+  .gbig { font-size: 54px; font-weight: 700; margin-top: 4px; }
+  .gbig small { font-size: 18px; color: var(--dim); font-weight: 500; }
+  .axis { display: grid; grid-template-columns: 22px 1fr 64px; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
+  .bar { height: 8px; background: var(--panel2); border-radius: 4px; position: relative; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--cyan); border-radius: 4px; }
+  .axis .v { text-align: right; color: var(--dim); }
+
+  #recordBtn { width: 170px; height: 170px; border-radius: 50%; margin: 26px auto 0; display: flex;
+    align-items: center; justify-content: center; flex-direction: column; border: 6px solid rgba(255,93,108,0.35);
+    background: radial-gradient(circle at 40% 35%, #ff7d8a, #e23a4c); color: #fff; font-size: 20px; font-weight: 800;
+    letter-spacing: 1px; box-shadow: 0 10px 40px rgba(255,60,80,0.35); font-family: inherit; }
+  #recordBtn span { font-size: 12px; font-weight: 600; opacity: 0.85; letter-spacing: 0.5px; margin-top: 4px; }
+
+  /* armed */
+  #armed { text-align: center; }
+  .pulse { width: 200px; height: 200px; border-radius: 50%; margin: 20px auto 0; display: flex; align-items: center;
+    justify-content: center; flex-direction: column; border: 3px solid var(--red); position: relative; }
+  .pulse::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--red);
+    animation: ring 1.4s ease-out infinite; }
+  @keyframes ring { from { transform: scale(1); opacity: 0.8; } to { transform: scale(1.35); opacity: 0; } }
+  #armState { font-size: 26px; font-weight: 800; margin-top: 22px; }
+  #armHint { color: var(--dim); margin-top: 8px; font-size: 15px; }
+
+  /* results */
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .stat .k { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+  .stat .v { font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .stat .v small { font-size: 13px; color: var(--dim); font-weight: 500; margin-left: 2px; }
+  .stat .x { font-size: 12px; color: var(--dim); margin-top: 4px; line-height: 1.35; }
+  .stat.wide { grid-column: span 2; }
+  .stat.c1 .v { color: var(--cyan); } .stat.c2 .v { color: var(--amber); } .stat.c3 .v { color: var(--red); } .stat.c4 .v { color: var(--green); }
+  .sec { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 24px 0 2px; }
+  canvas#chart { width: 100%; height: 190px; display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-top: 10px; }
+  summary { font-weight: 600; font-size: 15px; }
+  details p { color: var(--dim); font-size: 14px; line-height: 1.5; margin-top: 8px; }
+  .units { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; float: right; margin-top: 6px; }
+  .units button { background: none; border: 0; color: var(--dim); padding: 6px 12px; font-size: 13px; font-weight: 600; font-family: inherit; }
+  .units button.on { background: var(--panel2); color: var(--cyan); }
+  .conf { display: inline-block; font-size: 12px; padding: 3px 8px; border-radius: 999px; margin-top: 8px; }
+  .conf.good { background: rgba(87,227,155,0.15); color: var(--green); }
+  .conf.meh { background: rgba(255,181,71,0.15); color: var(--amber); }
+  .rec { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .rec:last-child { border-bottom: 0; }
+  .rec span:first-child { color: var(--dim); }
+  .link { background: none; border: 0; color: var(--dim); text-decoration: underline; font-size: 13px; margin-top: 16px; font-family: inherit; display: block; margin-left: auto; margin-right: auto; }
+</style>
+</head>
+<body>
+<a id="homeBtn" href="index.html">&#8962; Home</a>
+
+<!-- INTRO -->
+<section class="screen show" id="intro">
+  <h1>Throw <span>Lab</span></h1>
+  <p class="sub">Toss your phone onto something soft. It records what the motion sensors feel, then works out how fast it flew, how far it fell, how hard it spun and how hard it landed.</p>
+  <ul class="steps">
+    <li><b>1</b><div>Stand over a couch or bed. Aim for a soft landing, and keep it low for your first few throws.</div></li>
+    <li><b>2</b><div>Press <b style="all:unset;color:var(--red);font-weight:700">RECORD</b>, then throw within 15 seconds.</div></li>
+    <li><b>3</b><div>Leave the phone where it lands. Once it's been still for a moment, you'll see the numbers.</div></li>
+  </ul>
+  <button class="btn" id="enableBtn">Turn on motion sensors</button>
+  <p class="note" id="enableNote">iPhone will ask for permission to use Motion &amp; Orientation. Nothing leaves your phone.</p>
+</section>
+
+<!-- READY -->
+<section class="screen" id="ready">
+  <div class="card">
+    <div class="live-title">What the accelerometer feels right now</div>
+    <div class="gbig num" id="liveG">1.00<small> g</small></div>
+    <div class="axis"><span>X</span><div class="bar"><i id="barX"></i></div><span class="v num" id="valX">0.0</span></div>
+    <div class="axis"><span>Y</span><div class="bar"><i id="barY"></i></div><span class="v num" id="valY">0.0</span></div>
+    <div class="axis"><span>Z</span><div class="bar"><i id="barZ"></i></div><span class="v num" id="valZ">0.0</span></div>
+    <p class="note">Sitting still, it reads about <b>1 g</b>. That's the table pushing back against gravity, not the phone moving. Once the phone leaves your hand it reads nearly <b>0 g</b>, because it's in free fall. That drop to zero is how the app tells it's in the air.</p>
+  </div>
+  <button id="recordBtn">RECORD<span>then throw</span></button>
+  <p class="note" id="sensorWarn" style="text-align:center"></p>
+  <div class="card" id="recordsCard" style="display:none">
+    <div class="live-title" style="margin-bottom:6px">Your records</div>
+    <div id="records"></div>
+  </div>
+  <button class="link" id="demoBtn">No couch nearby? See a demo throw</button>
+</section>
+
+<!-- ARMED -->
+<section class="screen" id="armed">
+  <div class="pulse"><div class="gbig num" id="armG">1.00<small> g</small></div></div>
+  <div id="armState">Armed. Throw now!</div>
+  <div id="armHint">Recording… <span class="num" id="armTimer">15</span>s left</div>
+  <button class="btn ghost" id="cancelBtn" style="margin-top:40px">Cancel</button>
+</section>
+
+<!-- RESULTS -->
+<section class="screen" id="results">
+  <div class="units"><button data-u="m" class="on">Metric</button><button data-u="i">Imperial</button></div>
+  <h1 style="font-size:28px">Flight <span>report</span></h1>
+  <div id="confBadge"></div>
+  <div class="hero" id="hero"></div>
+
+  <div class="sec">What the sensors recorded</div>
+  <div class="card" style="padding:10px">
+    <canvas id="chart"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--cyan)"></i>Total force (g)</span>
+      <span><i style="background:rgba(255,181,71,0.5)"></i>Throw</span>
+      <span><i style="background:rgba(63,216,255,0.22)"></i>In the air</span>
+      <span><i style="background:var(--red)"></i>Landing</span>
+    </div>
+  </div>
+
+  <div class="sec">More stats</div>
+  <div class="hero" id="extra"></div>
+
+  <div class="sec">How it works</div>
+  <details><summary>How does it know it's in the air?</summary>
+    <p>An accelerometer measures every force on the phone <i>except</i> gravity. Sitting on a table it feels the table pushing up (1 g). Once it's in the air, nothing is pushing on it, so it reads about 0 g. That's free fall, the same thing astronauts feel. Throw Lab looks for the stretch where the reading drops near zero and times it.</p></details>
+  <details><summary>How is the drop height calculated?</summary>
+    <p>Two pieces: how fast your hand launched it upward (from adding up the acceleration during the throw, called integration), and how long it was airborne. Gravity is a known constant, so the physics is: <span class="num">drop = ½·g·t² − v<sub>up</sub>·t</span>. Throw it straight up and catch it at the same height, and the drop comes out as zero.</p></details>
+  <details><summary>How does it measure spin?</summary>
+    <p>A separate sensor, the gyroscope, measures how fast the phone rotates around each of its three axes in degrees per second. Adding that up over the flight gives the total number of turns. It can also tell a frisbee-style flat spin from an end-over-end flip.</p></details>
+  <details><summary>Why might the numbers be a bit off?</summary>
+    <p>The phone takes about 60 readings a second. A throw lasts about a quarter of a second, so the speed is worked out from roughly 15 readings, and small errors add up. A fast spin also confuses it: the accelerometer sits a few centimetres from the middle of the phone, so spinning presses it outward and hides the free-fall reading. Gentle, flat tosses give the cleanest numbers.</p></details>
+
+  <button class="btn" id="againBtn">Throw again</button>
+</section>
+
+<script>
+const G = 9.80665;
+const PHONE_KG = 0.2;          // typical iPhone mass, for the energy stat
+const FF_THR = 4.5;            // m/s^2: below this total reading = free fall
+const MAX_REC_S = 15;
+
+const $ = id => document.getElementById(id);
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('show', s.id === id)); window.scrollTo(0, 0); }
+
+// ---------------------------------------------------------------- sensors
+let latest = null;             // last devicemotion sample
+let orient = { beta: 0, gamma: 0, have: false };
+let gotMotion = false;
+let recording = false, rec = [], recStart = 0;
+let rtFreeCount = 0, rtSawFlight = false, rtStillSince = 0;
+
+function onMotion(e) {
+  const g = e.accelerationIncludingGravity;
+  if (!g || g.x == null) return;
+  gotMotion = true;
+  let a = e.acceleration;
+  if (!a || a.x == null) a = { x: 0, y: 0, z: 0 };
+  const r = e.rotationRate || {};
+  const s = {
+    t: performance.now() / 1000,
+    ax: a.x, ay: a.y, az: a.z,
+    gx: g.x, gy: g.y, gz: g.z,
+    ra: r.alpha || 0, rb: r.beta || 0, rg: r.gamma || 0,
+  };
+  latest = s;
+  if (recording) pushSample(s);
+}
+function onOrient(e) { if (e.beta != null) { orient.beta = e.beta; orient.gamma = e.gamma; orient.have = true; } }
+
+function pushSample(s) {
+  rec.push(s);
+  const mag = Math.hypot(s.gx, s.gy, s.gz);
+  const spin = Math.hypot(s.ra, s.rb, s.rg);
+  // realtime: have we seen a flight yet, and are we now resting?
+  if (mag < FF_THR) { rtFreeCount++; if (rtFreeCount >= 6) rtSawFlight = true; } else rtFreeCount = 0;
+  if (rtSawFlight) {
+    $('armState').textContent = 'Flying…';
+    const still = Math.abs(mag - G) < 0.7 && spin < 20;
+    if (still) {
+      if (!rtStillSince) rtStillSince = s.t;
+      $('armState').textContent = 'Landed. Hold still…';
+      if (s.t - rtStillSince > 0.8) finishRecording();
+    } else rtStillSince = 0;
+  }
+}
+
+$('enableBtn').addEventListener('click', () => {
+  // iOS 13+: must be called straight from a click. Fire both without awaiting between them.
+  const needs = typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
+  if (needs) {
+    const pm = DeviceMotionEvent.requestPermission();
+    const po = (typeof DeviceOrientationEvent.requestPermission === 'function') ? DeviceOrientationEvent.requestPermission() : Promise.resolve('granted');
+    Promise.all([pm, po]).then(([m, o]) => {
+      if (m !== 'granted') { denied(); return; }
+      startListening(o === 'granted');
+    }).catch(err => { $('enableNote').innerHTML = '<span class="err">Couldn\'t get motion access: ' + String(err && err.message || err).replace(/</g, '&lt;') + '</span>'; });
+  } else startListening(true);
+});
+function denied() {
+  $('enableNote').innerHTML = '<span class="err">Motion access was denied.</span> To fix it, close this tab, reopen the page, and tap <b>Allow</b> when asked. If Safari doesn\'t ask again, go to Settings → Apps → Safari → Advanced → Website Data, delete this site, then try again.';
+}
+function startListening(withOrient) {
+  window.addEventListener('devicemotion', onMotion);
+  if (withOrient) window.addEventListener('deviceorientation', onOrient);
+  show('ready'); renderRecords(); liveLoop();
+  setTimeout(() => { if (!gotMotion) $('sensorWarn').textContent = 'No motion data yet. This page only works on a phone, over https.'; }, 1500);
+}
+
+// live readout
+function setBar(el, v) { const p = Math.max(-1, Math.min(1, v / (2 * G))) * 50; el.style.left = (p < 0 ? 50 + p : 50) + '%'; el.style.width = Math.abs(p) + '%'; }
+function liveLoop() {
+  if (latest) {
+    const s = latest, gm = Math.hypot(s.gx, s.gy, s.gz) / G;
+    const html = gm.toFixed(2) + '<small> g</small>';
+    if ($('ready').classList.contains('show')) {
+      $('liveG').innerHTML = html;
+      setBar($('barX'), s.gx); setBar($('barY'), s.gy); setBar($('barZ'), s.gz);
+      $('valX').textContent = s.gx.toFixed(1); $('valY').textContent = s.gy.toFixed(1); $('valZ').textContent = s.gz.toFixed(1);
+    }
+    if (recording) {
+      $('armG').innerHTML = html;
+      const left = Math.max(0, MAX_REC_S - (s.t - recStart));
+      $('armTimer').textContent = Math.ceil(left);
+      if (left <= 0) finishRecording();
+    }
+  }
+  requestAnimationFrame(liveLoop);
+}
+
+$('recordBtn').addEventListener('click', () => {
+  rec = []; recording = true; recStart = performance.now() / 1000;
+  rtFreeCount = 0; rtSawFlight = false; rtStillSince = 0;
+  $('armState').textContent = 'Armed. Throw now!';
+  show('armed');
+});
+$('cancelBtn').addEventListener('click', () => { recording = false; show('ready'); });
+$('againBtn').addEventListener('click', () => { show('ready'); renderRecords(); });
+
+function finishRecording() {
+  if (!recording) return;
+  recording = false;
+  const res = analyze(rec, orient.have ? { ...orient } : null);
+  showResults(res, false);
+}
+
+// ---------------------------------------------------------------- analysis
+function analyze(S, orientAtEnd) {
+  const n = S.length;
+  if (n < 20) return { error: 'Only ' + n + ' sensor readings were captured. Try again and keep this page open.' };
+  const mag = S.map(s => Math.hypot(s.gx, s.gy, s.gz));
+  const lin = S.map(s => Math.hypot(s.ax, s.ay, s.az));
+  const dur = S[n - 1].t - S[0].t;
+  const hz = (n - 1) / dur;
+  const dtAvg = 1 / hz;
+
+  // free-fall mask, closing 1-sample gaps (a blip from spin or noise)
+  const ff = mag.map(m => m < FF_THR);
+  for (let i = 1; i < n - 1; i++) if (!ff[i] && ff[i - 1] && ff[i + 1]) ff[i] = true;
+  const segs = [];
+  for (let i = 0; i < n;) {
+    if (!ff[i]) { i++; continue; }
+    let j = i; while (j + 1 < n && ff[j + 1]) j++;
+    segs.push({ a: i, b: j, T: S[j].t - S[i].t + dtAvg });
+    i = j + 1;
+  }
+  const main = segs.find(s => s.T >= 0.12);
+  if (!main) return { error: 'No flight detected. The phone never felt free fall for long enough. Give it a real toss, and try to keep it from spinning fast.', S, mag, hz };
+
+  const T = main.T;
+  // throw phase: walk back from release until the hand motion was calm
+  let i0 = main.a - 1, calm = 0;
+  const limit = Math.max(0, main.a - Math.round(1.2 * hz));
+  for (let i = main.a - 1; i >= limit; i--) {
+    if (lin[i] < 1.2) { calm++; if (calm >= 4) { i0 = i + 3; break; } } else calm = 0;
+    i0 = i;
+  }
+  let vUp = 0; const vH = [0, 0, 0]; let maxThrowG = 0;
+  for (let i = Math.max(1, i0); i < main.a; i++) {
+    const s = S[i], dt = s.t - S[i - 1].t;
+    // gravity direction = (reading incl. gravity) - (linear accel). Same sign convention on both, so the
+    // dot product below is "upward acceleration" no matter which way the platform signs its axes.
+    let ux = s.gx - s.ax, uy = s.gy - s.ay, uz = s.gz - s.az;
+    const ul = Math.hypot(ux, uy, uz) || 1; ux /= ul; uy /= ul; uz /= ul;
+    const up = s.ax * ux + s.ay * uy + s.az * uz;
+    vUp += up * dt;
+    vH[0] += (s.ax - up * ux) * dt; vH[1] += (s.ay - up * uy) * dt; vH[2] += (s.az - up * uz) * dt;
+    maxThrowG = Math.max(maxThrowG, mag[i] / G);
+  }
+  let vh = Math.hypot(vH[0], vH[1], vH[2]);
+  let confident = true;
+  if (!isFinite(vUp) || Math.abs(vUp) > 15 || vh > 20) { confident = false; vUp = 0; vh = 0; }
+
+  const launchSpeed = Math.hypot(vUp, vh);
+  const launchAngle = Math.atan2(vUp, vh) * 180 / Math.PI;
+  const peak = vUp > 0 ? vUp * vUp / (2 * G) : 0;
+  let drop = 0.5 * G * T * T - vUp * T;
+  const dropFromRest = 0.5 * G * T * T;
+  if (drop < -1 || drop > 6) confident = false;
+  const vzImpact = vUp - G * T;
+  const impactSpeed = Math.hypot(vh, vzImpact);
+  const dist = vh * T;
+  let path = 0; for (let k = 0; k < 200; k++) { const t = (k + 0.5) / 200 * T; path += Math.hypot(vh, vUp - G * t) * T / 200; }
+
+  // spin during flight
+  let maxSpin = 0; const tot = [0, 0, 0];
+  for (let i = main.a + 1; i <= main.b; i++) {
+    const s = S[i], dt = s.t - S[i - 1].t;
+    maxSpin = Math.max(maxSpin, Math.hypot(s.ra, s.rb, s.rg));
+    tot[0] += Math.abs(s.rb) * dt; tot[1] += Math.abs(s.rg) * dt; tot[2] += Math.abs(s.ra) * dt; // x, y, z axes
+  }
+  const turns = Math.hypot(tot[0], tot[1], tot[2]) / 360;
+  const axisNames = ['end-over-end flip', 'sideways barrel roll', 'flat, frisbee-style spin'];
+  const domAxis = tot.indexOf(Math.max(...tot));
+
+  // impact: biggest reading shortly after landing
+  let impactG = 0, impactIdx = main.b;
+  for (let i = main.b; i < Math.min(n, main.b + Math.round(0.35 * hz)); i++) if (mag[i] / G > impactG) { impactG = mag[i] / G; impactIdx = i; }
+  const bounces = segs.filter(s => s.a > main.b && s.T >= 0.05).length;
+  // settle: first time after landing it's still for good
+  let settleIdx = n - 1;
+  for (let i = main.b; i < n; i++) {
+    let ok = true;
+    for (let k = i; k < Math.min(n, i + Math.round(0.4 * hz)); k++) if (Math.abs(mag[k] - G) > 0.7) { ok = false; break; }
+    if (ok) { settleIdx = i; break; }
+  }
+  const settleTime = S[settleIdx].t - S[main.b].t;
+  const energy = 0.5 * PHONE_KG * impactSpeed * impactSpeed;
+  let face = null, restTilt = null;
+  if (orientAtEnd) {
+    face = Math.abs(orientAtEnd.beta) < 90 ? 'up' : 'down';
+    const b = orientAtEnd.beta * Math.PI / 180, g = orientAtEnd.gamma * Math.PI / 180;
+    restTilt = Math.acos(Math.min(1, Math.abs(Math.cos(b) * Math.cos(g)))) * 180 / Math.PI;
+  }
+
+  return { S, mag, hz, n, T, vUp, vh, launchSpeed, launchAngle, peak, drop, dropFromRest, impactSpeed, dist, path,
+    maxThrowG, impactG, maxSpin, turns, domAxis: axisNames[domAxis], bounces, settleTime, energy, face, restTilt,
+    confident, i0, main, impactIdx, settleIdx };
+}
+
+// ---------------------------------------------------------------- display
+let units = 'm', lastRes = null;
+document.querySelectorAll('.units button').forEach(b => b.addEventListener('click', () => {
+  units = b.dataset.u; document.querySelectorAll('.units button').forEach(x => x.classList.toggle('on', x === b));
+  if (lastRes) showResults(lastRes, true);
+}));
+const len = m => units === 'm' ? (Math.abs(m) < 1 ? [(m * 100).toFixed(0), 'cm'] : [m.toFixed(2), 'm']) : (Math.abs(m) < 0.9144 ? [(m * 39.37).toFixed(1), 'in'] : [(m * 3.2808).toFixed(2), 'ft']);
+const spd = v => units === 'm' ? [(v * 3.6).toFixed(1), 'km/h'] : [(v * 2.23694).toFixed(1), 'mph'];
+const V = ([a, b]) => `${a}<small>${b}</small>`;
+
+function compareHeight(m) {
+  const list = [[0.05, 'a stack of five coins'], [0.15, 'a coffee mug'], [0.3, 'a ruler'], [0.5, 'a Pomeranian standing on a chair'], [0.75, 'a kitchen table'], [1.0, 'a kitchen counter'], [1.5, 'a fridge'], [2.2, 'a doorway'], [99, 'a basketball hoop']];
+  return list.find(x => m <= x[0])[1];
+}
+
+function statHTML(k, v, x, cls = '', wide = false) {
+  return `<div class="stat ${cls}${wide ? ' wide' : ''}"><div class="k">${k}</div><div class="v num">${v}</div>${x ? `<div class="x">${x}</div>` : ''}</div>`;
+}
+
+function showResults(r, rerender) {
+  lastRes = r;
+  show('results');
+  if (r.error) {
+    $('confBadge').innerHTML = '';
+    $('hero').innerHTML = statHTML('No flight found', '—', r.error, 'c3', true);
+    $('extra').innerHTML = '';
+    drawChart(r);
+    return;
+  }
+  if (!rerender && !r.demo) saveRecords(r);
+  $('confBadge').innerHTML = r.confident
+    ? '<span class="conf good">Clean reading</span>'
+    : '<span class="conf meh">Messy reading: airtime is solid, the speed and height numbers are rough</span>';
+  $('hero').innerHTML =
+    statHTML('Airtime', `${r.T.toFixed(2)}<small>s</small>`, `Weightless for ${Math.round(r.T * 1000)} ms`, 'c1') +
+    statHTML('Launch speed', V(spd(r.launchSpeed)), `Angle ${r.launchAngle.toFixed(0)}° above horizontal`, 'c2') +
+    statHTML('Net drop', V(len(r.drop)), r.drop >= 0 ? `Landed that much lower than you let go` : `Landed <i>higher</i> than you let go`, 'c1') +
+    statHTML('Peak height', V(len(r.peak)), r.peak > 0.02 ? `Above your hand. About the height of ${compareHeight(r.peak)}` : 'No upward rise', 'c4') +
+    statHTML('Impact speed', V(spd(r.impactSpeed)), `Top speed, just before landing`, 'c3') +
+    statHTML('Landing jolt', `${r.impactG.toFixed(1)}<small>g</small>`, r.impactG < 3 ? 'Soft landing' : r.impactG < 8 ? 'Firm landing' : 'Hard landing!', 'c3');
+  const f = r.face ? (r.face === 'up' ? 'Face up 👍' : 'Face down 🙃') : '—';
+  $('extra').innerHTML =
+    statHTML('Spin', `${Math.round(r.maxSpin)}<small>°/s</small>`, `${(r.maxSpin / 6).toFixed(0)} rpm at its fastest`) +
+    statHTML('Rotations', `${r.turns.toFixed(2)}`, `Mostly a ${r.domAxis}`) +
+    statHTML('Throw force', `${r.maxThrowG.toFixed(1)}<small>g</small>`, 'Hardest push from your hand') +
+    statHTML('Across the room', V(len(r.dist)), 'Sideways distance travelled') +
+    statHTML('Flight path', V(len(r.path)), 'Length of the curve it flew') +
+    statHTML('Impact energy', `${r.energy.toFixed(2)}<small>J</small>`, `A ${PHONE_KG * 1000} g phone at impact speed`) +
+    statHTML('Bounces', `${r.bounces}`, r.bounces ? 'Went airborne again after landing' : 'Stuck the landing') +
+    statHTML('Came to rest', `${r.settleTime.toFixed(2)}<small>s</small>`, 'From landing to fully still') +
+    statHTML('Landed', f, r.restTilt != null ? `${r.restTilt.toFixed(0)}° from flat` : '') +
+    statHTML('Sensor rate', `${Math.round(r.hz)}<small>Hz</small>`, `${r.n} readings in this recording`) +
+    statHTML('If dropped from rest', V(len(r.dropFromRest)), 'The drop height if you\'d simply let go and it fell for the same airtime', '', true);
+  requestAnimationFrame(() => drawChart(r));
+}
+
+function drawChart(r) {
+  const c = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = w * dpr; c.height = h * dpr;
+  const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  if (!r.S || !r.S.length) return;
+  const S = r.S;
+  let a = 0, b = S.length - 1;
+  if (r.main) { a = Math.max(0, r.i0 - Math.round(0.4 * r.hz)); b = Math.min(S.length - 1, r.settleIdx + Math.round(0.4 * r.hz)); }
+  const t0 = S[a].t, t1 = S[b].t || t0 + 1;
+  const maxG = Math.max(2, ...r.mag.slice(a, b + 1).map(m => m / G)) * 1.1;
+  const L = 30, B = 20, X = t => L + (t - t0) / (t1 - t0) * (w - L - 6), Y = gv => h - B - gv / maxG * (h - B - 8);
+  const shade = (i, j, col) => { ctx.fillStyle = col; ctx.fillRect(X(S[i].t), 0, X(S[j].t) - X(S[i].t), h - B); };
+  if (r.main) {
+    shade(Math.max(a, r.i0), r.main.a, 'rgba(255,181,71,0.28)');
+    shade(r.main.a, r.main.b, 'rgba(63,216,255,0.16)');
+  }
+  // grid
+  ctx.strokeStyle = '#26345a'; ctx.fillStyle = '#8a98b8'; ctx.font = '10px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
+  const step = maxG > 8 ? 4 : maxG > 4 ? 2 : 1;
+  for (let gv = 0; gv <= maxG; gv += step) { ctx.beginPath(); ctx.moveTo(L, Y(gv)); ctx.lineTo(w, Y(gv)); ctx.stroke(); ctx.fillText(gv + 'g', 2, Y(gv) + 3); }
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#8a98b8'; ctx.beginPath(); ctx.moveTo(L, Y(1)); ctx.lineTo(w, Y(1)); ctx.stroke(); ctx.setLineDash([]);
+  for (let s = 0; s <= t1 - t0; s += 0.5) ctx.fillText(s.toFixed(1) + 's', X(t0 + s) - 8, h - 5);
+  if (r.impactIdx != null) { ctx.strokeStyle = '#ff5d6c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(S[r.impactIdx].t), 0); ctx.lineTo(X(S[r.impactIdx].t), h - B); ctx.stroke(); }
+  ctx.strokeStyle = '#3fd8ff'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
+  for (let i = a; i <= b; i++) { const x = X(S[i].t), y = Y(r.mag[i] / G); i === a ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+  ctx.stroke();
+}
+
+// ---------------------------------------------------------------- records (per-device convenience only)
+function loadRecords() { try { return JSON.parse(localStorage.getItem('throwlab.records') || '{}'); } catch (e) { return {}; } }
+function saveRecords(r) {
+  const rec = loadRecords();
+  const upd = (k, v) => { if (!(rec[k] >= v)) rec[k] = v; };
+  upd('air', r.T); upd('spin', r.maxSpin); upd('turns', r.turns); upd('impact', r.impactSpeed); upd('g', r.impactG);
+  rec.count = (rec.count || 0) + 1;
+  try { localStorage.setItem('throwlab.records', JSON.stringify(rec)); } catch (e) {}
+}
+function renderRecords() {
+  const r = loadRecords();
+  if (!r.count) { $('recordsCard').style.display = 'none'; return; }
+  $('recordsCard').style.display = '';
+  const sp = spd(r.impact || 0);
+  $('records').innerHTML =
+    `<div class="rec"><span>Throws</span><span class="num">${r.count}</span></div>` +
+    `<div class="rec"><span>Longest airtime</span><span class="num">${(r.air || 0).toFixed(2)} s</span></div>` +
+    `<div class="rec"><span>Fastest impact</span><span class="num">${sp[0]} ${sp[1]}</span></div>` +
+    `<div class="rec"><span>Most rotations</span><span class="num">${(r.turns || 0).toFixed(2)}</span></div>` +
+    `<div class="rec"><span>Hardest landing</span><span class="num">${(r.g || 0).toFixed(1)} g</span></div>`;
+}
+
+// ---------------------------------------------------------------- demo: a synthetic throw at 60 Hz
+function demoThrow() {
+  const S = [], hz = 60, dt = 1 / hz; let t = 0;
+  const rnd = () => (Math.random() - 0.5) * 0.15;
+  const add = (lin, grav, rot) => { S.push({ t, ax: lin[0] + rnd(), ay: lin[1] + rnd(), az: lin[2] + rnd(),
+    gx: lin[0] + grav[0] + rnd(), gy: lin[1] + grav[1] + rnd(), gz: lin[2] + grav[2] + rnd(), ra: rot[0], rb: rot[1], rg: rot[2] }); t += dt; };
+  const up = [0, 0, G];
+  for (let i = 0; i < 36; i++) add([0, 0, 0], up, [0, 0, 0]);                       // resting in hand
+  for (let i = 0; i < 12; i++) { const k = Math.sin(Math.PI * (i + 0.5) / 12); add([9 * k, 0, 16 * k], up, [0, 40 * k, 0]); } // the throw
+  for (let i = 0; i < 38; i++) add([0, 0, -G], [0, 0, G], [30, 420, 60]);          // free fall, spinning
+  add([0, 0, 38], up, [0, 80, 0]); add([0, 0, 18], up, [0, 40, 0]);                 // thump
+  for (let i = 0; i < 4; i++) add([0, 0, -G], [0, 0, G], [0, 60, 0]);               // tiny bounce
+  add([0, 0, 9], up, [0, 10, 0]);
+  for (let i = 0; i < 50; i++) add([0, 0, 0], up, [0, 0, 0]);                      // at rest on the couch
+  const r = analyze(S, { beta: 3, gamma: -8, have: true });
+  r.demo = true;
+  showResults(r, false);
+}
+$('demoBtn').addEventListener('click', demoThrow);
+window.demoThrow = demoThrow;
+</script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e3440">
+<title>Water Plate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0e3440; position: fixed; inset: 0;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .chip { position: fixed; z-index: 20; top: calc(env(safe-area-inset-top, 0px) + 8px);
+    background: rgba(10,30,40,0.45); color: #e8f7fb; border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 10px; font-size: 13px; padding: 6px 10px; text-decoration: none; font-family: inherit;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  #homeBtn { left: 12px; }
+  #tools { position: fixed; z-index: 20; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px); display: flex; gap: 6px; }
+  #tools .chip { position: static; min-width: 36px; }
+  #overlay { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 50% 40%, rgba(20,80,100,0.55), rgba(5,20,28,0.85)); color: #e8f7fb; text-align: center; padding: 24px; }
+  #overlay.hide { display: none; }
+  #overlay h1 { font-size: 40px; font-weight: 800; letter-spacing: -0.5px; }
+  #overlay p { font-size: 16px; line-height: 1.5; opacity: 0.85; margin-top: 12px; max-width: 320px; }
+  #startBtn { margin-top: 28px; border: 0; border-radius: 16px; padding: 16px 36px; font-size: 18px; font-weight: 700;
+    background: #7fe3ff; color: #06303c; font-family: inherit; box-shadow: 0 8px 30px rgba(127,227,255,0.35); }
+  #note { font-size: 13px !important; opacity: 0.7 !important; }
+  #err { color: #ffb3b3; }
+  #toast { position: fixed; z-index: 25; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); transform: translateX(-50%);
+    background: rgba(10,30,40,0.55); color: #e8f7fb; padding: 8px 14px; border-radius: 999px; font-size: 13px; opacity: 0;
+    transition: opacity 0.4s; pointer-events: none; white-space: nowrap; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<a id="homeBtn" class="chip" href="index.html">&#8962; Home</a>
+<div id="tools">
+  <button class="chip" id="styleBtn">Surface</button>
+  <button class="chip" id="lessBtn">−</button>
+  <button class="chip" id="moreBtn">+</button>
+</div>
+<div id="toast"></div>
+<div id="overlay">
+  <h1>Water Plate</h1>
+  <p>Your screen becomes a thin sheet of water. Tilt it and the water runs downhill. Give it a shake and it sloshes. Drag a finger through it to make waves.</p>
+  <button id="startBtn">Pour the water</button>
+  <p id="note">Hold the phone flat to start. iPhone will ask to use Motion &amp; Orientation.</p>
+</div>
+
+<script>
+// ---------------------------------------------------------------- simulation (shallow water, "virtual pipes")
+// Units: millimetres and seconds. The grid is the real size of an iPhone screen.
+const G_MM = 9810;
+const NX = 64;
+const PW = 70;                 // screen width in mm
+let NY, PH, Lc, N;
+let h, fL, fR, fT, fB, wet;
+const FILM = 0.05;             // mm of water that clings to the surface and won't flow
+const FRIC = 0.35, VISC = 0.9; // bulk damping, plus extra drag in thin layers
+let depth = 2.2;               // average depth in mm
+let targetVol = 0, pouring = true;
+
+function allocate() {
+  NY = Math.max(40, Math.round(NX * innerHeight / innerWidth));
+  PH = PW * NY / NX; Lc = PW / NX; N = NX * NY;
+  h = new Float32Array(N); fL = new Float32Array(N); fR = new Float32Array(N);
+  fT = new Float32Array(N); fB = new Float32Array(N); wet = new Float32Array(N);
+  targetVol = depth * N; pouring = true;
+}
+
+let gx = 0, gy = 0, gn = G_MM;  // in-plane gravity (screen x right, y down) and the normal component
+function stepSim(dt) {
+  const gxL = gx * Lc, gyL = gy * Lc, g = gn;
+  for (let y = 0, i = 0; y < NY; y++) {
+    for (let x = 0; x < NX; x++, i++) {
+      const hi = h[i], avail = hi - FILM;
+      if (avail <= 0) { fL[i] = fR[i] = fT[i] = fB[i] = 0; continue; }
+      let damp = 1 - dt * (FRIC + VISC / (hi + 0.25)); if (damp < 0) damp = 0;
+      const k = dt * avail / Lc;
+      let r = x < NX - 1 ? fR[i] * damp + k * (g * (hi - h[i + 1]) + gxL) : 0;
+      let l = x > 0 ? fL[i] * damp + k * (g * (hi - h[i - 1]) - gxL) : 0;
+      let b = y < NY - 1 ? fB[i] * damp + k * (g * (hi - h[i + NX]) + gyL) : 0;
+      let t = y > 0 ? fT[i] * damp + k * (g * (hi - h[i - NX]) - gyL) : 0;
+      if (r < 0) r = 0; if (l < 0) l = 0; if (b < 0) b = 0; if (t < 0) t = 0;
+      const out = (r + l + b + t) * dt / Lc;
+      if (out > avail) { const s = avail / out; r *= s; l *= s; b *= s; t *= s; }
+      fR[i] = r; fL[i] = l; fB[i] = b; fT[i] = t;
+    }
+  }
+  const c = dt / Lc;
+  for (let y = 0, i = 0; y < NY; y++) {
+    for (let x = 0; x < NX; x++, i++) {
+      let inflow = 0;
+      if (x > 0) inflow += fR[i - 1];
+      if (x < NX - 1) inflow += fL[i + 1];
+      if (y > 0) inflow += fB[i - NX];
+      if (y < NY - 1) inflow += fT[i + NX];
+      h[i] += c * (inflow - fR[i] - fL[i] - fB[i] - fT[i]);
+    }
+  }
+}
+
+// A light, mass-conserving blur that only really affects the finest ripples. The pipe model otherwise
+// grows a grid-sized checkerboard in deep water.
+function smooth(k) {
+  for (let y = 0, i = 0; y < NY; y++) {
+    for (let x = 0; x < NX; x++, i++) {
+      if (x < NX - 1) { const d = k * (h[i] - h[i + 1]); h[i] -= d; h[i + 1] += d; }
+      if (y < NY - 1) { const d = k * (h[i] - h[i + NX]); h[i] -= d; h[i + NX] += d; }
+    }
+  }
+}
+
+// fingers push water: momentum along the finger's motion plus a little outward shove
+const fingers = new Map();
+function applyFingers(dt) {
+  const R = 4.5;
+  for (const f of fingers.values()) {
+    const cx = f.x / innerWidth * NX, cy = f.y / innerHeight * NY;
+    const x0 = Math.max(0, Math.floor(cx - R)), x1 = Math.min(NX - 1, Math.ceil(cx + R));
+    const y0 = Math.max(0, Math.floor(cy - R)), y1 = Math.min(NY - 1, Math.ceil(cy + R));
+    const push = f.fresh ? 900 : 120;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      const w = (1 - d / R) ** 2, i = y * NX + x, hi = Math.max(0, h[i] - FILM);
+      const nx = d > 0.01 ? dx / d : 0, ny = d > 0.01 ? dy / d : 0;
+      const vx = (f.vx * 0.9 + nx * push) * w, vy = (f.vy * 0.9 + ny * push) * w;
+      const a = Math.min(1, dt * 14);
+      if (vx > 0) fR[i] += vx * hi * a; else fL[i] -= vx * hi * a;
+      if (vy > 0) fB[i] += vy * hi * a; else fT[i] -= vy * hi * a;
+    }
+    f.fresh = false;
+  }
+}
+
+function pour(dt) {
+  let vol = 0; for (let i = 0; i < N; i++) vol += h[i];
+  const need = targetVol - vol;
+  if (Math.abs(need) < 1) { pouring = false; return; }
+  if (need > 0) {
+    // a stream landing near the middle, wandering a little
+    const t = performance.now() / 1000;
+    const cx = NX / 2 + Math.sin(t * 1.7) * 3, cy = NY * 0.45 + Math.cos(t * 1.3) * 4, R = 3;
+    const add = Math.min(need, N * 6 * dt);
+    let wsum = 0; const cells = [];
+    for (let y = Math.floor(cy - R); y <= cy + R; y++) for (let x = Math.floor(cx - R); x <= cx + R; x++) {
+      if (x < 0 || y < 0 || x >= NX || y >= NY) continue;
+      const w = Math.max(0, 1 - Math.hypot(x - cx, y - cy) / R); if (w > 0) { cells.push([y * NX + x, w]); wsum += w; }
+    }
+    for (const [i, w] of cells) h[i] += add * w / wsum;
+  } else {
+    const s = Math.max(0, (vol + Math.max(need, -N * 3 * dt)) / vol);
+    for (let i = 0; i < N; i++) h[i] *= s;
+  }
+}
+
+// ---------------------------------------------------------------- tilt + shake input
+let tiltX = 0, tiltY = 0, tiltZ = 1, haveTilt = false;  // unit gravity in screen coords
+let shakeX = 0, shakeY = 0;
+const keys = {};
+function onOrient(e) {
+  if (e.beta == null) return;
+  haveTilt = true;
+  const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+  // gravity (pointing down) in phone axes is (sin g·cos b, -sin b, -cos g·cos b); screen y is flipped
+  tiltX = Math.sin(g) * Math.cos(b);
+  tiltY = Math.sin(b);
+  tiltZ = Math.abs(Math.cos(g) * Math.cos(b));
+}
+function onMotion(e) {
+  const a = e.acceleration; if (!a || a.x == null) return;
+  // water is flung opposite to how the phone accelerates (m/s² → mm/s²)
+  shakeX = -a.x * 1000 * 0.7;
+  shakeY = a.y * 1000 * 0.7;
+}
+addEventListener('keydown', e => { keys[e.key] = true; });
+addEventListener('keyup', e => { keys[e.key] = false; });
+
+let sX = 0, sY = 0, sZ = 1;
+function updateGravity(dt) {
+  let tx = tiltX, ty = tiltY, tz = tiltZ;
+  const kx = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), ky = (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0);
+  if (kx || ky) { const s = 0.35; tx = kx * s; ty = ky * s; tz = Math.sqrt(1 - Math.min(0.9, tx * tx + ty * ty)); }
+  else if (!haveTilt) { tx = 0; ty = 0; tz = 1; }
+  const a = Math.min(1, dt * 20);
+  sX += (tx - sX) * a; sY += (ty - sY) * a; sZ += (tz - sZ) * a;
+  gx = sX * G_MM + shakeX; gy = sY * G_MM + shakeY;
+  gn = Math.max(0.12, sZ) * G_MM;
+  shakeX *= 0.5; shakeY *= 0.5;
+}
+
+// ---------------------------------------------------------------- WebGL rendering
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+const VS = `#version 300 es
+in vec2 p; out vec2 vUv;
+void main(){ vUv = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p,0.,1.); }`;
+const FS = `#version 300 es
+precision highp float;
+uniform sampler2D uH; uniform vec2 uTex; uniform vec2 uMM; uniform int uStyle; uniform vec2 uTilt; uniform float uTime;
+in vec2 vUv; out vec4 o;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+vec3 surface(vec2 p){
+  if (uStyle == 0) {            // pool tiles
+    float ts = 6.0; vec2 c = floor(p/ts), f = fract(p/ts)*ts;
+    float grout = min(min(f.x, ts-f.x), min(f.y, ts-f.y));
+    float v = hash(c)*0.06;
+    vec3 tile = vec3(0.80+v, 0.93+v*0.5, 0.96) * (0.97 + 0.03*noise(p*0.8));
+    if (hash(c+7.3) > 0.93) tile = vec3(0.35,0.62,0.78);
+    vec3 g = vec3(0.62,0.70,0.72);
+    return mix(g, tile, smoothstep(0.35, 0.75, grout));
+  } else if (uStyle == 1) {     // blue-and-white ceramic plate
+    vec2 q = p - uMM*0.5; float r = length(q), a = atan(q.y, q.x);
+    vec3 white = vec3(0.97,0.96,0.93), blue = vec3(0.13,0.27,0.62);
+    float edge = min(min(p.x, uMM.x-p.x), min(p.y, uMM.y-p.y));
+    float band = smoothstep(3.0,3.4,edge) * (1.-smoothstep(9.0,9.4,edge));
+    vec2 dp = fract(p/3.2)-0.5; float dots = 1.-smoothstep(0.18,0.24,length(dp));
+    vec3 col = white * (0.94 + 0.06*smoothstep(0.,uMM.y*0.6,uMM.y*0.6-r));
+    col = mix(col, blue, band*(0.85 - 0.75*dots));
+    float line = 1.-smoothstep(0.25,0.55,abs(edge-10.6));
+    col = mix(col, blue, line);
+    float petals = 13.0*abs(cos(2.5*a)) + 3.0;
+    float flower = 1.-smoothstep(petals-0.5, petals+0.2, r);
+    float inner = 1.-smoothstep(4.5,5.0,r);
+    col = mix(col, blue, flower*(1.-inner)*0.85);
+    col = mix(col, vec3(0.85,0.65,0.25), inner*(1.-smoothstep(2.0,2.4,r)));
+    float ring = 1.-smoothstep(0.2,0.45,abs(r-22.0)); col = mix(col, blue, ring*0.8);
+    return col;
+  } else {                      // oiled oak table
+    float n = noise(p*vec2(0.08,0.9))*5.0 + noise(p*0.3)*1.5;
+    float grain = sin(p.x*0.9 + n*3.0)*0.5+0.5;
+    vec3 a = vec3(0.55,0.34,0.18), b = vec3(0.72,0.50,0.30);
+    vec3 col = mix(a, b, smoothstep(0.1,0.9,grain));
+    col *= 0.9 + 0.1*noise(p*vec2(0.5,6.0));
+    float plank = abs(fract(p.x/23.0)-0.5); col *= mix(0.55,1.0,smoothstep(0.47,0.5,0.5-plank+0.47));
+    return col;
+  }
+}
+void main(){
+  vec2 uv = vUv;
+  vec2 hs = texture(uH, uv).rg; float h = hs.r;
+  float hl = texture(uH, uv-vec2(uTex.x,0)).r, hr = texture(uH, uv+vec2(uTex.x,0)).r;
+  float hu = texture(uH, uv-vec2(0,uTex.y)).r, hd = texture(uH, uv+vec2(0,uTex.y)).r;
+  float Lc = uMM.x*uTex.x;
+  vec2 grad = vec2(hr-hl, hd-hu)/(2.0*Lc);
+  vec3 n = normalize(vec3(-grad*1.6, 1.0));
+  float m = smoothstep(0.08, 0.22, h);
+  vec2 p = uv*uMM;
+  vec2 pr = p - n.xy*(min(h,4.0)*2.0 + 0.3)*m;
+  vec3 col = surface(pr);
+  // wet surfaces look darker and richer
+  col *= mix(1.0, 0.9, max(hs.g*0.7, m));
+  // light absorption through the water: red goes first
+  col *= exp(-vec3(0.07,0.022,0.012)*h*m);
+  col = mix(col, vec3(0.04,0.30,0.38), (1.0-exp(-h*0.03))*m);
+  // caustics: crests focus light onto the bottom, troughs spread it out
+  float lap = (hl+hr+hu+hd-4.0*h)/(Lc*Lc);
+  col *= 1.0 + clamp(-lap*2.2, -0.35, 1.0)*m;
+  // thin edges of a puddle bend light and look dark
+  float edge = smoothstep(0.04,0.12,h)*(1.0-smoothstep(0.14,0.55,h));
+  col *= 1.0 - edge*0.35;
+  // a ceiling light reflected in the surface, sliding as you tilt
+  vec2 rp = uv + n.xy*0.9 + uTilt*vec2(0.45,0.3);
+  vec2 lp = abs(rp - vec2(0.32,0.2)) - vec2(0.09,0.05);
+  float win = 1.0 - smoothstep(0.0, 0.09, length(max(lp,0.0)));
+  col += win*win*0.12*m;
+  vec3 L = normalize(vec3(-0.35 + uTilt.x*0.8, -0.55 + uTilt.y*0.8, 0.75));
+  vec3 H = normalize(L + vec3(0,0,1));
+  float nh = max(dot(n,H),0.0);
+  col += (pow(nh,260.0)*2.2 + pow(nh,28.0)*0.10)*m;
+  col += (1.0-n.z)*0.9*m*vec3(0.7,0.85,0.9);
+  // soft vignette
+  vec2 v = uv-0.5; col *= 1.0 - dot(v,v)*0.35;
+  o = vec4(pow(col, vec3(0.97)), 1.0);
+}`;
+
+let prog, tex, uTex, uMM, uStyle, uTilt, uTime, upload;
+let style = 0;
+function initGL() {
+  if (!gl) return false;
+  const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x);
+    if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  uTex = gl.getUniformLocation(prog, 'uTex'); uMM = gl.getUniformLocation(prog, 'uMM');
+  uStyle = gl.getUniformLocation(prog, 'uStyle'); uTilt = gl.getUniformLocation(prog, 'uTilt'); uTime = gl.getUniformLocation(prog, 'uTime');
+  gl.uniform1i(gl.getUniformLocation(prog, 'uH'), 0);
+  return true;
+}
+function resize() {
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+  if (h) return;                 // keep the same grid (and the water) when Safari's bars resize the page
+  allocate();
+  upload = new Float32Array(N * 2);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, NX, NY, 0, gl.RG, gl.FLOAT, null);
+}
+function render(t) {
+  for (let i = 0, j = 0; i < N; i++, j += 2) { upload[j] = h[i]; upload[j + 1] = wet[i]; }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, NX, NY, gl.RG, gl.FLOAT, upload);
+  gl.uniform2f(uTex, 1 / NX, 1 / NY); gl.uniform2f(uMM, PW, PH);
+  gl.uniform1i(uStyle, style); gl.uniform2f(uTilt, sX, sY); gl.uniform1f(uTime, t);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ---------------------------------------------------------------- loop
+let last = performance.now();
+function frame(now) {
+  let dt = Math.min(1 / 30, (now - last) / 1000); last = now;
+  updateGravity(dt);
+  if (pouring) pour(dt);
+  applyFingers(dt);
+  // enough substeps that the fastest wave never skips a cell
+  let hmax = 0; for (let i = 0; i < N; i++) if (h[i] > hmax) hmax = h[i];
+  const c = Math.sqrt(gn * Math.max(hmax, 0.5)) + Math.hypot(gx, gy) * 0.004;
+  const sub = Math.min(40, Math.max(2, Math.ceil(dt * c / (0.35 * Lc))));
+  const sdt = dt / sub;
+  for (let s = 0; s < sub; s++) stepSim(sdt);
+  smooth(0.1);
+  const dry = Math.exp(-dt / 5);
+  for (let i = 0; i < N; i++) {
+    if (!(h[i] >= 0)) { h.fill(0); fL.fill(0); fR.fill(0); fT.fill(0); fB.fill(0); pouring = true; break; } // NaN guard: start over rather than freeze
+    wet[i] = h[i] > 0.15 ? 1 : wet[i] * dry;
+  }
+  render(now / 1000);
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- touch + UI
+canvas.addEventListener('pointerdown', e => { fingers.set(e.pointerId, { x: e.clientX, y: e.clientY, vx: 0, vy: 0, t: e.timeStamp, fresh: true }); });
+canvas.addEventListener('pointermove', e => {
+  const f = fingers.get(e.pointerId); if (!f) return;
+  const dt = Math.max(0.008, (e.timeStamp - f.t) / 1000);
+  const mmPerPx = PW / innerWidth;
+  const vx = (e.clientX - f.x) * mmPerPx / dt, vy = (e.clientY - f.y) * mmPerPx / dt;
+  const cap = 900, sp = Math.hypot(vx, vy), k = sp > cap ? cap / sp : 1;
+  f.vx = f.vx * 0.5 + vx * k * 0.5; f.vy = f.vy * 0.5 + vy * k * 0.5;
+  f.x = e.clientX; f.y = e.clientY; f.t = e.timeStamp;
+});
+const lift = e => fingers.delete(e.pointerId);
+canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
+
+let toastTimer;
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 1600); }
+const STYLES = ['Pool tiles', 'Ceramic plate', 'Oak table'];
+document.getElementById('styleBtn').addEventListener('click', () => { style = (style + 1) % 3; toast(STYLES[style]); });
+function setDepth(d) { depth = Math.max(0.6, Math.min(5, d)); targetVol = depth * N; pouring = true; toast(`Water depth ${depth.toFixed(1)} mm`); }
+document.getElementById('moreBtn').addEventListener('click', () => setDepth(depth + 0.6));
+document.getElementById('lessBtn').addEventListener('click', () => setDepth(depth - 0.6));
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  // iOS: both permission requests must start inside this click, with no await in between
+  const needO = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+  if (needO) {
+    const po = DeviceOrientationEvent.requestPermission();
+    const pm = typeof DeviceMotionEvent.requestPermission === 'function' ? DeviceMotionEvent.requestPermission() : Promise.resolve('granted');
+    Promise.all([po, pm]).then(([o, m]) => {
+      if (o === 'granted') addEventListener('deviceorientation', onOrient);
+      if (m === 'granted') addEventListener('devicemotion', onMotion);
+      if (o !== 'granted') toast('Tilt is off. Motion access was denied.');
+    }).catch(err => toast('Tilt is off: ' + (err && err.message || err)));
+  } else {
+    addEventListener('deviceorientation', onOrient);
+    addEventListener('devicemotion', onMotion);
+  }
+  document.getElementById('overlay').classList.add('hide');
+  h.fill(0); fL.fill(0); fR.fill(0); fT.fill(0); fB.fill(0); wet.fill(0); pouring = true;
+});
+
+try {
+  if (!initGL()) throw new Error('This phone\'s browser doesn\'t support WebGL2.');
+  resize();
+  addEventListener('resize', () => { resize(); });
+  requestAnimationFrame(frame);
+} catch (err) {
+  document.getElementById('note').innerHTML = '<span id="err">' + String(err.message || err).replace(/</g, '&lt;') + '</span>';
+}
+</script>
+</body>
+</html>

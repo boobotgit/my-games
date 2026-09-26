@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#9fd8f0">
+<title>Boo's Chicken Chase</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; inset: 0; background: #9fd8f0;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    font-family: "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; z-index: 10; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 6px; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  .chip { background: rgba(255,255,255,0.78); color: #5a3a1e; border: 0; border-radius: 12px; font-size: 13px; font-weight: 700;
+    padding: 7px 11px; text-decoration: none; font-family: inherit; box-shadow: 0 2px 8px rgba(60,40,20,0.15); white-space: nowrap; }
+  #hudMid { flex: 1; display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+  #score { font-variant-numeric: tabular-nums; }
+  .overlay { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; padding: 20px;
+    background: rgba(40,70,90,0.35); }
+  #card { align-items: flex-end; background: linear-gradient(to bottom, rgba(40,70,90,0) 45%, rgba(40,70,90,0.35));
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+  #card .panel { padding: 16px 18px; }
+  .overlay.show { display: flex; }
+  .panel { background: #fff8ec; border-radius: 22px; padding: 22px 20px; max-width: 360px; width: 100%; text-align: center;
+    color: #5a3a1e; box-shadow: 0 16px 50px rgba(40,30,10,0.35); border: 3px solid #f0c890; max-height: 92vh; overflow-y: auto; }
+  .panel h1 { font-size: 30px; line-height: 1.05; color: #e0761e; letter-spacing: -0.5px; }
+  .panel h2 { font-size: 24px; color: #e0761e; }
+  .panel p { font-size: 15px; line-height: 1.45; margin-top: 10px; color: #6d5238; }
+  .panel ul { text-align: left; margin: 12px 0 0 0; padding: 0; list-style: none; }
+  .panel li { font-size: 14px; line-height: 1.4; margin: 7px 0; color: #6d5238; padding-left: 26px; position: relative; }
+  .panel li span { position: absolute; left: 0; top: -1px; font-size: 16px; }
+  .big { display: block; width: 100%; margin-top: 16px; border: 0; border-radius: 16px; padding: 15px; font-size: 18px; font-weight: 800;
+    background: #f08a2c; color: #fff; font-family: inherit; box-shadow: 0 5px 0 #c96a16; }
+  .big.alt { background: #fff; color: #c96a16; box-shadow: 0 4px 0 #f0c890; border: 2px solid #f0c890; font-size: 16px; padding: 12px; }
+  .small { font-size: 12px !important; opacity: 0.8; }
+  .stats { display: flex; justify-content: center; gap: 22px; margin-top: 12px; }
+  .stats div { font-size: 12px; color: #9a7a58; text-transform: uppercase; letter-spacing: 1px; }
+  .stats b { display: block; font-size: 26px; color: #5a3a1e; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  #err { color: #c0392b; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <a class="chip" id="homeBtn" href="index.html">&#8962; Home</a>
+  <div id="hudMid"><span class="chip" id="lvl">Level 1</span><span class="chip" id="chk">🐔 3</span></div>
+  <span class="chip" id="score">0</span>
+  <button class="chip" id="recenterBtn">⟲</button>
+</div>
+
+<div class="overlay show" id="titleCard"><div class="panel">
+  <h1>Boo's Chicken Chase</h1>
+  <p>Boo is hungry, and there are chickens loose in the yard.</p>
+  <ul>
+    <li><span>📱</span>Tilt the phone to steer Boo. The further you tilt, the faster Boo runs. Hold it level and Boo sits.</li>
+    <li><span>🧭</span>The yard is a diamond, so tilt toward one of its four corners to pick a direction.</li>
+    <li><span>🐔</span>Catch every chicken to clear the level.</li>
+    <li><span>💩</span>Every chicken comes back out the other end. Don't step in it!</li>
+  </ul>
+  <button class="big" id="startBtn">Let's go!</button>
+  <p class="small" id="startNote">iPhone will ask to use Motion &amp; Orientation.</p>
+</div></div>
+
+<div class="overlay" id="card"><div class="panel" id="cardBody"></div></div>
+
+<script>
+// ============================================================ constants
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];                 // +x, +y, -x, -y on the grid
+const PROJ = [[0.894, 0.447], [-0.894, 0.447], [-0.894, -0.447], [0.894, -0.447]]; // where each points on screen
+const DEAD = 0.07, FULL = 0.36;                                   // tilt (sine of angle): dead zone, full speed
+const MIN_SPD = 1.8, MAX_SPD = 7.5;                               // tiles per second
+const COL = { line: '#b8601c', body: '#ec8a2f', head: '#f09a3e', light: '#f7b660', cream: '#fde7c6', leg: '#d4742a',
+  poop: '#8a5328', poopD: '#5e3616', poopL: '#b27a48' };
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ============================================================ game state
+let state = 'title', level = 1, score = 0, levelStartScore = 0, S = 8, t = 0, levelTime = 0;
+let dog, chickens = [], poop = [], poopGrid = [], parts = [], pops = [];
+let best = 0; try { best = +localStorage.getItem('boochase.best') || 0; } catch (e) {}
+
+function cfg(L) {
+  return { S: Math.min(13, 7 + L), n: Math.min(12, 2 + L), hop: Math.max(0.38, 1.25 - 0.11 * L), flee: Math.min(0.65, 0.12 * (L - 1)) };
+}
+function setupLevel(L) {
+  const c = cfg(L); S = c.S;
+  dog = { tx: S >> 1, ty: S >> 1, dir: 0, moving: false, prog: 0, speed: 0, phase: 0, pose: 'idle', mouth: 0, rot: 0, lift: 0, cover: 0, skid: 0 };
+  poop = []; poopGrid = new Array(S * S).fill(null); parts = []; pops = []; chickens = [];
+  let guard = 0;
+  while (chickens.length < c.n && guard++ < 999) {
+    const x = Math.floor(Math.random() * S), y = Math.floor(Math.random() * S);
+    if (Math.abs(x - dog.tx) + Math.abs(y - dog.ty) < 3) continue;
+    if (chickens.some(k => k.tx === x && k.ty === y)) continue;
+    chickens.push({ tx: x, ty: y, px: x, py: y, hopT: 1, next: rnd(0.3, 1.5), flip: Math.random() < 0.5, peck: 0, seed: Math.random() * 10 });
+  }
+  levelTime = 0;
+  layout(true);
+  updateHud();
+}
+
+// ============================================================ layout + camera
+let W, H, dpr, TW, TH, SC, viewTop, viewH, camX = 0, camY = 0, ox = 0, oy = 0, thick = 0;
+let boardCv = document.createElement('canvas'), boardPad = 6;
+function layout(snap) {
+  W = innerWidth; H = innerHeight; dpr = Math.min(3, devicePixelRatio || 1);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  viewTop = $('hud').getBoundingClientRect().bottom + 4;
+  viewH = H - viewTop - 8;
+  TW = Math.floor(Math.min(W / (S * (W < H ? 0.6 : 0.74)), viewH / (S * 0.5 + 1.6)) / 2) * 2;   // portrait: zoom in and pan
+  TW = clamp(TW, 30, 110); TH = TW / 2; SC = TW / 64; thick = TH * 0.9;
+  renderBoard();
+  if (snap) { const c = camTarget(); camX = c[0]; camY = c[1]; }
+}
+function camTarget() {
+  const p = dogPos(), lx = (p[0] - p[1]) * TW / 2, ly = (p[0] + p[1]) * TH / 2, m = 18;
+  const bw = S * TW, bh = S * TH + thick;
+  const cx = bw + 2 * m <= W ? 0 : clamp(lx, -bw / 2 - m + W / 2, bw / 2 + m - W / 2);
+  const top = -TH * 1.4;           // room for the dog's head on the far tiles
+  const cy = (bh - top) + 2 * m <= viewH ? (bh + top) / 2 : clamp(ly, top - m + viewH / 2, bh + m - viewH / 2);
+  return [cx, cy];
+}
+function iso(x, y) { return [ox + (x - y) * TW / 2, oy + (x + y) * TH / 2]; }
+
+function renderBoard() {
+  const bw = S * TW + boardPad * 2, bh = S * TH + thick + boardPad * 2;
+  boardCv.width = Math.round(bw * dpr); boardCv.height = Math.round(bh * dpr);
+  const b = boardCv.getContext('2d');
+  b.setTransform(dpr, 0, 0, dpr, 0, 0);
+  b.translate(bw / 2, boardPad);
+  const R = mulberry(level * 7919);
+  // earth sides of the island
+  for (let k = 0; k < S; k++) {
+    // right face, under the x = S-1 edge
+    let cx = (S - 1 - k) * TW / 2, cy = (S - 1 + k + 1) * TH / 2;
+    face(b, cx + TW / 2, cy, cx, cy + TH / 2, '#8f6036', '#744b28');
+    // left face, under the y = S-1 edge
+    cx = (k - (S - 1)) * TW / 2; cy = (k + S - 1 + 1) * TH / 2;
+    face(b, cx - TW / 2, cy, cx, cy + TH / 2, '#a8723f', '#8c5d32');
+  }
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const cx = (i - j) * TW / 2, cy = (i + j + 1) * TH / 2;
+    const v = (R() - 0.5) * 10;
+    const base = (i + j) % 2 ? [134, 201, 92] : [147, 212, 104];
+    b.fillStyle = `rgb(${base[0] + v},${base[1] + v},${base[2] + v * 0.5})`;
+    diamond(b, cx, cy); b.fill();
+    b.strokeStyle = 'rgba(40,90,20,0.10)'; b.lineWidth = 1; b.stroke();
+    // grass tufts and the odd flower
+    b.strokeStyle = 'rgba(70,140,40,0.55)'; b.lineWidth = Math.max(1, SC);
+    for (let k = 0; k < 3; k++) {
+      const u = R() - 0.5, w = R() - 0.5;
+      const gx = cx + (u - w) * TW * 0.6, gy = cy + (u + w) * TH * 0.6;
+      b.beginPath(); b.moveTo(gx - 2 * SC, gy); b.lineTo(gx - 1 * SC, gy - 3 * SC); b.moveTo(gx, gy); b.lineTo(gx + 0.5 * SC, gy - 4 * SC);
+      b.moveTo(gx + 2 * SC, gy); b.lineTo(gx + 2.5 * SC, gy - 3 * SC); b.stroke();
+    }
+    if (R() < 0.1) {
+      const u = R() - 0.5, w = R() - 0.5, fx = cx + (u - w) * TW * 0.5, fy = cy + (u + w) * TH * 0.5;
+      const pc = R() < 0.5 ? '#fff' : '#ffd84a';
+      for (let a = 0; a < 5; a++) { b.fillStyle = pc; b.beginPath(); b.arc(fx + Math.cos(a * 1.256) * 1.6 * SC, fy + Math.sin(a * 1.256) * 0.9 * SC - 1, 1.2 * SC, 0, 7); b.fill(); }
+      b.fillStyle = '#f0a020'; b.beginPath(); b.arc(fx, fy - 1, 0.9 * SC, 0, 7); b.fill();
+    }
+  }
+}
+function diamond(b, cx, cy) { b.beginPath(); b.moveTo(cx, cy - TH / 2); b.lineTo(cx + TW / 2, cy); b.lineTo(cx, cy + TH / 2); b.lineTo(cx - TW / 2, cy); b.closePath(); }
+function face(b, x1, y1, x2, y2, c1, c2) {
+  b.beginPath(); b.moveTo(x1, y1); b.lineTo(x2, y2); b.lineTo(x2, y2 + thick); b.lineTo(x1, y1 + thick); b.closePath();
+  b.fillStyle = c1; b.fill();
+  b.fillStyle = c2; b.beginPath(); b.moveTo(x1, y1 + thick * 0.55); b.lineTo(x2, y2 + thick * 0.55); b.lineTo(x2, y2 + thick * 0.62); b.lineTo(x1, y1 + thick * 0.62); b.fill();
+  b.fillStyle = '#6fb048'; b.beginPath(); b.moveTo(x1, y1); b.lineTo(x2, y2); b.lineTo(x2, y2 + 3 * SC); b.lineTo(x1, y1 + 3 * SC); b.fill();
+}
+
+// ============================================================ tilt input
+let D = null, g0 = null, e1 = null, e2 = null, tilt = [0, 0], haveTilt = false;
+const keys = {};
+function screenAngle() { return ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180; }
+function onOrient(e) {
+  if (e.beta == null) return;
+  const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+  // gravity direction in the phone's own axes. Written as a vector (not angles) so it never flips.
+  D = [Math.sin(g) * Math.cos(b), -Math.sin(b), -Math.cos(g) * Math.cos(b)];
+  if (!haveTilt) { haveTilt = true; calibrate(); }
+}
+function calibrate() {
+  if (!D) return;
+  g0 = D.slice();
+  const a = screenAngle();
+  const R = [Math.cos(a), -Math.sin(a), 0], Dn = [-Math.sin(a), -Math.cos(a), 0];
+  const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const norm = u => { const l = Math.hypot(u[0], u[1], u[2]) || 1; return [u[0] / l, u[1] / l, u[2] / l]; };
+  // screen-right and screen-down, flattened onto the plane the phone was resting in
+  e1 = norm(R.map((v, i) => v - dot(R, g0) * g0[i]));
+  const d2 = Dn.map((v, i) => v - dot(Dn, g0) * g0[i] - dot(Dn, e1) * e1[i]);
+  e2 = norm(d2);
+}
+function readTilt() {
+  const kd = keys.ArrowRight ? 0 : keys.ArrowDown ? 1 : keys.ArrowLeft ? 2 : keys.ArrowUp ? 3 : -1;
+  if (kd >= 0) { const m = keys.Shift ? FULL : FULL * 0.55; tilt = [PROJ[kd][0] * m, PROJ[kd][1] * m]; return; }
+  if (!D || !e1) { tilt = [0, 0]; return; }
+  const x = D[0] * e1[0] + D[1] * e1[1] + D[2] * e1[2];
+  const y = D[0] * e2[0] + D[1] * e2[1] + D[2] * e2[2];
+  tilt[0] += (x - tilt[0]) * 0.5; tilt[1] += (y - tilt[1]) * 0.5;
+}
+function tiltDir() {
+  const m = Math.hypot(tilt[0], tilt[1]);
+  if (m < DEAD) return { dir: -1, spd: 0, m };
+  const nx = tilt[0] / m, ny = tilt[1] / m;
+  let bestD = 0, bestV = -9;
+  for (let d = 0; d < 4; d++) { const v = nx * PROJ[d][0] + ny * PROJ[d][1]; if (v > bestV) { bestV = v; bestD = d; } }
+  // a little stickiness so a tilt right on a boundary doesn't flicker between two directions
+  const cur = nx * PROJ[dog.dir][0] + ny * PROJ[dog.dir][1];
+  if (cur > bestV - 0.12) bestD = dog.dir;
+  const k = clamp((m - DEAD) / (FULL - DEAD), 0, 1);
+  return { dir: bestD, spd: MIN_SPD + (MAX_SPD - MIN_SPD) * k, m };
+}
+addEventListener('keydown', e => { keys[e.key] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ============================================================ audio
+let ac = null;
+function initAudio() { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) {} }
+function tone(f1, f2, dur, type = 'sine', vol = 0.12, delay = 0) {
+  if (!ac) return; const t0 = ac.currentTime + delay;
+  const o = ac.createOscillator(), g = ac.createGain(); o.type = type;
+  o.frequency.setValueAtTime(f1, t0); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t0 + dur);
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function noise(dur, vol = 0.15, freq = 1200, delay = 0) {
+  if (!ac) return; const t0 = ac.currentTime + delay;
+  const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = buf; f.type = 'lowpass'; f.frequency.value = freq; g.gain.value = vol;
+  s.connect(f); f.connect(g); g.connect(ac.destination); s.start(t0);
+}
+const sfx = {
+  chomp() { noise(0.07, 0.25, 2500); noise(0.07, 0.25, 2000, 0.16); noise(0.07, 0.2, 1800, 0.32); },
+  cluck() { tone(900, 650, 0.07, 'square', 0.04); tone(1000, 700, 0.07, 'square', 0.04, 0.1); },
+  squawk() { tone(1300, 500, 0.25, 'sawtooth', 0.06); },
+  strain() { tone(140, 120, 0.4, 'triangle', 0.08); },
+  plop() { tone(320, 70, 0.18, 'sine', 0.3); noise(0.08, 0.12, 500); },
+  slip() { tone(700, 90, 0.7, 'sawtooth', 0.07); },
+  splat() { noise(0.35, 0.4, 700); tone(160, 40, 0.3, 'sine', 0.3); },
+  win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.12, i * 0.11)); },
+};
+
+// ============================================================ particles
+function burst(wx, wy, n, type) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = rnd(0.6, 2.2);
+    parts.push({ wx, wy, z: type === 'feather' ? 14 : 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: type === 'feather' ? rnd(20, 50) : rnd(30, 80),
+      life: 0, max: type === 'feather' ? rnd(1.0, 1.8) : rnd(0.5, 0.9), type, rot: Math.random() * 6, vr: rnd(-6, 6), size: rnd(0.7, 1.3) });
+  }
+}
+function pop(wx, wy, text, color) { pops.push({ wx, wy, text, color, life: 0 }); }
+
+// ============================================================ update
+function dogPos() {
+  if (!dog) return [S / 2, S / 2];
+  const d = DIRS[dog.dir];
+  return [dog.tx + 0.5 + d[0] * (dog.prog + dog.skid), dog.ty + 0.5 + d[1] * (dog.prog + dog.skid)];
+}
+const inB = (x, y) => x >= 0 && y >= 0 && x < S && y < S;
+const poopAt = (x, y) => inB(x, y) && poopGrid[y * S + x];
+const chickAt = (x, y) => chickens.find(c => c.tx === x && c.ty === y);
+
+function updateDog(dt) {
+  const td = tiltDir();
+  if (!dog.moving) {
+    dog.pose = 'idle';
+    if (td.dir >= 0) {
+      dog.dir = td.dir;
+      const nx = dog.tx + DIRS[td.dir][0], ny = dog.ty + DIRS[td.dir][1];
+      if (inB(nx, ny)) { dog.moving = true; dog.prog = 0; }
+    }
+  }
+  if (!dog.moving) return;
+  dog.pose = 'walk';
+  dog.speed = td.dir >= 0 ? td.spd : Math.max(MIN_SPD, dog.speed);   // tilt released mid-step: finish the step
+  dog.prog += dog.speed * dt;
+  dog.phase += dog.speed * dt * 9;
+  const nx = dog.tx + DIRS[dog.dir][0], ny = dog.ty + DIRS[dog.dir][1];
+  if (poopAt(nx, ny) && dog.prog >= 0.3) { startSlip(poopGrid[ny * S + nx]); return; }
+  const ck = chickAt(nx, ny);
+  if (ck && dog.prog >= 0.45) { startEat(ck); return; }
+  if (dog.prog >= 1) {
+    const extra = dog.prog - 1;
+    dog.tx = nx; dog.ty = ny; dog.prog = 0; dog.moving = false;
+    if (td.dir >= 0) {
+      const mx = dog.tx + DIRS[td.dir][0], my = dog.ty + DIRS[td.dir][1];
+      dog.dir = td.dir;
+      if (inB(mx, my)) { dog.moving = true; dog.prog = Math.min(extra, 0.2); }
+    }
+  }
+}
+
+function updateChickens(dt, frozen) {
+  const c = cfg(level);
+  for (const k of chickens) {
+    if (k.hopT < 1) k.hopT = Math.min(1, k.hopT + dt / 0.28);
+    k.peck = Math.max(0, k.peck - dt);
+    if (frozen) continue;
+    k.next -= dt;
+    if (k.next > 0 || k.hopT < 1) continue;
+    k.next = rnd(c.hop * 0.6, c.hop * 1.4);
+    if (Math.random() < 0.22) { k.peck = 0.5; continue; }
+    const dnx = dog.tx + (dog.moving ? DIRS[dog.dir][0] : 0), dny = dog.ty + (dog.moving ? DIRS[dog.dir][1] : 0);
+    const opts = DIRS.map(d => [k.tx + d[0], k.ty + d[1]]).filter(([x, y]) =>
+      inB(x, y) && !poopAt(x, y) && !chickAt(x, y) && !(x === dog.tx && y === dog.ty) && !(x === dnx && y === dny));
+    if (!opts.length) { k.peck = 0.5; continue; }
+    let pick;
+    const dist = Math.abs(k.tx - dog.tx) + Math.abs(k.ty - dog.ty);
+    if (dist <= 3 && Math.random() < c.flee) {
+      opts.sort((a, b) => (Math.abs(b[0] - dog.tx) + Math.abs(b[1] - dog.ty)) - (Math.abs(a[0] - dog.tx) + Math.abs(a[1] - dog.ty)));
+      pick = opts[0];
+    } else pick = opts[Math.floor(Math.random() * opts.length)];
+    k.px = k.tx; k.py = k.ty; k.tx = pick[0]; k.ty = pick[1]; k.hopT = 0;
+    const sdx = (k.tx - k.px) - (k.ty - k.py);
+    if (sdx) k.flip = sdx < 0;
+    if (Math.random() < 0.15) sfx.cluck();
+  }
+}
+
+let ev = {};   // the current animation (eating / pooping / slipping)
+function startEat(ck) { state = 'eating'; ev = { t: 0, ck, eaten: false }; ck.panic = true; sfx.squawk(); }
+function startPoop() {
+  const d = DIRS[dog.dir];
+  const cand = [[dog.tx - d[0], dog.ty - d[1]], [dog.tx + d[1], dog.ty - d[0]], [dog.tx - d[1], dog.ty + d[0]]];
+  const spot = cand.find(([x, y]) => inB(x, y) && !poopAt(x, y) && !chickAt(x, y));
+  state = 'pooping'; ev = { t: 0, spot, placed: false };
+  dog.pose = 'squat'; sfx.strain();
+}
+function startSlip(p) { state = 'slipping'; ev = { t: 0, p, splat: false }; sfx.slip(); }
+
+function update(dt) {
+  t += dt;
+  readTilt();
+  // camera
+  const c = camTarget(); const k = Math.min(1, dt * 6); camX += (c[0] - camX) * k; camY += (c[1] - camY) * k;
+  ox = W / 2 - camX; oy = viewTop + viewH / 2 - camY;
+  // particles
+  for (const p of parts) {
+    p.life += dt;
+    if (p.type === 'feather') { p.vz -= 40 * dt; p.vz = Math.max(p.vz, -12); p.vx *= 0.98; p.vy *= 0.98; }
+    else p.vz -= 260 * dt;
+    p.wx += p.vx * dt; p.wy += p.vy * dt; p.z = Math.max(0, p.z + p.vz * dt); p.rot += p.vr * dt;
+  }
+  parts = parts.filter(p => p.life < p.max);
+  for (const p of pops) p.life += dt;
+  pops = pops.filter(p => p.life < 1.1);
+  for (const p of poop) p.age += dt;
+
+  if (state === 'play') {
+    levelTime += dt;
+    updateDog(dt);
+    updateChickens(dt, false);
+  } else if (state === 'eating') {
+    ev.t += dt;
+    updateChickens(dt, true);
+    if (dog.moving) {
+      dog.prog = Math.min(1, dog.prog + dt * 6);
+      if (dog.prog >= 1) { dog.tx += DIRS[dog.dir][0]; dog.ty += DIRS[dog.dir][1]; dog.prog = 0; dog.moving = false; }
+    }
+    dog.pose = 'chomp';
+    if (!ev.eaten && ev.t > 0.3) {
+      ev.eaten = true; chickens = chickens.filter(x => x !== ev.ck);
+      burst(dog.tx + 0.5, dog.ty + 0.5, 18, 'feather');
+      pop(dog.tx + 0.5, dog.ty + 0.5, 'CHOMP!', '#ff8a2a'); sfx.chomp();
+      score += 100 * level; updateHud();
+    }
+    dog.mouth = ev.t > 0.3 && ev.t < 1.0 ? Math.abs(Math.sin((ev.t - 0.3) * 13)) : (ev.t < 0.3 ? ev.t / 0.3 : 0);
+    if (ev.t > 1.2) { dog.mouth = 0; startPoop(); }
+  } else if (state === 'pooping') {
+    ev.t += dt;
+    updateChickens(dt, true);
+    if (!ev.placed && ev.t > 0.85) {
+      ev.placed = true;
+      if (ev.spot) {
+        const p = { x: ev.spot[0], y: ev.spot[1], age: 0, fromX: dog.tx + 0.5, fromY: dog.ty + 0.5, squash: 0 };
+        poop.push(p); poopGrid[p.y * S + p.x] = p;
+      }
+      sfx.plop();
+      if (ev.spot) pop(ev.spot[0] + 0.5, ev.spot[1] + 0.5, 'plop', '#8a5328');
+    }
+    if (ev.t > 1.45) {
+      dog.pose = 'idle';
+      if (!chickens.length) levelClear(); else state = 'play';
+    }
+  } else if (state === 'slipping') {
+    ev.t += dt;
+    updateChickens(dt, false);
+    const T = ev.t;
+    if (T < 0.25) { dog.prog = Math.min(1, dog.prog + dt * 5); dog.pose = 'walk'; dog.phase += dt * 60; }
+    else {
+      if (dog.prog < 1) dog.prog = 1;
+      dog.pose = 'slip';
+      const u = clamp((T - 0.25) / 0.8, 0, 1);
+      const d = DIRS[dog.dir];
+      // skid onward, but not off the edge of the yard
+      let sk = (1 - Math.pow(1 - u, 2)) * 0.6;
+      for (let i = 0; i < 12; i++) { const px = dog.tx + 0.5 + d[0] * (1 + sk), py = dog.ty + 0.5 + d[1] * (1 + sk); if (px > 0.35 && py > 0.35 && px < S - 0.35 && py < S - 0.35) break; sk *= 0.7; }
+      dog.skid = sk;
+      dog.rot = ease(u) * Math.PI * 3;
+      dog.lift = Math.sin(Math.PI * u) * 16;
+      ev.p.squash = Math.min(1, (T - 0.25) * 5);
+      if (!ev.splat && T > 1.05) {
+        ev.splat = true; const p = dogPos();
+        burst(p[0], p[1], 26, 'splat'); pop(p[0], p[1], 'SPLAT!', '#7a4a1e'); sfx.splat();
+      }
+      dog.cover = clamp((T - 1.1) / 1.1, 0, 1);
+    }
+    if (T > 3.0) gameOver();
+  } else if (state === 'dead' || state === 'ready' || state === 'clear') {
+    updateChickens(dt, state !== 'ready');
+  }
+}
+
+// ============================================================ drawing
+function ell(x, y, rx, ry, col) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), 0, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); }
+function fluff(x, y, rx, ry, col, n = 11) {
+  ell(x, y, rx, ry, col);
+  for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + 0.4; ell(x + Math.cos(a) * rx * 0.86, y + Math.sin(a) * ry * 0.86, rx * 0.33, ry * 0.33, col); }
+}
+function fluffO(x, y, rx, ry, col) { fluff(x, y, rx + 1.1, ry + 1.1, COL.line); fluff(x, y, rx, ry, col); }
+function leg(x, top, len, col) { ctx.fillStyle = col; ctx.fillRect(x - 2, top, 4, len); ell(x + 0.6, top + len, 2.6, 1.6, col); }
+function ear(x1, y1, x2, y2, x3, y3) {
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.closePath();
+  ctx.fillStyle = COL.body; ctx.fill(); ctx.strokeStyle = COL.line; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1 + (x2 - x1) * 0.25 + 1, y1 + (y2 - y1) * 0.25); ctx.lineTo(x2, y2 + 2.5); ctx.lineTo(x3 + (x2 - x3) * 0.25 - 1, y3 + (y2 - y3) * 0.25);
+  ctx.fillStyle = '#f5c4a0'; ctx.fill();
+}
+
+function drawDog(X, Y) {
+  const d = dog, s = SC * 1.15;
+  const front = d.dir === 0 || d.dir === 1, flip = d.dir === 1 || d.dir === 2;
+  ctx.save(); ctx.translate(X, Y);
+  ell(0, 0, 15 * s, 5.5 * s, 'rgba(40,70,20,0.28)');
+  ctx.translate(0, -d.lift * s);
+  ctx.scale(flip ? -s : s, s);
+  const walk = d.pose === 'walk', squat = d.pose === 'squat', slip = d.pose === 'slip';
+  if (squat) ctx.translate(Math.sin(t * 60) * 0.7, 0);
+  if (d.rot) { ctx.translate(0, -15); ctx.rotate(d.rot); ctx.translate(0, 15); }
+  const la = walk ? Math.sin(d.phase) * 2.4 : slip ? Math.sin(t * 34) * 3 : 0;
+  const bob = walk ? Math.abs(Math.sin(d.phase)) * 1.3 : d.pose === 'idle' ? Math.sin(t * 6) * 0.4 : 0;
+  ctx.translate(0, -bob + (squat ? 2.5 : 0));
+  if (squat) ctx.rotate(-0.16);
+  const tailUp = squat ? -7 : 0, wag = d.pose === 'idle' || walk ? Math.sin(t * 14) * 1.5 : 0;
+  const legLen = squat ? 4 : 7;
+
+  if (front) {
+    fluffO(-12 + wag * 0.4, -25 + tailUp, 8, 7, COL.light);
+    fluff(-12 + wag * 0.4, -26 + tailUp, 4.5, 4, COL.cream);
+    leg(-5, -8, legLen - la * 0.5, '#bf6420'); leg(9, -8, legLen + la * 0.5, '#bf6420');
+    fluffO(0, -15, 14, 10.5, COL.body);
+    fluff(8, -15, 6.5, 7, COL.cream);
+    leg(-9, -7, legLen + la * 0.5, COL.leg); leg(5, -7, legLen - la * 0.5, COL.leg);
+    fluffO(8, -25, 11, 9.5, COL.body);
+    ctx.fillStyle = '#d33b3b'; ctx.fillRect(4, -19.5, 9, 2.2); ell(11, -16.8, 1.6, 1.6, '#f2c84b');   // collar + tag
+    fluffO(10.5, -29, 8.5, 8, COL.head);
+    ear(3.5, -33, 5.5, -43.5, 9.5, -35.5); ear(11, -36.5, 15.5, -44, 16.5, -33.5);
+    ell(15.8, -26, 4.8, 3.5, COL.cream);
+    const m = d.mouth;
+    if (m > 0.02) { ell(16.5, -22.8 + m * 1.2, 3.6, 0.6 + m * 2.6, '#5a1a1a'); ell(16.5, -21.6 + m * 2.2, 2, 0.4 + m, '#e86a7a'); }
+    else if (d.pose === 'idle' || walk) ell(17, -20.8 + Math.sin(t * 12) * 0.3, 1.7, 2.6, '#e86a7a');
+    ell(19.8, -27.2, 1.8, 1.4, '#1c1410');
+    if (squat) {
+      ctx.strokeStyle = '#1c1410'; ctx.lineWidth = 1.1; ctx.beginPath();
+      ctx.moveTo(9, -32); ctx.lineTo(11.5, -30.8); ctx.lineTo(9, -29.8);
+      ctx.moveTo(17.3, -32.3); ctx.lineTo(14.8, -31); ctx.lineTo(17.3, -30); ctx.stroke();
+      ell(4, -37 + (t * 20 % 6), 1, 1.5, '#7cc8ff');   // sweat
+    } else if (slip && d.cover > 0.2) {
+      ctx.strokeStyle = '#1c1410'; ctx.lineWidth = 1.1; ctx.beginPath();
+      for (const ex of [10.5, 15.8]) { ctx.moveTo(ex - 1.5, -32.5); ctx.lineTo(ex + 1.5, -29.5); ctx.moveTo(ex + 1.5, -32.5); ctx.lineTo(ex - 1.5, -29.5); }
+      ctx.stroke();
+    } else {
+      ell(10.8, -31, 1.8, 2, '#1c1410'); ell(16, -31.4, 1.6, 1.8, '#1c1410');
+      ell(11.3, -31.7, 0.6, 0.6, '#fff'); ell(16.4, -32.1, 0.5, 0.5, '#fff');
+    }
+  } else {
+    leg(7, -9, legLen + la * 0.5, '#bf6420'); leg(11, -9, legLen - la * 0.5, '#bf6420');
+    fluffO(0, -15, 14, 10.5, COL.body);
+    fluffO(8, -25, 11, 9.5, COL.body);
+    fluffO(9.5, -30, 8.5, 8, '#e38530');
+    ear(2.5, -34, 5, -44, 9, -36.5); ear(10, -37, 14.5, -44.5, 16, -34);
+    ctx.fillStyle = '#d33b3b'; ctx.fillRect(3, -21.5, 10, 2.2);
+    leg(-9, -7, legLen - la * 0.5, COL.leg); leg(-3, -6, legLen + la * 0.5, COL.leg);
+    fluffO(-9 + wag * 0.4, -22 + tailUp, 9.5, 8, COL.light);
+    fluff(-9 + wag * 0.4, -23 + tailUp, 5.5, 4.5, COL.cream);
+  }
+  if (d.cover > 0) {
+    ctx.globalAlpha = d.cover * 0.92;
+    for (const [bx, by, br] of [[-6, -18, 6], [4, -12, 5.5], [9, -29, 5], [-11, -24, 5], [2, -21, 7], [14, -24, 4]]) fluff(bx, by, br, br * 0.85, COL.poop, 7);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function drawChicken(k) {
+  const e = ease(k.hopT);
+  const wx = k.px + (k.tx - k.px) * e + 0.5, wy = k.py + (k.ty - k.py) * e + 0.5;
+  let [X, Y] = iso(wx, wy);
+  const s = SC * 0.95, z = Math.sin(Math.PI * k.hopT) * 7;
+  const panic = k.panic;
+  ctx.save(); ctx.translate(X, Y);
+  ell(0, 0, 8 * s, 3 * s, 'rgba(40,70,20,0.25)');
+  ctx.translate(panic ? Math.sin(t * 70) * 1.5 * s : 0, -z * s);
+  ctx.scale(k.flip ? -s : s, s);
+  ctx.strokeStyle = '#e8961e'; ctx.lineWidth = 1.6; ctx.beginPath();
+  ctx.moveTo(-2, -6); ctx.lineTo(-2.5, 0); ctx.moveTo(2, -6); ctx.lineTo(2.5, 0); ctx.stroke();
+  ctx.fillStyle = '#f4f1e6'; ctx.beginPath(); ctx.moveTo(-6, -13); ctx.lineTo(-12, -19); ctx.lineTo(-11, -12); ctx.lineTo(-13, -14); ctx.lineTo(-7, -8); ctx.fill();
+  ell(0, -11, 9.8, 8.3, '#d8d3c2'); ell(0, -11.3, 9, 7.5, '#fbfaf3');
+  const flap = panic || k.hopT < 1 ? Math.sin(t * 40) * 0.6 : 0;
+  ctx.save(); ctx.translate(-1, -12); ctx.rotate(-flap); ell(-1, 1, 5.5, 3.6, '#e4e0d2'); ctx.restore();
+  const pk = k.peck > 0 ? Math.sin((0.5 - k.peck) * Math.PI * 2 / 0.5 * 2) * 0.5 + 0.5 : 0;
+  ctx.save(); ctx.translate(4, -15); ctx.rotate(pk * 0.9);
+  ell(2.5, -4.5, 5, 5, '#fbfaf3');
+  ell(1.5, -9.8, 1.7, 1.7, '#e0342e'); ell(3.5, -10.3, 1.8, 1.8, '#e0342e'); ell(5.3, -9.3, 1.5, 1.5, '#e0342e');
+  ctx.fillStyle = '#f5b82e'; ctx.beginPath(); ctx.moveTo(6.8, -5.4); ctx.lineTo(10.5, -4.2); ctx.lineTo(6.8, -3); ctx.fill();
+  ell(6.4, -1.9, 1.2, 1.8, '#e0342e');
+  ell(4.4, -5.6, panic ? 1.3 : 0.9, panic ? 1.3 : 0.9, '#1c1410');
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawPoop(p) {
+  let [X, Y] = iso(p.x + 0.5, p.y + 0.5);
+  const s = SC * 1.05;
+  // flying out of Boo and landing with a squish
+  const fly = clamp(p.age / 0.3, 0, 1);
+  if (fly < 1) {
+    const [fx, fy] = iso(p.fromX, p.fromY);
+    X = fx + (X - fx) * fly; Y = fy + (Y - fy) * fly - Math.sin(Math.PI * fly) * 10 * SC - (1 - fly) * 8 * SC;
+  }
+  const land = clamp((p.age - 0.3) / 0.35, 0, 1);
+  let sy = fly < 1 ? 1.1 : 1 - Math.sin(land * Math.PI * 2) * 0.18 * (1 - land);
+  let sx = 2 - sy;
+  if (p.squash) { sy *= 1 - 0.6 * p.squash; sx *= 1 + 0.5 * p.squash; }
+  ctx.save(); ctx.translate(X, Y);
+  ell(0, 0, 11 * s * sx, 4 * s, 'rgba(40,70,20,0.28)');
+  ctx.scale(s * sx, s * sy);
+  const tier = (y, rx, ry) => { ell(0, y + 0.8, rx + 0.8, ry + 0.8, COL.poopD); ell(0, y, rx, ry, COL.poop); ell(-rx * 0.35, y - ry * 0.35, rx * 0.4, ry * 0.3, COL.poopL); };
+  tier(-4.5, 11, 5.5); tier(-10, 8, 4.8); tier(-15, 5.3, 4);
+  ctx.beginPath(); ctx.moveTo(-3.2, -17.5); ctx.quadraticCurveTo(-1, -24, 2.8, -23.2); ctx.quadraticCurveTo(1, -21, 3, -17.5); ctx.closePath();
+  ctx.fillStyle = COL.poop; ctx.fill(); ctx.strokeStyle = COL.poopD; ctx.lineWidth = 0.8; ctx.stroke();
+  ctx.globalAlpha = 0.55; ell(-4, -6.5, 2, 1, '#fff'); ell(-3, -11.8, 1.5, 0.8, '#fff'); ell(-1.8, -16.6, 1.1, 0.6, '#fff'); ctx.globalAlpha = 1;
+  ctx.restore();
+  // stink lines
+  if (fly >= 1 && !p.squash) {
+    ctx.save(); ctx.strokeStyle = 'rgba(110,140,40,0.45)'; ctx.lineWidth = 1.3 * SC;
+    for (let i = 0; i < 2; i++) {
+      const ph = (t * 0.8 + i * 0.5 + p.x * 0.3) % 1;
+      const bx = X + (i ? 4 : -4) * SC, by = Y - (24 + ph * 12) * SC;
+      ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.8;
+      ctx.beginPath();
+      for (let k = 0; k <= 8; k++) { const yy = by - k * SC, xx = bx + Math.sin(k * 0.9 + t * 5) * 1.6 * SC; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#8fd0ee'); g.addColorStop(0.6, '#c8ecf7'); g.addColorStop(1, '#e8f6e4');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  for (let i = 0; i < 5; i++) {
+    const x = ((i * 173 + t * (6 + i * 2)) % (W + 160)) - 80, y = 90 + i * 57 % (H * 0.5);
+    ell(x, y, 34, 11, 'rgba(255,255,255,0.7)'); ell(x + 22, y - 6, 22, 11, 'rgba(255,255,255,0.7)'); ell(x - 20, y - 3, 18, 8, 'rgba(255,255,255,0.7)');
+  }
+}
+
+function drawCompass() {
+  const r = 34, cx = W - r - 14, cy = H - r - 26;
+  ctx.save();
+  ell(cx, cy, r, r, 'rgba(255,255,255,0.55)');
+  ctx.strokeStyle = 'rgba(90,58,30,0.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r * DEAD / FULL, 0, 7); ctx.stroke();
+  const td = tiltDir();
+  for (let d = 0; d < 4; d++) {
+    const [px, py] = PROJ[d], ax = cx + px * r * 0.78, ay = cy + py * r * 0.78;
+    ctx.fillStyle = td.dir === d ? '#f08a2c' : 'rgba(90,58,30,0.3)';
+    ctx.beginPath(); ctx.moveTo(ax + px * 6, ay + py * 6); ctx.lineTo(ax - py * 5, ay + px * 5); ctx.lineTo(ax + py * 5, ay - px * 5); ctx.fill();
+  }
+  const m = Math.hypot(tilt[0], tilt[1]), k = m > FULL ? FULL / m : 1;
+  ell(cx + tilt[0] * k / FULL * r * 0.8, cy + tilt[1] * k / FULL * r * 0.8, 5, 5, '#5a3a1e');
+  ctx.restore();
+}
+
+function drawOffscreen() {
+  for (const k of chickens) {
+    const [X, Y] = iso(k.tx + 0.5, k.ty + 0.5);
+    const top = viewTop + 16;
+    if (X > 8 && X < W - 8 && Y > top && Y < H - 8) continue;
+    const ex = clamp(X, 22, W - 22), ey = clamp(Y, top + 10, H - 22);
+    const a = Math.atan2(Y - ey, X - ex);
+    ctx.save(); ctx.translate(ex, ey);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(0, 0, 13, 0, 7); ctx.fill();
+    ctx.rotate(a); ctx.fillStyle = '#f08a2c'; ctx.beginPath(); ctx.moveTo(19, 0); ctx.lineTo(12, -5); ctx.lineTo(12, 5); ctx.fill(); ctx.rotate(-a);
+    ell(0, 1, 5.5, 5, '#fbfaf3'); ell(-1, -4.5, 1.6, 1.6, '#e0342e'); ell(1.5, -4.8, 1.6, 1.6, '#e0342e');
+    ctx.fillStyle = '#f5b82e'; ctx.beginPath(); ctx.moveTo(4.5, 0); ctx.lineTo(8, 1); ctx.lineTo(4.5, 2); ctx.fill();
+    ell(2.2, -0.2, 0.9, 0.9, '#1c1410');
+    ctx.restore();
+  }
+}
+
+function drawFlies(X, Y) {
+  for (let i = 0; i < 3; i++) {
+    const a = t * (3 + i) + i * 2.1;
+    const fx = X + Math.cos(a) * (14 + i * 4) * SC, fy = Y - (30 + Math.sin(a * 1.7) * 6 + i * 3) * SC;
+    ell(fx - 1.5, fy - 1.5, 2, 1.2, 'rgba(255,255,255,0.7)'); ell(fx + 1.5, fy - 1.5, 2, 1.2, 'rgba(255,255,255,0.7)');
+    ell(fx, fy, 1.6, 1.3, '#1c1410');
+  }
+}
+
+function render() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawSky();
+  ctx.drawImage(boardCv, ox - (S * TW / 2 + boardPad), oy - boardPad, S * TW + boardPad * 2, S * TH + thick + boardPad * 2);
+  if (!dog) return;
+  // everything that stands on the board, sorted far → near
+  const list = [];
+  for (const p of poop) list.push([p.x + p.y + 1 + (p.squash ? -0.01 : 0), () => drawPoop(p)]);
+  for (const k of chickens) { const e = ease(k.hopT); list.push([k.px + (k.tx - k.px) * e + k.py + (k.ty - k.py) * e + 1, () => drawChicken(k)]); }
+  const dp = dogPos();
+  list.push([dp[0] + dp[1] + 0.001, () => { const [X, Y] = iso(dp[0], dp[1]); drawDog(X, Y); }]);
+  list.sort((a, b) => a[0] - b[0]);
+  for (const [, f] of list) f();
+  if (state === 'dead' || (state === 'slipping' && ev.t > 1.3)) { const [X, Y] = iso(dp[0], dp[1]); drawFlies(X, Y); }
+  // particles
+  for (const p of parts) {
+    const [X, Y] = iso(p.wx, p.wy), yy = Y - p.z * SC, a = 1 - p.life / p.max;
+    ctx.save(); ctx.translate(X, yy); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, a * 2);
+    if (p.type === 'feather') ell(0, 0, 3.2 * SC * p.size, 1.3 * SC * p.size, '#fffef8');
+    else ell(0, 0, 3 * SC * p.size, 2.2 * SC * p.size, COL.poop);
+    ctx.restore();
+  }
+  for (const p of pops) {
+    const [X, Y] = iso(p.wx, p.wy), u = p.life / 1.1;
+    ctx.save(); ctx.globalAlpha = 1 - Math.pow(u, 3);
+    const sz = Math.round((14 + 10 * Math.min(1, u * 6)) * Math.max(0.8, SC));
+    ctx.font = `900 ${sz}px "Avenir Next", -apple-system, sans-serif`; ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round';
+    ctx.strokeText(p.text, X, Y - (44 + u * 26) * SC); ctx.fillStyle = p.color; ctx.fillText(p.text, X, Y - (44 + u * 26) * SC);
+    ctx.restore();
+  }
+  drawOffscreen();
+  if (state !== 'title') drawCompass();
+}
+
+// ============================================================ HUD + cards
+function updateHud() {
+  $('lvl').textContent = 'Level ' + level;
+  $('chk').textContent = '🐔 ' + chickens.length;
+  $('score').textContent = score;
+}
+function showCard(html, onTap) {
+  $('cardBody').innerHTML = html;
+  $('card').classList.add('show');
+  $('cardBody').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { initAudio(); onTap(b.dataset.act); }));
+}
+function hideCard() { $('card').classList.remove('show'); }
+function readyCard() {
+  state = 'ready';
+  const c = cfg(level);
+  showCard(`<h2>Level ${level}</h2>
+    <p>${c.n} chickens in a ${c.S}×${c.S} yard${level > 1 ? ', and they\'re getting jumpy' : ''}.</p>
+    <p class="small">Hold the phone the way you want to play, then tap Go. That position becomes "sit still".</p>
+    <button class="big" data-act="go">Go!</button>`, () => { calibrate(); hideCard(); state = 'play'; });
+}
+function levelClear() {
+  state = 'clear'; sfx.win();
+  const bonus = Math.max(0, Math.round(600 - levelTime * 12)) * level;
+  score += bonus; updateHud(); saveBest();
+  showCard(`<h2>Yard cleared! 🐾</h2>
+    <p>Boo ate all ${cfg(level).n} chickens and stepped in nothing.</p>
+    <div class="stats"><div>Time<b>${levelTime.toFixed(1)}s</b></div><div>Speed bonus<b>+${bonus}</b></div></div>
+    <button class="big" data-act="next">Level ${level + 1} →</button>`, () => { level++; levelStartScore = score; setupLevel(level); readyCard(); });
+}
+function gameOver() {
+  state = 'dead'; saveBest();
+  showCard(`<h2>Oh no, Boo! 💩</h2>
+    <p>Boo slipped in the poop and is now wearing it.</p>
+    <div class="stats"><div>Score<b>${score}</b></div><div>Level<b>${level}</b></div><div>Best<b>${best}</b></div></div>
+    <button class="big" data-act="retry">Bath, then retry level ${level}</button>
+    <button class="big alt" data-act="over">Start over from level 1</button>`, a => {
+      if (a === 'over') { level = 1; score = 0; } else score = levelStartScore;
+      levelStartScore = score; setupLevel(level); readyCard();
+    });
+}
+function saveBest() { if (score > best) { best = score; try { localStorage.setItem('boochase.best', best); } catch (e) {} } }
+
+$('recenterBtn').addEventListener('click', () => { calibrate(); });
+$('startBtn').addEventListener('click', () => {
+  initAudio();
+  const needs = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+  if (needs) {
+    DeviceOrientationEvent.requestPermission().then(r => {
+      if (r === 'granted') addEventListener('deviceorientation', onOrient);
+      else $('startNote').innerHTML = '<span id="err">Motion access was denied, so tilt won\'t work. Reload the page and tap Allow.</span>';
+    }).catch(err => { $('startNote').innerHTML = '<span id="err">Tilt unavailable: ' + String(err && err.message || err).replace(/</g, '&lt;') + '</span>'; });
+  } else addEventListener('deviceorientation', onOrient);
+  $('titleCard').classList.remove('show');
+  level = 1; score = 0; levelStartScore = 0;
+  setupLevel(level); readyCard();
+});
+addEventListener('resize', () => { layout(false); if (haveTilt) calibrate(); });
+if (screen.orientation) screen.orientation.addEventListener('change', () => setTimeout(() => { layout(false); calibrate(); }, 200));
+
+// ============================================================ loop
+setupLevel(1); state = 'title';
+let last = performance.now(), timeScale = 1;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000) * timeScale; last = now;
+  update(dt); render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// handles for testing from the browser console
+window.game = { get dog() { return dog; }, get chickens() { return chickens; }, get state() { return state; }, get poop() { return poop; }, keys,
+  set timeScale(v) { timeScale = v; }, get ev() { return ev; } };
+</script>
+</body>
+</html>
