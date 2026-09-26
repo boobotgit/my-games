@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tank Commander">
+<meta name="theme-color" content="#1a1d12">
+<title>Tank Commander (Mobile)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #e8e2c8;
+    position: fixed;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  /* Canvas fills the whole landscape screen; its internal width follows the aspect */
+  #screen { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; background: #000; }
+
+  /* Reads the notch / home-bar insets so the canvas HUD can stay clear of them */
+  #probe {
+    position: fixed; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+             env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+
+  .topbtn {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    z-index: 30;
+    background: rgba(18,20,12,0.8);
+    color: #d8d0a8;
+    border: 1px solid #5a5a3a;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #home { right: calc(env(safe-area-inset-right, 0px) + 8px); }
+  #btnZero { right: calc(env(safe-area-inset-right, 0px) + 84px); display: none; cursor: pointer; }
+  body.playing #btnZero { display: block; }
+
+  /* ── Touch controls (only shown during play) ── */
+  .ctl { display: none; position: fixed; z-index: 25; -webkit-tap-highlight-color: transparent; touch-action: none; }
+  body.playing .ctl { display: block; }
+
+  #btnFire {
+    right: calc(env(safe-area-inset-right, 0px) + 22px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    width: 96px; height: 96px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, rgba(255,150,70,0.6), rgba(90,25,5,0.7));
+    border: 2px solid rgba(255,190,120,0.9);
+    color: #fff; font-weight: bold; font-size: 17px; letter-spacing: 0.05em;
+    line-height: 92px; text-align: center;
+  }
+  #btnFire.down { filter: brightness(1.5); transform: scale(0.94); }
+
+  #turretWrap {
+    left: calc(env(safe-area-inset-left, 0px) + 18px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    width: 190px;
+  }
+  #btnCenter {
+    margin: 0 auto 8px; width: 104px; height: 34px; border-radius: 17px;
+    background: rgba(30,40,24,0.75); border: 1.5px solid rgba(170,200,130,0.85);
+    color: #d6f0b8; font-size: 12px; font-weight: bold; line-height: 31px; text-align: center;
+    letter-spacing: 0.04em;
+  }
+  #btnCenter.down, #btnCenter.on { background: rgba(80,120,50,0.85); }
+  #turretBar {
+    position: relative; width: 190px; height: 58px; border-radius: 29px;
+    background: rgba(20,24,14,0.7); border: 1.5px solid rgba(170,200,130,0.7);
+  }
+  #turretBar .tick { position: absolute; left: 50%; top: 8px; bottom: 8px; width: 2px; margin-left: -1px; background: rgba(170,200,130,0.35); }
+  #turretBar .lbl { position: absolute; top: 50%; transform: translateY(-50%); font-size: 16px; color: rgba(200,230,160,0.6); }
+  #turretBar .lbl.l { left: 12px; } #turretBar .lbl.r { right: 12px; }
+  #turretKnob {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 46px; margin: -23px 0 0 -27px;
+    border-radius: 23px; background: radial-gradient(circle at 40% 35%, #b8d890, #4c6a30);
+    border: 2px solid #e0f5c8; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    color: #1b2610; font-size: 10px; font-weight: bold; text-align: center; line-height: 42px;
+  }
+
+  /* Full-screen tap target for title / end screens. A real <button>, because iOS only
+     shows the motion-permission prompt for a click, never for a canvas touchstart. */
+  #tapStart {
+    position: fixed; inset: 0; z-index: 20;
+    background: transparent; border: 0; padding: 0; margin: 0; outline: none;
+    -webkit-tap-highlight-color: transparent; cursor: pointer;
+  }
+  body.playing #tapStart { display: none; }
+
+  #tiltNote {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    top: calc(env(safe-area-inset-top, 0px) + 44px);
+    z-index: 35; max-width: 70vw;
+    background: rgba(50,20,4,0.92); color: #ffe0b8;
+    border: 1px solid #e07a2a; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; line-height: 1.35; text-align: center;
+  }
+
+  #rotate {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #11130b; color: #d8d0a8; text-align: center; padding: 30px;
+  }
+  #rotate .ph { font-size: 64px; animation: spin 2s ease-in-out infinite; }
+  #rotate h2 { color: #f0b040; margin: 14px 0 6px; font-size: 22px; letter-spacing: 0.05em; }
+  #rotate p { font-size: 14px; color: #bba; }
+  @keyframes spin { 0%,40%{transform:rotate(0)} 60%,100%{transform:rotate(90deg)} }
+  body.portrait #rotate { display: flex; }
+</style>
+</head>
+<body>
+  <canvas id="screen" width="900" height="432"></canvas>
+  <div id="probe"></div>
+  <a id="home" class="topbtn" href="index.html">⌂ Home</a>
+  <div id="btnZero" class="topbtn" role="button">⊙ Re-zero tilt</div>
+
+  <!-- Turret traverse bar + CENTER on the LEFT, FIRE on the RIGHT -->
+  <div id="turretWrap" class="ctl">
+    <div id="btnCenter">⟲ CENTER</div>
+    <div id="turretBar"><div class="tick"></div><span class="lbl l">◄</span><span class="lbl r">►</span><div id="turretKnob">TURRET</div></div>
+  </div>
+  <div id="btnFire" class="ctl">FIRE</div>
+
+  <button id="tapStart" aria-label="Start game"></button>
+  <div id="tiltNote" hidden></div>
+
+  <div id="rotate">
+    <div class="ph">📱</div>
+    <h2>ROTATE YOUR PHONE</h2>
+    <p>Tank Commander plays in landscape.</p>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+
+  // ── View / screen ────────────────────────────────────────────────────────
+  const FOV = 82 * Math.PI / 180;     // horizontal field of view
+  const CAMZ = 0.55;                  // commander's eye height (walls are 1.0 tall)
+  const HAZE = [176, 168, 146];       // dusty battlefield haze that distance fades into
+  let W = 900, H = 432, F = 500, HOR = 216, S = 1.44, tanHalf = Math.tan(FOV / 2);
+  let zbuf = new Float32Array(W);
+  const floorCan = document.createElement('canvas');
+  let floorCtx = null, floorImg = null, FW = 0, FH = 0;
+  const inset = { t: 0, r: 0, b: 0, l: 0 };   // safe-area insets in canvas px
+
+  function resize() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    H = 432;
+    W = Math.round(Math.max(560, Math.min(1100, H * vw / Math.max(1, vh))));
+    canvas.width = W; canvas.height = H;
+    tanHalf = Math.tan(FOV / 2);
+    F = (W / 2) / tanHalf;
+    S = H / 300;
+    zbuf = new Float32Array(W);
+    FW = Math.ceil(W / 3); FH = Math.ceil(H / 6) + 4;
+    floorCan.width = FW; floorCan.height = FH;
+    floorCtx = floorCan.getContext('2d');
+    floorImg = floorCtx.createImageData(FW, FH);
+    const cs = getComputedStyle(document.getElementById('probe'));
+    const k = H / Math.max(1, vh);
+    inset.t = (parseFloat(cs.paddingTop) || 0) * k;
+    inset.r = (parseFloat(cs.paddingRight) || 0) * k;
+    inset.b = (parseFloat(cs.paddingBottom) || 0) * k;
+    inset.l = (parseFloat(cs.paddingLeft) || 0) * k;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Battle Tanks maps (13×13) ────────────────────────────────────────────
+  // 0 = open ground, 1 = brick (shootable), 2 = steel, 3 = HQ eagle. Off-map = border wall (9).
+  const COLS = 13, ROWS = 13;
+  const EMPTY = 0, BRICK = 1, STEEL = 2, HQ = 3, BORDER = 9;
+  const LEVELS = [
+    [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,1,0,0,1,0,1,0,0,1,0,0],
+      [0,0,1,0,0,1,0,1,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,1,1,0,2,0,0,0,2,0,1,1,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,1,0,0,2,2,2,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,1,1,0,2,0,0,0,2,0,1,1,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,1,0,0,1,0,1,0,0,1,0,0],
+      [0,0,1,0,0,1,0,1,0,0,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,1,1,0,1,1,0,1,1,0,1,1,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,0,0,2,0,1,1,1,0,2,0,0,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,1,0,1,0,2,2,2,0,1,0,1,0],
+      [0,0,0,1,0,2,0,2,0,1,0,0,0],
+      [0,1,0,1,0,2,2,2,0,1,0,1,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,0,0,2,0,1,1,1,0,2,0,0,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,1,1,0,1,1,0,1,1,0,1,1,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,2,1,1,0,1,0,1,0,1,1,2,0],
+      [0,0,0,1,0,1,0,1,0,1,0,0,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,1,0,2,1,1,0,1,1,2,0,1,0],
+      [0,0,0,1,0,0,0,0,0,1,0,0,0],
+      [0,1,0,0,0,2,2,2,0,0,0,1,0],
+      [0,0,0,1,0,0,0,0,0,1,0,0,0],
+      [0,1,0,2,1,1,0,1,1,2,0,1,0],
+      [0,1,0,0,0,0,0,0,0,0,0,1,0],
+      [0,0,0,1,0,1,0,1,0,1,0,0,0],
+      [0,2,1,1,0,1,0,1,0,1,1,2,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+  ];
+  const ENEMY_WAVES = [
+    ['normal', 'normal', 'normal', 'fast'],
+    ['normal', 'fast', 'normal', 'armor', 'fast', 'normal'],
+    ['fast', 'armor', 'normal', 'fast', 'armor', 'normal', 'fast', 'armor'],
+  ];
+  const ENEMY_SPAWNS = [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 12, y: 0 }];
+  const PLAYER_SPAWN = { x: 4.5, y: 12.5 };
+  const MAX_ON_FIELD = 3;
+
+  let map = [];
+  function tileAt(x, y) {
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return BORDER;
+    return map[y][x];
+  }
+
+  // ── Game state ───────────────────────────────────────────────────────────
+  const player = {
+    x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y,
+    a: -Math.PI / 2,     // hull heading (y grows downward, so -90° = "up" on the map)
+    t: 0,                // turret angle relative to the hull; the view looks down the turret
+    r: 0.3, hp: 3, alive: true, inv: 0, cd: 0,
+    L: 0, R: 0,          // actual tread speeds (-1..1), eased toward the tilt/keyboard targets
+    tL: 0, tR: 0,        // target tread speeds
+    v: 0,
+  };
+  let enemies = [], shells = [], fx = [];
+  let spawnQueue = [], spawnTimer = 0, spawnIdx = 0;
+  let level = 0, lives = 3, score = 0;
+  let state = 'title';   // title | play | clear | over | win
+  let stateT = 0, deadT = 0, hintT = 0;
+  let hqAlive = true;
+  let shake = 0, recoil = 0, muzzle = 0, hurt = 0, bobPhase = 0, time = 0;
+  let centering = false;
+
+  const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const DIR_ANG = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 };
+  const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
+
+  function normAng(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+  const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+
+  function initLevel(i) {
+    level = i;
+    map = LEVELS[i].map(r => r.slice());
+    map[12][6] = HQ;
+    map[11][5] = BRICK; map[11][6] = BRICK; map[11][7] = BRICK;
+    map[12][5] = BRICK; map[12][7] = BRICK;
+    map[12][4] = EMPTY;
+    for (const s of ENEMY_SPAWNS) map[s.y][s.x] = EMPTY;
+    enemies = []; shells = []; fx = [];
+    spawnQueue = ENEMY_WAVES[i].slice();
+    spawnTimer = 0.6; spawnIdx = 0;
+    hqAlive = true;
+    resetPlayer();
+    hintT = i === 0 ? 7 : 3;
+  }
+  function resetPlayer() {
+    player.x = PLAYER_SPAWN.x; player.y = PLAYER_SPAWN.y;
+    player.a = -Math.PI / 2; player.t = 0;
+    player.hp = 3; player.alive = true; player.inv = 2; player.cd = 0.4;
+    player.L = player.R = player.tL = player.tR = player.v = 0;
+    centering = false;
+  }
+
+  function makeEnemy(sx, sy, type) {
+    return {
+      x: sx + 0.5, y: sy + 0.5, dir: 'down', ang: Math.PI / 2, type,
+      hp: type === 'armor' ? 3 : 1,
+      speed: type === 'fast' ? 1.9 : type === 'armor' ? 0.85 : 1.15,
+      tgt: null, from: null, wait: 0, aimT: 0, cd: 1.2,
+      shootT: 1.5 + Math.random() * 2, shellOut: false,
+      spawnT: 1.1, flash: 0, alive: true, tread: 0,
+    };
+  }
+
+  // ── Input: keyboard (desktop / preview fallback) ─────────────────────────
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'Space') e.preventDefault();
+    if ((e.code === 'Enter' || e.code === 'Space') && state !== 'play' && state !== 'clear') { tapAdvance(); keys['Space'] = false; }
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+  // ── Touch controls ───────────────────────────────────────────────────────
+  let fireHeld = false, fireQueue = 0, turretIn = 0;
+  const btnFire = document.getElementById('btnFire');
+  btnFire.addEventListener('pointerdown', e => {
+    e.preventDefault(); btnFire.setPointerCapture(e.pointerId);
+    fireHeld = true; fireQueue = 0.3; btnFire.classList.add('down');
+  });
+  const fireUp = () => { fireHeld = false; btnFire.classList.remove('down'); };
+  btnFire.addEventListener('pointerup', fireUp);
+  btnFire.addEventListener('pointercancel', fireUp);
+
+  const btnCenter = document.getElementById('btnCenter');
+  btnCenter.addEventListener('pointerdown', e => {
+    e.preventDefault(); centering = true; btnCenter.classList.add('down'); sfx.click();
+  });
+  const centerUp = () => btnCenter.classList.remove('down');
+  btnCenter.addEventListener('pointerup', centerUp);
+  btnCenter.addEventListener('pointercancel', centerUp);
+
+  // Turret bar works like a spring-loaded slider: slide right = traverse right,
+  // the further you slide the faster it turns, let go = it stops and the knob springs back.
+  const bar = document.getElementById('turretBar');
+  const knob = document.getElementById('turretKnob');
+  let barPointer = null;
+  function barSet(clientX) {
+    const r = bar.getBoundingClientRect();
+    const half = (r.width - 54) / 2;
+    const v = clamp((clientX - (r.left + r.width / 2)) / half, -1, 1);
+    turretIn = v;
+    knob.style.transform = 'translateX(' + (v * half) + 'px)';
+  }
+  bar.addEventListener('pointerdown', e => {
+    e.preventDefault(); bar.setPointerCapture(e.pointerId); barPointer = e.pointerId; barSet(e.clientX);
+  });
+  bar.addEventListener('pointermove', e => { if (e.pointerId === barPointer) barSet(e.clientX); });
+  const barUp = e => {
+    if (e.pointerId !== barPointer) return;
+    barPointer = null; turretIn = 0; knob.style.transform = '';
+  };
+  bar.addEventListener('pointerup', barUp);
+  bar.addEventListener('pointercancel', barUp);
+
+  document.getElementById('btnZero').addEventListener('click', () => {
+    if (tilt.active) { needBaseline = true; zeroFlash = 1.2; }
+  });
+
+  document.getElementById('tapStart').addEventListener('click', tapAdvance);
+  function tapAdvance() {
+    if (state === 'title') beginPlay();
+    else if (state === 'over' || state === 'win') { state = 'title'; initLevel(0); }
+  }
+
+  // ── Tilt (deviceorientation) — calibrated to the hold angle at game start ─
+  // Borrowed from Escape from Mars (directions confirmed on iPhone there).
+  // We read "which way is world-up in the phone's own axes", which stays smooth
+  // when the screen passes vertical (raw beta/gamma flip there).
+  //   pitch  = tipping the whole phone forward/back        -> both treads
+  //   bank   = dipping one end of the phone lower than the other
+  //            (positive = RIGHT end lower)                 -> one tread more than the other
+  const PITCH_DIR = 1, BANK_DIR = 1;
+  // TREAD_SWAP = 1: dipping the LEFT side drives the LEFT tread forward (tank swings right),
+  // like a real tank. Set to -1 if it feels backwards on the phone (steering-wheel feel).
+  const TREAD_SWAP = 1;
+  const DEG = Math.PI / 180;
+  const tilt = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, active: false };
+  const baseline = { ux: 0, uy: 0, uz: 1, set: false };
+  const tiltSim = { on: false, pitch: 0, bank: 0 };   // test hook: fake tilt angles (degrees)
+  let needBaseline = false, zeroFlash = 0;
+  let side = 1;
+  function landscapeSide() {
+    if (Math.abs(baseline.ux) > 0.2) return baseline.ux > 0 ? 1 : -1;
+    const a = (screen.orientation && typeof screen.orientation.angle === 'number')
+      ? screen.orientation.angle : window.orientation;
+    return (a === 270 || a === -90) ? -1 : 1;
+  }
+  const recalibrate = () => { if (tilt.active) needBaseline = true; };
+  window.addEventListener('orientationchange', recalibrate);
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener('change', recalibrate);
+  }
+  function onOrient(e) {
+    if (e.beta == null || e.gamma == null) return;
+    const b = e.beta * DEG, g = e.gamma * DEG;
+    tilt.beta = e.beta; tilt.gamma = e.gamma; tilt.active = true;
+    tilt.ux = -Math.sin(g) * Math.cos(b);
+    tilt.uy =  Math.sin(b);
+    tilt.uz =  Math.cos(g) * Math.cos(b);
+    if (needBaseline) {
+      Object.assign(baseline, { ux: tilt.ux, uy: tilt.uy, uz: tilt.uz, set: true });
+      side = landscapeSide();
+      needBaseline = false;
+    }
+  }
+  function pitchFromNeutral() {
+    const cross = baseline.ux * tilt.uz - baseline.uz * tilt.ux;
+    const dot   = baseline.ux * tilt.ux + baseline.uz * tilt.uz;
+    return Math.atan2(cross, dot) / DEG;
+  }
+  function bankFromNeutral() {
+    const asinDeg = v => Math.asin(clamp(v, -1, 1)) / DEG;
+    return asinDeg(tilt.uy) - asinDeg(baseline.uy);
+  }
+  const tiltNote = document.getElementById('tiltNote');
+  function showTiltNote(msg) { tiltNote.textContent = msg; tiltNote.hidden = !msg; }
+  function checkTiltArrives() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    setTimeout(() => {
+      if (!tilt.active) showTiltNote('No tilt readings from this device yet. Try reloading the page.');
+    }, 2500);
+  }
+  function startListening() {
+    window.addEventListener('deviceorientation', onOrient);
+    showTiltNote('');
+    checkTiltArrives();
+  }
+  function enableTilt() {
+    needBaseline = true;
+    if (typeof DeviceOrientationEvent === 'undefined') return;
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()   // must run inside the click
+        .then(res => {
+          if (res === 'granted') startListening();
+          else showTiltNote('Tilt access was denied, so the tank cannot feel your phone move. ' +
+                            'Fully close Safari, reopen this page and tap Allow.');
+        })
+        .catch(err => showTiltNote('Could not turn on tilt: ' + ((err && err.message) || err)));
+    } else {
+      startListening();
+    }
+  }
+  function beginPlay() {
+    initAudio(); enableTilt();
+    lives = 3; score = 0;
+    initLevel(0);
+    state = 'play';
+  }
+
+  // ── Portrait blocker ─────────────────────────────────────────────────────
+  function updateOrientation() {
+    const portrait = window.innerHeight > window.innerWidth;
+    document.body.classList.toggle('portrait', portrait);
+  }
+  window.addEventListener('resize', updateOrientation);
+  window.addEventListener('orientationchange', () => setTimeout(() => { updateOrientation(); resize(); }, 200));
+  updateOrientation();
+
+  // ── Audio ────────────────────────────────────────────────────────────────
+  let actx = null, engine = null, servo = null;
+  function initAudio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+      if (actx) {
+        // diesel engine: low sawtooth through a lowpass, pitch + volume follow the treads
+        const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 38;
+        const o2 = actx.createOscillator(); o2.type = 'square'; o2.frequency.value = 19;
+        const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260;
+        const g = actx.createGain(); g.gain.value = 0;
+        const g2 = actx.createGain(); g2.gain.value = 0.35;
+        o.connect(f); o2.connect(g2).connect(f); f.connect(g).connect(actx.destination);
+        o.start(); o2.start();
+        engine = { o, o2, f, g };
+        // turret traverse motor whine
+        const so = actx.createOscillator(); so.type = 'triangle'; so.frequency.value = 170;
+        const sg = actx.createGain(); sg.gain.value = 0;
+        so.connect(sg).connect(actx.destination); so.start();
+        servo = { o: so, g: sg };
+      }
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+  }
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.2, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noiseBurst(dur, vol, lp) {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const n = Math.floor(actx.sampleRate * dur);
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const g = actx.createGain(); g.gain.value = vol || 0.2;
+    const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp || 2000;
+    src.connect(f).connect(g).connect(actx.destination);
+    src.start(t);
+  }
+  const sfx = {
+    fire()     { noiseBurst(0.5, 0.5, 900); tone(110, 0.35, 'sine', 0.35, 35); },
+    enemyFire(d) { const v = clamp(0.25 / (0.6 + d * 0.25), 0.03, 0.22); noiseBurst(0.3, v, 700); },
+    boom(big)  { noiseBurst(big ? 0.9 : 0.4, big ? 0.55 : 0.3, big ? 500 : 1200); if (big) tone(70, 0.6, 'sine', 0.3, 25); },
+    clang()    { tone(900, 0.12, 'triangle', 0.18, 300); tone(1400, 0.08, 'square', 0.06, 700); },
+    hit()      { noiseBurst(0.35, 0.5, 1500); tone(200, 0.3, 'sawtooth', 0.22, 60); },
+    brick()    { noiseBurst(0.3, 0.3, 1600); },
+    click()    { tone(600, 0.04, 'square', 0.08); },
+    reload()   { tone(300, 0.05, 'square', 0.06); setTimeout(() => tone(420, 0.05, 'square', 0.06), 60); },
+    clear()    { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.22), i * 140)); },
+    lose()     { [330, 247, 165].forEach((f, i) => setTimeout(() => tone(f, 0.4, 'sawtooth', 0.2, f * 0.7), i * 220)); },
+  };
+  function updateAudio(dt) {
+    if (!actx || !engine) return;
+    const t = actx.currentTime;
+    const on = state === 'play' && player.alive;
+    const thr = on ? Math.max(Math.abs(player.L), Math.abs(player.R)) : 0;
+    const idle = (state === 'play' || state === 'clear') ? 0.03 : 0;
+    engine.g.gain.setTargetAtTime(idle + thr * 0.07, t, 0.1);
+    engine.o.frequency.setTargetAtTime(36 + thr * 34, t, 0.15);
+    engine.o2.frequency.setTargetAtTime(18 + thr * 17, t, 0.15);
+    engine.f.frequency.setTargetAtTime(220 + thr * 380, t, 0.15);
+    servo.g.gain.setTargetAtTime(on && turretMoving ? 0.025 : 0, t, 0.03);
+  }
+
+  // ── Collision helpers ────────────────────────────────────────────────────
+  function circleHitsTiles(x, y, r) {
+    for (let ty = Math.floor(y - r); ty <= Math.floor(y + r); ty++) {
+      for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
+        if (tileAt(tx, ty) === EMPTY) continue;
+        const cx = clamp(x, tx, tx + 1), cy = clamp(y, ty, ty + 1);
+        if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
+      }
+    }
+    return false;
+  }
+  // Blocks only if the move brings us closer to another tank (so you can always back out)
+  function tankBlocks(x, y, ox, oy) {
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const nd = (e.x - x) ** 2 + (e.y - y) ** 2, od = (e.x - ox) ** 2 + (e.y - oy) ** 2;
+      if (nd < 0.72 * 0.72 && nd < od) return true;
+    }
+    return false;
+  }
+  function lineOfSight(x0, y0, x1, y1) {
+    const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / 0.1);
+    for (let i = 1; i < n; i++) {
+      const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
+      if (tileAt(Math.floor(x), Math.floor(y)) !== EMPTY) return false;
+    }
+    return true;
+  }
+
+  // ── Update ───────────────────────────────────────────────────────────────
+  let turretMoving = false;
+  function readTreads() {
+    // Keyboard: arrows drive both treads; Q/A = left tread, E/D = right tread
+    let kL = 0, kR = 0, any = false;
+    if (keys['ArrowUp'])    { kL += 1; kR += 1; any = true; }
+    if (keys['ArrowDown'])  { kL -= 1; kR -= 1; any = true; }
+    if (keys['ArrowLeft'])  { kL -= 1; kR += 1; any = true; }
+    if (keys['ArrowRight']) { kL += 1; kR -= 1; any = true; }
+    if (keys['KeyQ']) { kL += 1; any = true; }
+    if (keys['KeyA']) { kL -= 1; any = true; }
+    if (keys['KeyE']) { kR += 1; any = true; }
+    if (keys['KeyD']) { kR -= 1; any = true; }
+    if (any) return [clamp(kL, -1, 1), clamp(kR, -1, 1)];
+
+    let dP = null, dB = null;
+    if (tiltSim.on) { dP = tiltSim.pitch; dB = tiltSim.bank; }
+    else if (tilt.active && baseline.set) {
+      dP = pitchFromNeutral() * PITCH_DIR * side;
+      dB = bankFromNeutral() * BANK_DIR * side;
+    }
+    if (dP === null) return [0, 0];
+    // Degrees from the neutral hold: nothing inside DEAD, full tread speed at FULL
+    const ramp = (d, dead, full) => {
+      const a = Math.abs(d);
+      return a <= dead ? 0 : Math.min(1, (a - dead) / (full - dead)) * Math.sign(d);
+    };
+    const both = ramp(dP, 6, 18);          // whole phone tipped forward/back
+    const diff = ramp(dB, 5, 18) * TREAD_SWAP;   // + = right end dipped
+    // Dip the LEFT end -> left tread gets more forward drive; dip RIGHT -> right tread
+    return [clamp(both - diff, -1, 1), clamp(both + diff, -1, 1)];
+  }
+
+  const MAXV = 2.1;        // tiles per second at full forward
+  const MAXW = 1.9;        // radians per second when treads run fully opposed
+  const TURRET_SPEED = 1.7;
+
+  function updatePlayer(dt) {
+    if (!player.alive) {
+      player.L = player.R = 0;
+      deadT -= dt;
+      if (deadT <= 0) {
+        if (lives > 0) resetPlayer();
+        else { state = 'over'; stateT = 0; sfx.lose(); }
+      }
+      return;
+    }
+    const [tL, tR] = readTreads();
+    player.tL = tL; player.tR = tR;
+    // treads have some weight to them: ease toward the target (also smooths tilt jitter)
+    const ease = (cur, tgt) => cur + clamp(tgt - cur, -3.2 * dt, 3.2 * dt);
+    player.L = ease(player.L, tL); player.R = ease(player.R, tR);
+
+    let v = (player.L + player.R) / 2 * MAXV;
+    if (v < 0) v *= 0.7;                                   // reverse is slower
+    const w = (player.L - player.R) / 2 * MAXW;            // L faster than R -> swing right
+    player.a = normAng(player.a + w * dt);
+    player.v = v;
+    const dx = Math.cos(player.a) * v * dt, dy = Math.sin(player.a) * v * dt;
+    const ox = player.x, oy = player.y;
+    if (!circleHitsTiles(player.x + dx, player.y, player.r) && !tankBlocks(player.x + dx, player.y, ox, oy)) player.x += dx;
+    if (!circleHitsTiles(player.x, player.y + dy, player.r) && !tankBlocks(player.x, player.y + dy, ox, oy)) player.y += dy;
+    bobPhase += Math.abs(v) * dt * 7 + Math.abs(w) * dt * 3;
+
+    // Turret: bar (or Z/X keys) traverses; CENTER swings it back to straight ahead
+    let tin = turretIn;
+    if (keys['KeyZ']) tin = -1;
+    if (keys['KeyX']) tin = 1;
+    if (keys['KeyC']) centering = true;
+    turretMoving = false;
+    if (Math.abs(tin) > 0.06) {
+      centering = false;
+      const s = Math.sign(tin) * (0.25 + 0.75 * Math.abs(tin));   // gentle near the middle
+      player.t = normAng(player.t + s * TURRET_SPEED * dt);
+      turretMoving = true;
+    } else if (centering) {
+      const step = TURRET_SPEED * 1.4 * dt;
+      if (Math.abs(player.t) <= step) { player.t = 0; centering = false; sfx.click(); }
+      else { player.t -= Math.sign(player.t) * step; turretMoving = true; }
+    }
+    btnCenter.classList.toggle('on', centering);
+
+    // Fire
+    player.cd -= dt;
+    if (fireQueue > 0) fireQueue -= dt;
+    if (keys['Space'] || keys['KeyF']) fireQueue = 0.1;
+    if ((fireHeld || fireQueue > 0) && player.cd <= 0) {
+      const ca = player.a + player.t;
+      shells.push({ x: player.x + Math.cos(ca) * 0.45, y: player.y + Math.sin(ca) * 0.45,
+                    dx: Math.cos(ca) * 10, dy: Math.sin(ca) * 10, mine: true, owner: null, dead: false });
+      player.cd = 0.75; fireQueue = 0;
+      recoil = 1; muzzle = 0.09; shake = Math.max(shake, 0.5);
+      sfx.fire();
+      setTimeout(() => { if (state === 'play') sfx.reload(); }, 650);
+    }
+    if (player.inv > 0) player.inv -= dt;
+  }
+
+  function enemyFire(e) {
+    if (e.shellOut || e.cd > 0) return;
+    const [ox, oy] = DIR[e.dir];
+    shells.push({ x: e.x + ox * 0.5, y: e.y + oy * 0.5, dx: ox * 5.5, dy: oy * 5.5, mine: false, owner: e, dead: false });
+    e.shellOut = true;
+    e.cd = e.type === 'fast' ? 1.0 : 1.5;
+    sfx.enemyFire(Math.hypot(e.x - player.x, e.y - player.y));
+    fx.push({ kind: 'flash', x: e.x + ox * 0.55, y: e.y + oy * 0.55, t: 0, dur: 0.12 });
+  }
+
+  // Is the player sitting in this enemy's row/column lane with a clear shot?
+  function playerInLane(e) {
+    if (!player.alive) return null;
+    const dx = player.x - e.x, dy = player.y - e.y;
+    if (Math.hypot(dx, dy) > 9) return null;
+    let d = null;
+    if (Math.abs(dy) < 0.4) d = dx > 0 ? 'right' : 'left';
+    else if (Math.abs(dx) < 0.4) d = dy > 0 ? 'down' : 'up';
+    if (!d || !lineOfSight(e.x, e.y, player.x, player.y)) return null;
+    return d;
+  }
+
+  function enemyThink(e) {
+    const cx = Math.floor(e.x), cy = Math.floor(e.y);
+    // Spotted the player down a lane? turn to face and shoot.
+    const spot = playerInLane(e);
+    if (spot && Math.random() < 0.75) { e.dir = spot; e.aimT = 0.35 + Math.random() * 0.4; return; }
+
+    const opts = [];
+    for (const d in DIR) {
+      const nx = cx + DIR[d][0], ny = cy + DIR[d][1];
+      if (tileAt(nx, ny) !== EMPTY) continue;
+      let w = 1;
+      if (d === e.dir) w += 2.5;
+      if (d === OPP[e.dir]) w = 0.25;
+      const px = player.x - e.x, py = player.y - e.y;
+      if ((d === 'right' && px > 1) || (d === 'left' && px < -1) || (d === 'down' && py > 1) || (d === 'up' && py < -1)) w += 1.3;
+      if (d === 'down') w += 0.5;                                // drift toward the HQ
+      opts.push([d, w]);
+    }
+    if (!opts.length) {
+      // boxed in by bricks: turn toward one and shoot our way out
+      const ds = Object.keys(DIR); e.dir = ds[(Math.random() * 4) | 0]; e.aimT = 0.4; return;
+    }
+    let tot = opts.reduce((s, o) => s + o[1], 0), r = Math.random() * tot, pick = opts[0][0];
+    for (const [d, w] of opts) { r -= w; if (r <= 0) { pick = d; break; } }
+    e.dir = pick;
+    e.from = { x: cx + 0.5, y: cy + 0.5 };
+    e.tgt = { x: cx + DIR[pick][0] + 0.5, y: cy + DIR[pick][1] + 0.5 };
+  }
+
+  function updateEnemies(dt) {
+    // spawning
+    const onField = enemies.filter(e => e.alive).length;
+    spawnTimer -= dt;
+    if (spawnQueue.length && onField < MAX_ON_FIELD && spawnTimer <= 0) {
+      for (let k = 0; k < 3; k++) {
+        const s = ENEMY_SPAWNS[(spawnIdx + k) % 3];
+        const cx = s.x + 0.5, cy = s.y + 0.5;
+        const clear = enemies.every(e => !e.alive || Math.hypot(e.x - cx, e.y - cy) > 0.95) &&
+                      Math.hypot(player.x - cx, player.y - cy) > 0.95;
+        if (clear) {
+          enemies.push(makeEnemy(s.x, s.y, spawnQueue.shift()));
+          spawnIdx = (spawnIdx + k + 1) % 3;
+          break;
+        }
+      }
+      spawnTimer = 2.6;
+    }
+
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      if (e.flash > 0) e.flash -= dt;
+      if (e.spawnT > 0) { e.spawnT -= dt; continue; }
+      e.cd -= dt;
+
+      // turn the hull toward the chosen direction before doing anything else
+      const diff = normAng(DIR_ANG[e.dir] - e.ang);
+      const rot = 4.5 * dt;
+      e.ang = normAng(e.ang + clamp(diff, -rot, rot));
+      if (Math.abs(diff) > 0.12) continue;
+      e.ang = DIR_ANG[e.dir];
+
+      if (e.aimT > 0) {
+        e.aimT -= dt;
+        if (e.aimT <= 0) enemyFire(e);
+        continue;
+      }
+
+      if (!e.tgt) { enemyThink(e); continue; }
+
+      // blocked by another tank ahead? wait a moment, then back off
+      const [ox, oy] = DIR[e.dir];
+      let blocked = false;
+      const others = enemies.filter(o => o !== e && o.alive).map(o => [o.x, o.y]);
+      if (player.alive) others.push([player.x, player.y]);
+      for (const [x, y] of others) {
+        const rx = x - e.x, ry = y - e.y;
+        const along = rx * ox + ry * oy, lat = Math.abs(rx * oy - ry * ox);
+        if (along > 0 && along < 0.95 && lat < 0.78) { blocked = true; break; }
+      }
+      if (blocked) {
+        e.wait += dt;
+        if (e.wait > 0.7) {
+          e.wait = 0;
+          const back = e.from; e.from = e.tgt; e.tgt = back; e.dir = OPP[e.dir];
+        }
+        // a player blocking the way is also a target
+        if (player.alive && playerInLane(e) === e.dir) enemyFire(e);
+        continue;
+      }
+      e.wait = 0;
+      e.tread += e.speed * dt;
+      const step = e.speed * dt;
+      const rx = e.tgt.x - e.x, ry = e.tgt.y - e.y, dist = Math.abs(rx) + Math.abs(ry);
+      if (dist <= step) { e.x = e.tgt.x; e.y = e.tgt.y; e.tgt = null; }
+      else { e.x += ox * step; e.y += oy * step; }
+
+      // opportunistic shots: at the player if lined up, otherwise at random
+      e.shootT -= dt;
+      if (playerInLane(e) === e.dir && Math.random() < dt * 2.2) enemyFire(e);
+      if (e.shootT <= 0) {
+        enemyFire(e);
+        e.shootT = (e.type === 'fast' ? 1.2 : 2.0) + Math.random() * 2.2;
+      }
+    }
+  }
+
+  function boom(x, y, big) {
+    fx.push({ kind: 'boom', x, y, t: 0, dur: big ? 1.1 : 0.5, big });
+  }
+
+  function updateShells(dt) {
+    for (const s of shells) {
+      if (s.dead) continue;
+      for (let k = 0; k < 3 && !s.dead; k++) {
+        s.x += s.dx * dt / 3; s.y += s.dy * dt / 3;
+        const tx = Math.floor(s.x), ty = Math.floor(s.y);
+        const t = tileAt(tx, ty);
+        if (t === EMPTY) continue;
+        s.dead = true;
+        if (t === BRICK) {
+          map[ty][tx] = EMPTY;
+          boom(tx + 0.5, ty + 0.5, false); sfx.brick();
+        } else if (t === HQ && !s.mine) {
+          map[ty][tx] = EMPTY; hqAlive = false;
+          boom(tx + 0.5, ty + 0.5, true); sfx.boom(true);
+          state = 'over'; stateT = 0; setTimeout(sfx.lose, 500);
+        } else {
+          fx.push({ kind: 'spark', x: s.x - s.dx * 0.01, y: s.y - s.dy * 0.01, t: 0, dur: 0.25 });
+          if (s.mine) sfx.clang();
+        }
+      }
+    }
+    // shell vs shell (opposite sides cancel out, like Battle City)
+    for (let i = 0; i < shells.length; i++) {
+      const a = shells[i]; if (a.dead) continue;
+      for (let j = i + 1; j < shells.length; j++) {
+        const b = shells[j]; if (b.dead || a.mine === b.mine) continue;
+        if (Math.hypot(a.x - b.x, a.y - b.y) < 0.28) {
+          a.dead = b.dead = true;
+          fx.push({ kind: 'spark', x: a.x, y: a.y, t: 0, dur: 0.3 });
+        }
+      }
+    }
+    // shell vs tanks
+    for (const s of shells) {
+      if (s.dead) continue;
+      if (s.mine) {
+        for (const e of enemies) {
+          if (!e.alive || e.spawnT > 0) continue;
+          if (Math.hypot(s.x - e.x, s.y - e.y) < 0.45) {
+            s.dead = true; e.hp--; e.flash = 0.18;
+            if (e.hp <= 0) {
+              e.alive = false;
+              score += e.type === 'armor' ? 300 : e.type === 'fast' ? 200 : 100;
+              boom(e.x, e.y, true); sfx.boom(true);
+            } else { fx.push({ kind: 'spark', x: s.x, y: s.y, t: 0, dur: 0.3 }); sfx.clang(); }
+            break;
+          }
+        }
+      } else if (player.alive && Math.hypot(s.x - player.x, s.y - player.y) < 0.38) {
+        s.dead = true;
+        if (player.inv > 0) { fx.push({ kind: 'spark', x: s.x, y: s.y, t: 0, dur: 0.3 }); sfx.clang(); continue; }
+        player.hp--; hurt = 0.5; shake = 1.2; sfx.hit();
+        if (player.hp <= 0) {
+          player.alive = false; lives--; deadT = 2.2;
+          boom(player.x, player.y, true); sfx.boom(true);
+        } else player.inv = 0.6;
+      }
+    }
+    for (const s of shells) if (s.dead && s.owner) s.owner.shellOut = false;
+    shells = shells.filter(s => !s.dead);
+  }
+
+  function update(dt) {
+    time += dt;
+    shake = Math.max(0, shake - dt * 2.5);
+    recoil = Math.max(0, recoil - dt * 3);
+    muzzle = Math.max(0, muzzle - dt);
+    hurt = Math.max(0, hurt - dt);
+    zeroFlash = Math.max(0, zeroFlash - dt);
+    for (const f of fx) f.t += dt;
+    fx = fx.filter(f => f.t < f.dur);
+
+    if (state === 'title') {
+      player.t = Math.sin(time * 0.35) * 0.9;   // slow periscope sweep behind the title
+      return;
+    }
+    if (state === 'play') {
+      if (hintT > 0) hintT -= dt;
+      updatePlayer(dt);
+      if (state !== 'play') return;
+      updateEnemies(dt);
+      updateShells(dt);
+      if (state === 'play' && !spawnQueue.length && enemies.every(e => !e.alive)) {
+        state = 'clear'; stateT = 0; sfx.clear();
+      }
+    } else if (state === 'clear') {
+      stateT += dt;
+      player.L = player.R = 0;
+      if (stateT > 3) {
+        if (level + 1 < LEVELS.length) { initLevel(level + 1); state = 'play'; }
+        else { state = 'win'; stateT = 0; }
+      }
+    } else {
+      stateT += dt;
+      updateShells(dt);
+    }
+  }
+
+  // ── Rendering ────────────────────────────────────────────────────────────
+  const NOISE = new Float32Array(256);
+  for (let i = 0; i < 256; i++) NOISE[i] = (Math.sin(i * 12.9898) * 43758.5453 % 1) * 12;
+
+  function hazeMix(c, t) {
+    return [c[0] + (HAZE[0] - c[0]) * t, c[1] + (HAZE[1] - c[1]) * t, c[2] + (HAZE[2] - c[2]) * t];
+  }
+  function rgb(c, a) {
+    return a === undefined ? 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')'
+                           : 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')';
+  }
+
+  function drawSky(ca) {
+    const g = ctx.createLinearGradient(0, 0, 0, HOR);
+    g.addColorStop(0, '#56759a'); g.addColorStop(0.7, '#9fa7a4'); g.addColorStop(1, '#bcb39a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, HOR + 1);
+    // two layers of distant hills, wrapping all the way round
+    const layer = (amp, base, fn, col) => {
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, HOR + 1);
+      for (let x = 0; x <= W + 6; x += 6) {
+        const a = ca + Math.atan(((2 * x / W) - 1) * tanHalf);
+        ctx.lineTo(x, HOR - (base + amp * fn(a)) * S);
+      }
+      ctx.lineTo(W, HOR + 1); ctx.closePath(); ctx.fill();
+    };
+    layer(9, 14, a => Math.sin(a * 3 + 1) * 0.6 + Math.sin(a * 7 + 2) * 0.3 + Math.sin(a * 13) * 0.15, '#8d948f');
+    layer(6, 6, a => Math.sin(a * 5 + 4) * 0.5 + Math.sin(a * 11 + 1) * 0.35 + Math.sin(a * 23) * 0.1, '#7a7a62');
+  }
+
+  function drawFloor(ca) {
+    const dx = Math.cos(ca), dy = Math.sin(ca);
+    const plx = -dy * tanHalf, ply = dx * tanHalf;
+    const hb = H - HOR, data = floorImg.data;
+    for (let r = 0; r < FH; r++) {
+      const p = (r + 0.5) * hb / FH;
+      const rd = CAMZ * F / p;
+      let wx = player.x + rd * (dx - plx), wy = player.y + rd * (dy - ply);
+      const sx = rd * 2 * plx / FW, sy = rd * 2 * ply / FW;
+      const fogT = Math.min(0.8, rd / 15);
+      let idx = r * FW * 4;
+      for (let c = 0; c < FW; c++) {
+        const fx4 = Math.floor(wx * 4), fy4 = Math.floor(wy * 4);
+        const n = NOISE[((fx4 * 73856093) ^ (fy4 * 19349663)) & 255];
+        let R = 118 + n, G = 104 + n, B = 74 + n * 0.7;
+        const fxx = wx - Math.floor(wx), fyy = wy - Math.floor(wy);
+        if (fxx < 0.04 || fyy < 0.04) { R *= 0.84; G *= 0.84; B *= 0.84; }   // faint board grid
+        data[idx]     = R + (HAZE[0] - R) * fogT;
+        data[idx + 1] = G + (HAZE[1] - G) * fogT;
+        data[idx + 2] = B + (HAZE[2] - B) * fogT;
+        data[idx + 3] = 255;
+        idx += 4; wx += sx; wy += sy;
+      }
+    }
+    floorCtx.putImageData(floorImg, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(floorCan, 0, 0, FW, FH, 0, HOR, W, hb);
+  }
+
+  const WALL_COL = { 1: [164, 74, 40], 2: [150, 156, 166], 3: [62, 64, 72], 9: [124, 120, 104] };
+
+  function drawWalls(ca) {
+    const dx = Math.cos(ca), dy = Math.sin(ca);
+    const plx = -dy * tanHalf, ply = dx * tanHalf;
+    for (let col = 0; col < W; col++) {
+      const camX = 2 * (col + 0.5) / W - 1;
+      const rdx = dx + plx * camX, rdy = dy + ply * camX;
+      let mapX = Math.floor(player.x), mapY = Math.floor(player.y);
+      const deltaX = Math.abs(1 / (rdx || 1e-9)), deltaY = Math.abs(1 / (rdy || 1e-9));
+      let stepX, stepY, sdX, sdY;
+      if (rdx < 0) { stepX = -1; sdX = (player.x - mapX) * deltaX; } else { stepX = 1; sdX = (mapX + 1 - player.x) * deltaX; }
+      if (rdy < 0) { stepY = -1; sdY = (player.y - mapY) * deltaY; } else { stepY = 1; sdY = (mapY + 1 - player.y) * deltaY; }
+      let side = 0, tile = 0;
+      for (let guard = 0; guard < 64; guard++) {
+        if (sdX < sdY) { sdX += deltaX; mapX += stepX; side = 0; } else { sdY += deltaY; mapY += stepY; side = 1; }
+        tile = tileAt(mapX, mapY);
+        if (tile !== EMPTY) break;
+      }
+      let perp = side === 0 ? (mapX - player.x + (1 - stepX) / 2) / (rdx || 1e-9)
+                            : (mapY - player.y + (1 - stepY) / 2) / (rdy || 1e-9);
+      perp = Math.max(0.02, Math.abs(perp));
+      zbuf[col] = perp;
+
+      const lh = F / perp;
+      const top = HOR - (1 - CAMZ) * lh;
+      const fogT = Math.min(0.78, perp / 15);
+      let c = WALL_COL[tile] || WALL_COL[9];
+      const sh = side === 1 ? 0.78 : 1;
+      c = hazeMix([c[0] * sh, c[1] * sh, c[2] * sh], fogT);
+      ctx.fillStyle = rgb(c);
+      ctx.fillRect(col, top, 1, lh);
+      if (lh < 10) continue;
+
+      const wx = side === 0 ? player.y + perp * rdy : player.x + perp * rdx;
+      const tx = wx - Math.floor(wx);
+      const a = (0.6 * (1 - fogT)).toFixed(2);
+      if (tile === BRICK) {
+        ctx.fillStyle = 'rgba(58,36,26,' + a + ')';
+        const th = Math.max(1, lh * 0.03);
+        for (let k = 1; k < 4; k++) ctx.fillRect(col, top + lh * k / 4 - th / 2, 1, th);
+        for (let k = 0; k < 4; k++) {
+          const u = (tx * 2 + (k & 1) * 0.5) % 1;
+          if (u < 0.05) ctx.fillRect(col, top + lh * k / 4, 1, lh / 4);
+        }
+        ctx.fillStyle = 'rgba(255,190,150,' + (a * 0.25).toFixed(2) + ')';
+        for (let k = 0; k < 4; k++) ctx.fillRect(col, top + lh * k / 4 + th, 1, Math.max(1, lh * 0.02));
+      } else if (tile === STEEL) {
+        ctx.fillStyle = 'rgba(40,46,56,' + a + ')';
+        if (tx < 0.06 || tx > 0.94 || Math.abs(tx - 0.5) < 0.02) ctx.fillRect(col, top, 1, lh);
+        ctx.fillRect(col, top + lh * 0.49, 1, Math.max(1, lh * 0.02));
+        ctx.fillRect(col, top + lh * 0.94, 1, lh * 0.06);
+        ctx.fillStyle = 'rgba(235,240,250,' + (a * 0.55).toFixed(2) + ')';
+        ctx.fillRect(col, top, 1, lh * 0.05);
+        if (Math.abs(tx - 0.14) < 0.03 || Math.abs(tx - 0.86) < 0.03 || Math.abs(tx - 0.36) < 0.03 || Math.abs(tx - 0.64) < 0.03) {
+          ctx.fillRect(col, top + lh * 0.12, 1, lh * 0.035);
+          ctx.fillRect(col, top + lh * 0.6, 1, lh * 0.035);
+        }
+      } else if (tile === HQ) {
+        // golden eagle emblem on the HQ bunker
+        const u = (tx - 0.5) / 0.36, au = Math.abs(u);
+        const gold = hazeMix([236, 188, 60], fogT);
+        if (au < 1) {
+          const y0 = 0.30 + 0.2 * au * au, y1 = 0.62 - 0.14 * au;
+          ctx.fillStyle = rgb(gold);
+          ctx.fillRect(col, top + lh * y0, 1, lh * (y1 - y0));
+          if (au > 0.3 && (au * 7) % 1 < 0.22) {
+            ctx.fillStyle = rgb(c);
+            ctx.fillRect(col, top + lh * (y1 - 0.09), 1, lh * 0.09);
+          }
+          if (au < 0.2) { ctx.fillStyle = rgb(gold); ctx.fillRect(col, top + lh * 0.18, 1, lh * 0.64); }
+        }
+        ctx.fillStyle = 'rgba(20,20,26,' + a + ')';
+        if (tx < 0.05 || tx > 0.95) ctx.fillRect(col, top, 1, lh);
+      } else {
+        // concrete perimeter barrier with a hazard stripe along the top
+        ctx.fillStyle = 'rgba(40,38,30,' + a + ')';
+        if (tx < 0.03) ctx.fillRect(col, top, 1, lh);
+        ctx.fillStyle = ((tx * 4) | 0) % 2 ? 'rgba(30,28,20,' + a + ')' : 'rgba(230,190,40,' + a + ')';
+        ctx.fillRect(col, top + lh * 0.04, 1, lh * 0.07);
+      }
+    }
+  }
+
+  // Paint a sprite only in screen columns where it is in front of the walls
+  function clipped(left, width, top, height, dist, paint) {
+    const s = Math.max(0, Math.floor(left)), e = Math.min(W, Math.ceil(left + width));
+    let run = -1;
+    for (let x = s; x <= e; x++) {
+      const vis = x < e && dist < zbuf[x];
+      if (vis && run < 0) run = x;
+      else if (!vis && run >= 0) {
+        ctx.save(); ctx.beginPath(); ctx.rect(run, top, x - run, height); ctx.clip();
+        paint(); ctx.restore(); run = -1;
+      }
+    }
+  }
+
+  function drawSprites(ca) {
+    const cs = Math.cos(ca), sn = Math.sin(ca);
+    const list = [];
+    const add = (o, kind) => {
+      const dx = o.x - player.x, dy = o.y - player.y;
+      const dist = dx * cs + dy * sn;
+      if (dist < 0.12) return;
+      const lat = -dx * sn + dy * cs;
+      list.push({ o, kind, dist, sx: W / 2 + lat * F / dist, sc: F / dist });
+    };
+    for (const e of enemies) if (e.alive) add(e, 'tank');
+    for (const s of shells) add(s, 'shell');
+    for (const f of fx) add(f, f.kind);
+    list.sort((a, b) => b.dist - a.dist);
+
+    for (const it of list) {
+      const { o, dist, sx, sc } = it;
+      const fogT = Math.min(0.75, dist / 15);
+      const ground = HOR + CAMZ * sc;
+      if (it.kind === 'tank') {
+        if (o.spawnT > 0) { drawSpawnStar(o, sx, HOR + (CAMZ - 0.35) * sc, sc, dist); continue; }
+        const w = 1.0 * sc, h = 0.62 * sc;
+        clipped(sx - w / 2, w, ground - h, h + 2, dist, () => paintTank(o, sx, ground, sc, fogT, cs, sn));
+      } else if (it.kind === 'shell') {
+        const y = HOR + (CAMZ - 0.38) * sc, r = Math.max(2, 0.07 * sc);
+        clipped(sx - r * 3, r * 6, y - r * 3, r * 6, dist, () => {
+          const g = ctx.createRadialGradient(sx, y, 0, sx, y, r * 3);
+          g.addColorStop(0, o.mine ? 'rgba(255,250,210,1)' : 'rgba(255,230,200,1)');
+          g.addColorStop(0.3, o.mine ? 'rgba(255,190,60,0.9)' : 'rgba(255,80,40,0.9)');
+          g.addColorStop(1, 'rgba(255,80,0,0)');
+          ctx.fillStyle = g; ctx.fillRect(sx - r * 3, y - r * 3, r * 6, r * 6);
+        });
+      } else if (it.kind === 'boom') {
+        const k = o.t / o.dur, R = (o.big ? 0.75 : 0.45) * sc * (0.35 + k);
+        const y = HOR + (CAMZ - (o.big ? 0.4 : 0.5)) * sc - k * 0.3 * sc;
+        clipped(sx - R, R * 2, y - R, R * 2, dist, () => {
+          const g = ctx.createRadialGradient(sx, y, 0, sx, y, R);
+          const a = 1 - k;
+          if (k < 0.45) {
+            g.addColorStop(0, 'rgba(255,250,220,' + a + ')');
+            g.addColorStop(0.35, 'rgba(255,180,50,' + a + ')');
+            g.addColorStop(0.75, 'rgba(210,70,20,' + (a * 0.8) + ')');
+          } else {
+            g.addColorStop(0, 'rgba(90,80,70,' + (a * 0.9) + ')');
+            g.addColorStop(0.6, 'rgba(70,64,58,' + (a * 0.6) + ')');
+          }
+          g.addColorStop(1, 'rgba(60,50,40,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, y, R, 0, Math.PI * 2); ctx.fill();
+          // flying debris
+          ctx.fillStyle = 'rgba(40,30,20,' + a + ')';
+          for (let i = 0; i < 7; i++) {
+            const ang = i * 2.4 + (o.x * 7 % 3), rr = R * (0.4 + k * 0.9);
+            ctx.fillRect(sx + Math.cos(ang) * rr, y + Math.sin(ang) * rr * 0.7 + k * k * R, Math.max(2, sc * 0.03), Math.max(2, sc * 0.03));
+          }
+        });
+      } else if (it.kind === 'spark' || it.kind === 'flash') {
+        const k = o.t / o.dur, R = Math.max(4, (it.kind === 'flash' ? 0.3 : 0.2) * sc * (0.5 + k));
+        const y = HOR + (CAMZ - 0.38) * sc;
+        clipped(sx - R, R * 2, y - R, R * 2, dist, () => {
+          const g = ctx.createRadialGradient(sx, y, 0, sx, y, R);
+          g.addColorStop(0, 'rgba(255,255,220,' + (1 - k) + ')');
+          g.addColorStop(0.4, 'rgba(255,200,80,' + (0.8 * (1 - k)) + ')');
+          g.addColorStop(1, 'rgba(255,120,0,0)');
+          ctx.fillStyle = g; ctx.fillRect(sx - R, y - R, R * 2, R * 2);
+        });
+      }
+    }
+  }
+
+  function drawSpawnStar(e, sx, y, sc, dist) {
+    const R = 0.45 * sc * (0.6 + 0.4 * Math.abs(Math.sin(time * 9)));
+    clipped(sx - R, R * 2, y - R, R * 2, dist, () => {
+      ctx.save(); ctx.translate(sx, y); ctx.rotate(time * 3);
+      ctx.fillStyle = 'rgba(230,245,255,0.95)';
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const rr = i % 2 ? R * 0.22 : R, a = i * Math.PI / 4;
+        ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath(); ctx.fill(); ctx.restore();
+    });
+  }
+
+  const TANK_COL = { normal: [168, 170, 160], fast: [196, 168, 108], armor: [86, 116, 70] };
+  function paintTank(e, cx, ground, sc, fogT, cs, sn) {
+    let base = TANK_COL[e.type];
+    if (e.type === 'armor' && e.hp < 3) base = e.hp === 2 ? [120, 130, 80] : [150, 110, 70];
+    if (e.flash > 0) base = [255, 255, 255];
+    const body = rgb(hazeMix(base, fogT));
+    const dark = rgb(hazeMix([base[0] * 0.55, base[1] * 0.55, base[2] * 0.55], fogT));
+    const light = rgb(hazeMix([Math.min(255, base[0] * 1.2), Math.min(255, base[1] * 1.2), Math.min(255, base[2] * 1.2)], fogT));
+    const tread = rgb(hazeMix([38, 36, 30], fogT));
+    const star = rgb(hazeMix([200, 40, 30], fogT));
+
+    // how the enemy's facing looks from here
+    const fx = Math.cos(e.ang), fy = Math.sin(e.ang);
+    const vx = player.x - e.x, vy = player.y - e.y, vl = Math.hypot(vx, vy) || 1;
+    const toward = (fx * vx + fy * vy) / vl;        //  1 = pointing at us, -1 = driving away
+    const onScreenX = fx * -sn + fy * cs;            //  + = pointing to screen-right
+    const u = sc;                                    //  pixels per world unit at this distance
+
+    if (Math.abs(toward) < 0.62) {
+      // ── side view ──
+      const s = onScreenX >= 0 ? 1 : -1;
+      const w = 0.92 * u, h = 0.56 * u, x0 = cx - w / 2;
+      // tracks
+      ctx.fillStyle = tread;
+      roundRect(x0, ground - h * 0.36, w, h * 0.36, h * 0.16); ctx.fill();
+      ctx.fillStyle = dark;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath(); ctx.arc(x0 + w * (0.14 + i * 0.18), ground - h * 0.17, h * 0.1, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      const ph = (e.tread * 6) % 1;
+      for (let i = 0; i < 10; i++) ctx.fillRect(x0 + w * ((i + ph * s) / 10), ground - h * 0.36, Math.max(1, u * 0.012), h * 0.05);
+      // hull with sloped front
+      ctx.fillStyle = body; ctx.beginPath();
+      ctx.moveTo(x0 + w * (s > 0 ? 0.02 : 0.1), ground - h * 0.34);
+      ctx.lineTo(x0 + w * (s > 0 ? 0.9 : 0.98), ground - h * 0.34);
+      ctx.lineTo(x0 + w * (s > 0 ? 0.98 : 0.84), ground - h * 0.52);
+      ctx.lineTo(x0 + w * (s > 0 ? 0.16 : 0.02), ground - h * 0.56);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = light; ctx.fillRect(x0 + w * 0.1, ground - h * 0.56, w * 0.8, h * 0.04);
+      // turret + barrel
+      const tcx = cx - s * w * 0.06;
+      ctx.fillStyle = dark;
+      ctx.fillRect(Math.min(tcx, tcx + s * w * 0.62), ground - h * 0.74, w * 0.62, h * 0.08);
+      ctx.fillRect(s > 0 ? tcx + w * 0.58 : tcx - w * 0.66, ground - h * 0.77, w * 0.08, h * 0.14);
+      ctx.fillStyle = body;
+      roundRect(tcx - w * 0.22, ground - h * 0.9, w * 0.44, h * 0.36, h * 0.1); ctx.fill();
+      ctx.fillStyle = light; ctx.fillRect(tcx - w * 0.18, ground - h * 0.9, w * 0.36, h * 0.05);
+      if (e.type !== 'fast') {
+        ctx.fillStyle = star; drawStar(tcx - s * w * 0.06, ground - h * 0.72, h * 0.08);
+      }
+    } else {
+      // ── front / rear view ──
+      const front = toward > 0;
+      const w = 0.74 * u, h = 0.56 * u, x0 = cx - w / 2;
+      ctx.fillStyle = tread;
+      ctx.fillRect(x0, ground - h * 0.5, w * 0.2, h * 0.5);
+      ctx.fillRect(x0 + w * 0.8, ground - h * 0.5, w * 0.2, h * 0.5);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      const ph = (e.tread * 6) % 1;
+      for (let i = 0; i < 5; i++) {
+        const yy = ground - h * 0.5 + h * 0.5 * ((i + ph) / 5);
+        ctx.fillRect(x0, yy, w * 0.2, Math.max(1, h * 0.03)); ctx.fillRect(x0 + w * 0.8, yy, w * 0.2, Math.max(1, h * 0.03));
+      }
+      ctx.fillStyle = body; ctx.fillRect(x0 + w * 0.18, ground - h * 0.56, w * 0.64, h * 0.44);
+      ctx.fillStyle = dark; ctx.fillRect(x0 + w * 0.18, ground - h * 0.16, w * 0.64, h * 0.08);
+      if (!front) {
+        ctx.fillStyle = dark;
+        for (let i = 0; i < 4; i++) ctx.fillRect(x0 + w * 0.3, ground - h * (0.48 - i * 0.07), w * 0.4, h * 0.03);
+      }
+      ctx.fillStyle = body; roundRect(cx - w * 0.26, ground - h * 0.9, w * 0.52, h * 0.38, h * 0.12); ctx.fill();
+      ctx.fillStyle = light; ctx.fillRect(cx - w * 0.22, ground - h * 0.9, w * 0.44, h * 0.05);
+      if (front) {
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(cx, ground - h * 0.68, h * 0.09, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = dark; ctx.lineWidth = Math.max(1, h * 0.04); ctx.stroke();
+      } else {
+        ctx.fillStyle = dark; ctx.fillRect(cx - w * 0.04, ground - h * 1.02, w * 0.08, h * 0.14);
+      }
+      if (e.type !== 'fast' && !front) { ctx.fillStyle = star; drawStar(cx + w * 0.15, ground - h * 0.74, h * 0.07); }
+    }
+  }
+  function drawStar(x, y, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rr = i % 2 ? r * 0.45 : r, a = -Math.PI / 2 + i * Math.PI / 5;
+      ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  }
+
+  // The commander's view: our own gun barrel, gunsight, and a vision-block vignette
+  function drawCockpit() {
+    // barrel runs from the bottom of the screen toward the gunsight
+    const bx = W / 2, rk = recoil * recoil;
+    const tipY = HOR + H * (0.25 + rk * 0.07), baseY = H + 4;
+    const tw = W * 0.02, bw = W * 0.05;
+    const g = ctx.createLinearGradient(bx - bw, 0, bx + bw, 0);
+    g.addColorStop(0, '#1d2014'); g.addColorStop(0.35, '#5b6443'); g.addColorStop(0.55, '#3c4329'); g.addColorStop(1, '#15170e');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(bx - bw, baseY); ctx.lineTo(bx - tw, tipY); ctx.lineTo(bx + tw, tipY); ctx.lineTo(bx + bw, baseY);
+    ctx.closePath(); ctx.fill();
+    // fume extractor + muzzle brake
+    const my = tipY + (baseY - tipY) * 0.45, mw = tw + (bw - tw) * 0.45;
+    ctx.fillStyle = '#343a24'; ctx.fillRect(bx - mw * 1.18, my, mw * 2.36, (baseY - tipY) * 0.12);
+    ctx.fillStyle = '#23271a'; ctx.fillRect(bx - tw * 1.35, tipY - 2 * S, tw * 2.7, 7 * S);
+    if (muzzle > 0) {
+      const R = 60 * S * (muzzle / 0.09 + 0.3);
+      const mg = ctx.createRadialGradient(bx, tipY - 4 * S, 0, bx, tipY - 4 * S, R);
+      mg.addColorStop(0, 'rgba(255,255,230,1)'); mg.addColorStop(0.3, 'rgba(255,190,70,0.9)'); mg.addColorStop(1, 'rgba(255,90,0,0)');
+      ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(bx, tipY - 4 * S, R, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // gunsight
+    const cy = HOR, ready = player.cd <= 0;
+    ctx.strokeStyle = ready ? 'rgba(255,230,120,0.9)' : 'rgba(255,120,80,0.8)';
+    ctx.lineWidth = 1.6 * S / 1.44;
+    ctx.beginPath();
+    ctx.moveTo(bx - 34 * S, cy); ctx.lineTo(bx - 10 * S, cy);
+    ctx.moveTo(bx + 10 * S, cy); ctx.lineTo(bx + 34 * S, cy);
+    ctx.moveTo(bx, cy - 22 * S); ctx.lineTo(bx, cy - 8 * S);
+    ctx.moveTo(bx - 6 * S, cy + 6 * S); ctx.lineTo(bx, cy); ctx.lineTo(bx + 6 * S, cy + 6 * S);
+    for (let i = 1; i <= 3; i++) { ctx.moveTo(bx - 4 * S, cy + i * 9 * S); ctx.lineTo(bx + 4 * S, cy + i * 9 * S); }
+    ctx.stroke();
+    if (!ready) {
+      const k = 1 - Math.max(0, player.cd) / 0.75;
+      ctx.fillStyle = 'rgba(255,120,80,0.8)';
+      ctx.fillRect(bx - 20 * S, cy + 34 * S, 40 * S * k, 3 * S);
+    }
+
+    // vision-block vignette
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.62);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  }
+
+  // Mini-map: the Battle Tanks board, top-left
+  function drawMinimap() {
+    const M = Math.round(H * 0.36), m = M / COLS;
+    const ox = inset.l + 8, oy = inset.t + 8;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.82)'; ctx.fillRect(ox - 3, oy - 3, M + 6, M + 6);
+    ctx.strokeStyle = '#6a6a48'; ctx.lineWidth = 2; ctx.strokeRect(ox - 3, oy - 3, M + 6, M + 6);
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = map[y][x], px = ox + x * m, py = oy + y * m;
+      if (t === BRICK) {
+        ctx.fillStyle = '#b4531f'; ctx.fillRect(px, py, m, m);
+        ctx.fillStyle = '#5e2a10';
+        ctx.fillRect(px, py + m / 2 - 0.5, m, 1); ctx.fillRect(px + m / 2 - 0.5, py, 1, m / 2); ctx.fillRect(px + m / 4, py + m / 2, 1, m / 2); ctx.fillRect(px + m * 0.75, py + m / 2, 1, m / 2);
+      } else if (t === STEEL) {
+        ctx.fillStyle = '#8c929a'; ctx.fillRect(px, py, m, m);
+        ctx.fillStyle = '#c8ccd2'; ctx.fillRect(px + 2, py + 2, m - 4, m - 4);
+        ctx.fillStyle = '#a0a6ae'; ctx.fillRect(px + m * 0.3, py + m * 0.3, m * 0.4, m * 0.4);
+      } else if (t === HQ) {
+        ctx.fillStyle = '#333'; ctx.fillRect(px, py, m, m);
+        ctx.fillStyle = '#f0c040';
+        ctx.beginPath(); ctx.moveTo(px + m * 0.1, py + m * 0.35); ctx.lineTo(px + m * 0.5, py + m * 0.8); ctx.lineTo(px + m * 0.9, py + m * 0.35); ctx.lineTo(px + m * 0.5, py + m * 0.55); ctx.closePath(); ctx.fill();
+        ctx.fillRect(px + m * 0.4, py + m * 0.15, m * 0.2, m * 0.6);
+      }
+    }
+    // shells
+    for (const s of shells) {
+      ctx.fillStyle = s.mine ? '#ffd860' : '#ff5a3a';
+      ctx.fillRect(ox + s.x * m - 1.5, oy + s.y * m - 1.5, 3, 3);
+    }
+    // enemies
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      if (e.spawnT > 0) {
+        if (Math.sin(time * 20) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(ox + e.x * m - m * 0.2, oy + e.y * m - m * 0.2, m * 0.4, m * 0.4); }
+        continue;
+      }
+      ctx.save(); ctx.translate(ox + e.x * m, oy + e.y * m); ctx.rotate(e.ang);
+      ctx.fillStyle = e.flash > 0 ? '#fff' : e.type === 'armor' ? '#d0402a' : e.type === 'fast' ? '#ff8a5a' : '#ff4a4a';
+      ctx.fillRect(-m * 0.38, -m * 0.38, m * 0.76, m * 0.76);
+      ctx.fillStyle = '#400'; ctx.fillRect(0, -m * 0.07, m * 0.55, m * 0.14);
+      ctx.restore();
+    }
+    // player: view cone, hull, turret
+    if (player.alive) {
+      const px = ox + player.x * m, py = oy + player.y * m, ca = player.a + player.t;
+      ctx.fillStyle = 'rgba(255,230,120,0.16)';
+      ctx.beginPath(); ctx.moveTo(px, py);
+      ctx.arc(px, py, m * 3.2, ca - FOV / 2, ca + FOV / 2); ctx.closePath(); ctx.fill();
+      ctx.save(); ctx.translate(px, py); ctx.rotate(player.a);
+      ctx.fillStyle = player.inv > 0 && Math.sin(time * 25) > 0 ? '#fff' : '#f2d23a';
+      ctx.fillRect(-m * 0.36, -m * 0.34, m * 0.72, m * 0.68);
+      ctx.fillStyle = '#7a6a10'; ctx.fillRect(-m * 0.36, -m * 0.34, m * 0.72, m * 0.12); ctx.fillRect(-m * 0.36, m * 0.22, m * 0.72, m * 0.12);
+      ctx.rotate(player.t);
+      ctx.fillStyle = '#fff3a0'; ctx.fillRect(0, -m * 0.07, m * 0.6, m * 0.14);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    const f = s => 'bold ' + Math.round(s * S) + 'px "Courier New", monospace';
+    // top centre: stage + remaining enemies
+    const left = spawnQueue.length + enemies.filter(e => e.alive).length;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(W / 2 - 80 * S, inset.t + 6, 160 * S, 30 * S);
+    ctx.fillStyle = '#f0e0a0'; ctx.font = f(11);
+    ctx.fillText('STAGE ' + (level + 1), W / 2, inset.t + 9);
+    for (let i = 0; i < left; i++) {
+      const x = W / 2 - (left - 1) * 6 * S + i * 12 * S, y = inset.t + 9 + 15 * S;
+      ctx.fillStyle = '#ff5a4a'; ctx.fillRect(x - 4 * S, y, 8 * S, 7 * S);
+      ctx.fillStyle = '#601810'; ctx.fillRect(x - 1 * S, y - 2 * S, 2 * S, 4 * S);
+    }
+
+    // top right, under the buttons: score, lives, armour
+    const rx = W - inset.r - 10, ry = inset.t + 34 * S;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(rx - 108 * S, ry - 3, 112 * S, 44 * S);
+    ctx.fillStyle = '#f0e0a0'; ctx.font = f(11);
+    ctx.fillText('SCORE ' + score, rx, ry);
+    ctx.fillText('TANKS ' + Math.max(0, lives), rx, ry + 14 * S);
+    ctx.fillText('ARMOR', rx - 40 * S, ry + 28 * S);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < player.hp && player.alive ? '#7ee07a' : '#3a3a30';
+      ctx.fillRect(rx - 34 * S + i * 12 * S, ry + 28 * S, 9 * S, 10 * S);
+    }
+
+    // bottom dashboard: tread gauges either side of the gun, and hull-vs-turret dial
+    const gy = H - inset.b - 12 * S, gh = 64 * S, gw = 11 * S;
+    const gauge = (x, v, lbl, tgt) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x - gw / 2 - 3, gy - gh - 3, gw + 6, gh + 6);
+      const mid = gy - gh / 2;
+      ctx.fillStyle = v >= 0 ? '#7ee07a' : '#ff7a5a';
+      ctx.fillRect(x - gw / 2, v >= 0 ? mid - v * gh / 2 : mid, gw, Math.abs(v) * gh / 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(x - gw / 2 - 3, mid - 1, gw + 6, 2);
+      ctx.fillStyle = '#fff'; ctx.fillRect(x - gw / 2 - 4, mid - tgt * gh / 2 - 1, gw + 8, 2);   // where tilt is asking for
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.font = f(9);
+      ctx.fillStyle = '#f0e0a0'; ctx.fillText(lbl, x, gy - gh - 5);
+    };
+    // hull dial sits just right of the turret bar; gauges flank the gun barrel
+    const dr = 26 * S;
+    const barR = bar.getBoundingClientRect().right * (H / Math.max(1, window.innerHeight));
+    const dx = Math.max(W * 0.2, barR + dr + 14), dy = gy - gh / 2;
+    const gx = Math.max(W * 0.37, dx + dr + 22);
+    gauge(gx, player.L, 'L', player.tL);
+    gauge(W - gx, player.R, 'R', player.tR);
+
+    // hull dial: turret (view) points up; the hull shows which way the tank body faces
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.beginPath(); ctx.arc(dx, dy, dr + 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(240,224,160,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, dr, 0, Math.PI * 2); ctx.stroke();
+    ctx.save(); ctx.translate(dx, dy); ctx.rotate(-player.t);
+    ctx.fillStyle = '#c8b650'; ctx.fillRect(-9 * S, -13 * S, 18 * S, 26 * S);
+    ctx.fillStyle = '#6a5e20'; ctx.fillRect(-11 * S, -13 * S, 4 * S, 26 * S); ctx.fillRect(7 * S, -13 * S, 4 * S, 26 * S);
+    ctx.fillStyle = '#f0e0a0'; ctx.beginPath(); ctx.moveTo(0, -19 * S); ctx.lineTo(-5 * S, -13 * S); ctx.lineTo(5 * S, -13 * S); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff3a0'; ctx.fillRect(dx - 1.5 * S, dy - 22 * S, 3 * S, 22 * S);
+    ctx.beginPath(); ctx.arc(dx, dy, 6 * S, 0, Math.PI * 2); ctx.fill();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = f(8); ctx.fillStyle = '#f0e0a0';
+    const deg = Math.round(player.t / DEG);
+    ctx.fillText(deg === 0 ? 'TURRET 0°' : 'TURRET ' + Math.abs(deg) + '° ' + (deg > 0 ? 'R' : 'L'), dx, dy + dr + 6);
+
+    if (hintT > 0 && state === 'play') {
+      const a = Math.min(1, hintT);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - 170 * S, H * 0.2, 340 * S, 44 * S);
+      ctx.fillStyle = '#f0e0a0'; ctx.font = f(10); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      if (level === 0) {
+        ctx.fillText('Tip the phone forward to roll · dip one side to turn', W / 2, H * 0.2 + 7 * S);
+        ctx.fillText('Protect the golden eagle behind you!', W / 2, H * 0.2 + 24 * S);
+      } else {
+        ctx.fillText('STAGE ' + (level + 1) + ' — ' + ENEMY_WAVES[level].length + ' enemy tanks', W / 2, H * 0.2 + 15 * S);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (zeroFlash > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - 90 * S, H * 0.34, 180 * S, 22 * S);
+      ctx.fillStyle = '#9ef08a'; ctx.font = f(10); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Tilt re-zeroed', W / 2, H * 0.34 + 11 * S);
+    }
+  }
+
+  function banner(title, sub, col) {
+    const f = s => 'bold ' + Math.round(s * S) + 'px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, H * 0.32, W, H * 0.3);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = col; ctx.font = f(28); ctx.fillText(title, W / 2, H * 0.42);
+    ctx.fillStyle = '#f0e0a0'; ctx.font = f(11);
+    sub.forEach((s, i) => ctx.fillText(s, W / 2, H * 0.52 + i * 15 * S));
+  }
+
+  function drawTitle() {
+    const f = s => 'bold ' + Math.round(s * S) + 'px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(10,12,6,0.62)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#2a2c18'; ctx.font = f(34); ctx.fillText('TANK COMMANDER', W / 2 + 3, H * 0.17 + 3);
+    ctx.fillStyle = '#f0c040'; ctx.fillText('TANK COMMANDER', W / 2, H * 0.17);
+    ctx.fillStyle = '#c8c0a0'; ctx.font = f(10);
+    ctx.fillText('Battle Tanks — from inside the turret', W / 2, H * 0.27);
+    const lines = [
+      ['Tip the whole phone forward', 'both treads forward'],
+      ['Tip it back', 'both treads reverse'],
+      ['Dip just the LEFT side', 'left tread drives → tank swings right'],
+      ['Dip just the RIGHT side', 'right tread drives → tank swings left'],
+      ['Slide the TURRET bar', 'turn the gun · CENTER snaps it back'],
+      ['FIRE', 'shoot · protect the golden eagle'],
+    ];
+    ctx.font = f(9.5);
+    lines.forEach(([a, b], i) => {
+      const y = H * 0.37 + i * 15 * S;
+      ctx.textAlign = 'right'; ctx.fillStyle = '#f0e0a0'; ctx.fillText(a, W / 2 - 8 * S, y);
+      ctx.textAlign = 'left'; ctx.fillStyle = '#a8c890'; ctx.fillText(b, W / 2 + 8 * S, y);
+    });
+    ctx.textAlign = 'center'; ctx.fillStyle = '#c8c0a0'; ctx.font = f(8.5);
+    ctx.fillText('Hold the phone the way you want "stopped" to feel when you tap — that becomes neutral.', W / 2, H * 0.84);
+    if (Math.sin(time * 4) > -0.3) { ctx.fillStyle = '#fff'; ctx.font = f(14); ctx.fillText('TAP TO START', W / 2, H * 0.93); }
+  }
+
+  function render() {
+    const ca = player.a + player.t;
+    const bob = Math.sin(bobPhase) * 1.6 * S * Math.min(1, Math.abs(player.v) / MAXV + 0.15 * (state === 'play' ? 1 : 0) * Math.min(1, Math.abs(player.L - player.R)));
+    HOR = Math.round(H / 2 + bob + Math.sin(time * 47) * shake * 5 * S + recoil * recoil * 6 * S);
+    drawSky(ca);
+    drawFloor(ca);
+    drawWalls(ca);
+    drawSprites(ca);
+    if (state === 'title') { drawTitle(); return; }
+    if (player.alive) drawCockpit();
+    if (hurt > 0) { ctx.fillStyle = 'rgba(200,30,0,' + (hurt * 0.8) + ')'; ctx.fillRect(0, 0, W, H); }
+    if (!player.alive && state === 'play') {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H);
+      banner('TANK DESTROYED', [lives > 0 ? 'Reserve tank rolling out…' : ''], '#ff6a4a');
+    }
+    drawMinimap();
+    drawHUD();
+    if (state === 'clear') banner('STAGE ' + (level + 1) + ' CLEAR', ['Score ' + score], '#9ef08a');
+    if (state === 'over') banner('GAME OVER', [hqAlive ? 'Your tanks were destroyed.' : 'The eagle HQ was destroyed!', 'Score ' + score, stateT > 1 ? 'Tap to continue' : ''], '#ff6a4a');
+    if (state === 'win') banner('VICTORY!', ['All three stages held.', 'Score ' + score, 'Tap to continue'], '#f0c040');
+  }
+
+  // ── Main loop ────────────────────────────────────────────────────────────
+  initLevel(0);
+  let last = performance.now();
+  function loop(now) {
+    let dt = (now - last) / 1000; last = now;
+    if (dt > 0.05) dt = 0.05;
+    update(dt);
+    updateAudio(dt);
+    render();
+    document.body.classList.toggle('playing', state === 'play' || state === 'clear');
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  window.__tank = {
+    player, keys, tiltSim,
+    get state() { return state; }, get enemies() { return enemies; }, get shells() { return shells; },
+    get map() { return map; }, get level() { return level; }, get score() { return score; }, get lives() { return lives; },
+    get tilt() { return tilt; }, get baseline() { return baseline; }, get side() { return side; },
+    start: beginPlay, setLevel(i) { initLevel(i); state = 'play'; },
+    step(dt, n) { for (let i = 0; i < (n || 1); i++) update(dt || 1 / 60); render(); },
+    readTreads,
+  };
+})();
+</script>
+</body>
+</html>
