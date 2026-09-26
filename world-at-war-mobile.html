@@ -1,0 +1,1947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="World at War">
+<meta name="theme-color" content="#15110c">
+<title>World at War — 1805</title>
+<style>
+  :root{
+    --parch:#efe3c8; --gold:#d9b558; --gold-dim:#8f7534;
+    --safeT:env(safe-area-inset-top,0px);
+    --safeB:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%; overflow:hidden; overscroll-behavior:none}
+  body{
+    margin:0; background:#15110c; color:#e8ddc6;
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    position:fixed; inset:0; touch-action:none;
+    user-select:none; -webkit-user-select:none;
+  }
+  #app{display:flex; flex-direction:column; height:100%}
+
+  /* ---------- top bar ---------- */
+  header{
+    flex:0 0 auto; display:flex; align-items:center; gap:8px;
+    padding:calc(var(--safeT) + 6px) 10px 6px;
+    background:linear-gradient(#2b2219,#1c160f); border-bottom:1px solid var(--gold-dim);
+  }
+  header h1{margin:0; font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+            color:var(--gold); white-space:nowrap}
+  #turnInfo{font-size:11px; color:#b7a889; flex:1; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap}
+  .btn{
+    font-family:inherit; font-size:12px; background:linear-gradient(#4a3c2a,#33291c);
+    color:#f0e4c8; border:1px solid #6b5636; border-radius:4px; padding:8px 12px;
+    white-space:nowrap;
+  }
+  .btn:active:not(:disabled){background:#5d4c35}
+  .btn:disabled{opacity:.34}
+  .btn.gold{background:linear-gradient(#a98a35,#7d6524); border-color:var(--gold);
+            color:#1d160c; font-weight:700}
+  .btn.sm{padding:6px 9px; font-size:11px}
+  .icobtn{padding:7px 9px; font-size:13px; line-height:1}
+
+  /* ---------- map ---------- */
+  #mapwrap{flex:1 1 auto; position:relative; min-height:0;
+           background:radial-gradient(ellipse at 50% 40%,#241c13,#120e09)}
+  canvas{display:block; touch-action:none}
+  #tip{display:none !important}
+  #zoomers{position:absolute; right:8px; bottom:8px; display:flex;
+           flex-direction:column; gap:6px; z-index:6}
+  #zoomers .btn{width:40px; height:40px; padding:0; font-size:17px; opacity:.92}
+  #banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(20,15,10,.94); border:1px solid var(--gold-dim); color:var(--gold);
+    padding:7px 14px; border-radius:4px; font-size:12px; display:none; z-index:8;
+    max-width:92%; text-align:center;
+  }
+  #sel{
+    position:absolute; left:8px; top:8px; z-index:6; max-width:72%; display:none;
+    background:rgba(20,15,10,.9); border:1px solid var(--gold-dim); border-radius:4px;
+    padding:5px 9px; font-size:11.5px; line-height:1.4;
+  }
+  #sel b{color:var(--gold)}
+  #sel .sub{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#a4977c}
+
+  /* ---------- bottom sheet ---------- */
+  #sheet{
+    flex:0 0 auto; display:flex; flex-direction:column; max-height:56%;
+    background:linear-gradient(#251e16,#1a150f); border-top:2px solid var(--gold-dim);
+    padding-bottom:var(--safeB);
+  }
+  .tabs{display:flex; border-bottom:1px solid #3a2f22}
+  .tab{flex:1; text-align:center; padding:9px 2px; font-size:10px; letter-spacing:.1em;
+       text-transform:uppercase; color:#7d6e56; border-bottom:2px solid transparent}
+  .tab.on{color:var(--gold); border-bottom-color:var(--gold)}
+  .pane{display:none; padding:9px 11px; overflow-y:auto; -webkit-overflow-scrolling:touch}
+  .pane.on{display:block}
+  #paneLog{max-height:150px}
+  #panePowers{max-height:200px}
+
+  .phase-row{display:flex; gap:5px; margin-bottom:8px}
+  .ph{flex:1; text-align:center; padding:5px 2px; font-size:9.5px; letter-spacing:.05em;
+      text-transform:uppercase; border:1px solid #453727; border-radius:3px; color:#7d6e56}
+  .ph.on{background:linear-gradient(#5f4c2c,#453620); color:var(--gold); border-color:var(--gold-dim)}
+  .pool{display:flex; gap:8px; margin-bottom:8px}
+  .pool div{flex:1; text-align:center; padding:5px 4px; border:1px solid #453727;
+            border-radius:3px; background:#1e1811}
+  .pool .n{font-size:19px; color:var(--gold); line-height:1}
+  .pool .l{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#8d7c60; margin-top:2px}
+  .hint{font-size:12px; color:#b7a889; line-height:1.45; min-height:32px}
+  .hint em{color:var(--gold); font-style:normal}
+
+  .plist{display:flex; flex-direction:column; gap:3px}
+  .prow{display:flex; align-items:center; gap:7px; padding:5px 6px; border-radius:3px;
+        font-size:12px; border:1px solid transparent}
+  .prow.active{background:#332818; border-color:var(--gold-dim)}
+  .prow.dead{opacity:.35; text-decoration:line-through}
+  .swatch{width:12px; height:12px; border-radius:2px;
+          border:1px solid rgba(255,255,255,.35); flex:0 0 auto}
+  .prow .nm{flex:1; overflow:hidden; text-overflow:ellipsis}
+  .prow .pers{display:block; font-size:9px; letter-spacing:.08em; text-transform:uppercase;
+              color:#8d7c60; margin-top:1px}
+  .prow.dead .pers{display:none}
+  .prow .st{font-size:10.5px; color:#a4977c}
+  .youtag{font-size:8.5px; background:var(--gold); color:#1d160c; padding:1px 4px; border-radius:2px}
+
+  #battle{display:none; border-top:1px solid #3a2f22; margin-top:8px; padding-top:8px}
+  h3{margin:0 0 6px; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#9d8a63}
+  .bt-side{display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0}
+  .bt-side .u{margin-left:auto; font-size:16px; color:var(--gold)}
+  .dice{display:flex; gap:4px; min-height:24px; align-items:center; justify-content:flex-end}
+  .die{width:21px; height:21px; border-radius:3px; display:flex; align-items:center;
+       justify-content:center; font-size:14px; font-weight:700}
+  .die.a{background:#e8ddc6; color:#8e2b22; border:1px solid #b09a72}
+  .die.d{background:#3a3129; color:#e8ddc6; border:1px solid #6b5b46}
+  .die.lose{opacity:.3}
+  .via{font-size:11px; color:var(--gold); text-align:center; padding:2px 0}
+  .dicepick{display:flex; align-items:center; gap:5px; margin-top:7px; font-size:10px;
+            letter-spacing:.1em; text-transform:uppercase; color:#8d7c60}
+  .dicepick span{margin-right:auto}
+  .dicepick .btn{min-width:40px; padding:8px 0; text-align:center}
+  .pickhint{font-size:10.5px; color:#a4977c; text-align:right; margin-top:3px; min-height:14px}
+
+  .slider-row{display:flex; align-items:center; gap:9px; margin:7px 0}
+  input[type=range]{flex:1; accent-color:var(--gold); height:30px}
+  .slider-row .v{width:30px; text-align:right; font-size:18px; color:var(--gold)}
+  #movesec{display:none; border-top:1px solid #3a2f22; margin-top:8px; padding-top:8px}
+
+  .cards{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:7px; min-height:18px}
+  .card{font-size:10px; padding:3px 6px; border-radius:2px; background:#1e1811;
+        border:1px solid #4a3c2c; color:#c3b491}
+  .card.wild{border-color:var(--gold); color:var(--gold)}
+
+  #log{font-size:11.5px; line-height:1.45; color:#b0a184}
+  #log div{padding:2px 0; border-bottom:1px solid rgba(255,255,255,.04)}
+  #log b{color:#e8ddc6}
+  #log .g{color:var(--gold)}
+  #log .r{color:#d98a7e}
+
+  .btnrow{display:flex; gap:6px}
+  .btnrow .btn{flex:1}
+  #actbar{display:flex; gap:6px; padding:8px 11px; border-top:1px solid #3a2f22}
+  #actbar .btn{flex:1; padding:13px 6px; font-size:13px}
+
+  /* ---------- overlays ---------- */
+  .ov{position:fixed; inset:0; background:rgba(10,7,4,.9); z-index:100;
+      display:flex; align-items:center; justify-content:center; padding:14px}
+  .ov[hidden]{display:none}
+  .sheet{
+    background:linear-gradient(#efe3c8,#ddcfae); color:#2e2519;
+    border:2px double #6b5636; border-radius:4px; max-width:560px; width:100%;
+    max-height:86vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:18px 18px calc(18px + var(--safeB));
+  }
+  .sheet h2{margin:0 0 4px; font-size:20px; letter-spacing:.12em; text-transform:uppercase;
+            text-align:center; color:#4a3a22}
+  .sheet .rule{text-align:center; color:#7a6a4a; font-size:10px; letter-spacing:.22em; margin-bottom:14px}
+  .sheet h4{margin:14px 0 4px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#6b4f24}
+  .sheet p, .sheet li{font-size:13px; line-height:1.5}
+  .sheet ul{margin:4px 0; padding-left:18px}
+  .opt-grid{display:flex; gap:7px; flex-wrap:wrap; justify-content:center; margin:8px 0 4px}
+  .opt{padding:11px 14px; border:2px solid #9b8355; border-radius:3px; background:rgba(255,255,255,.3);
+       font-size:14px; min-width:46px; text-align:center; font-family:inherit; color:#2e2519}
+  .opt.on{background:#6b4f24; color:#f4e9cf; border-color:#4a3a22}
+  .fac{display:flex; align-items:center; gap:7px; text-align:left; flex:1 1 44%; min-width:140px}
+  .fac .sw{width:14px; height:14px; border-radius:2px; border:1px solid rgba(0,0,0,.4)}
+  .lbl{text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+       color:#6b4f24; margin-top:12px}
+  .go{display:block; margin:18px auto 0; padding:14px 30px; font-size:14px;
+      letter-spacing:.12em; text-transform:uppercase}
+
+  #home{
+    flex:0 0 auto; background:rgba(20,15,10,.6); border:1px solid var(--gold-dim);
+    color:var(--gold); border-radius:4px; padding:7px 9px; font-size:13px;
+    text-decoration:none; line-height:1;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <a id="home" href="index.html">&#8962;</a>
+    <h1>World at War</h1>
+    <div id="turnInfo"></div>
+    <button class="btn icobtn" id="btnSpeed">1x</button>
+    <button class="btn icobtn" id="btnHelp">?</button>
+    <button class="btn icobtn" id="btnNew">&#10227;</button>
+  </header>
+
+  <div id="mapwrap">
+    <canvas id="cv"></canvas>
+    <div id="tip"></div>
+    <div id="sel"></div>
+    <div id="banner"></div>
+    <div id="zoomers">
+      <button class="btn" id="zIn">+</button>
+      <button class="btn" id="zOut">&#8722;</button>
+      <button class="btn" id="zFit" style="font-size:11px">fit</button>
+    </div>
+  </div>
+
+  <div id="sheet">
+    <div class="tabs">
+      <div class="tab on" data-pane="panePlay">Turn</div>
+      <div class="tab" data-pane="panePowers">Powers</div>
+      <div class="tab" data-pane="paneCards">Cards</div>
+      <div class="tab" data-pane="paneLog">Log</div>
+    </div>
+
+    <div class="pane on" id="panePlay">
+      <div class="phase-row">
+        <div class="ph" data-ph="reinforce">Muster</div>
+        <div class="ph" data-ph="attack">Campaign</div>
+        <div class="ph" data-ph="fortify">Manoeuvre</div>
+      </div>
+      <div class="pool">
+        <div><div class="n" id="poolA">0</div><div class="l">Armies</div></div>
+        <div><div class="n" id="poolF">0</div><div class="l">Fleets</div></div>
+      </div>
+      <div class="hint" id="hint">&mdash;</div>
+
+      <div id="battle">
+        <h3 id="btTitle">Engagement</h3>
+        <div class="bt-side"><span class="swatch" id="btAC"></span><span id="btAN"></span><span class="u" id="btAU"></span></div>
+        <div class="dice" id="btAD"></div>
+        <div class="via" id="btVia"></div>
+        <div class="bt-side"><span class="swatch" id="btDC"></span><span id="btDN"></span><span class="u" id="btDU"></span></div>
+        <div class="dice" id="btDD"></div>
+        <div class="dicepick" id="btPick">
+          <span>Dice</span>
+          <button class="btn sm" data-n="1">1</button>
+          <button class="btn sm" data-n="2">2</button>
+          <button class="btn sm" data-n="3">3</button>
+        </div>
+        <div class="pickhint" id="btPickHint"></div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn gold" id="btRoll">Engage</button>
+          <button class="btn" id="btBlitz">All&nbsp;Out</button>
+          <button class="btn" id="btCancel">Break</button>
+        </div>
+      </div>
+
+      <div id="movesec">
+        <h3 id="mvTitle">Advance</h3>
+        <div class="slider-row">
+          <input type="range" id="mvRange" min="1" max="1" value="1">
+          <div class="v" id="mvVal">1</div>
+        </div>
+        <div class="btnrow">
+          <button class="btn gold" id="mvOk">Confirm</button>
+          <button class="btn" id="mvMax">Max</button>
+          <button class="btn" id="mvCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" id="panePowers"><div class="plist" id="plist"></div></div>
+
+    <div class="pane" id="paneCards">
+      <h3>Dispatch Cards <span id="cardCount"></span></h3>
+      <div class="cards" id="cards"></div>
+      <button class="btn sm" id="btnTrade" style="width:100%">Exchange Set</button>
+    </div>
+
+    <div class="pane" id="paneLog"><div id="log"></div></div>
+
+    <div id="actbar">
+      <button class="btn" id="btnPhase">Next Phase</button>
+      <button class="btn gold" id="btnEnd">End Turn</button>
+    </div>
+  </div>
+</div>
+<!-- ---------- setup ---------- -->
+<div class="ov" id="ovSetup">
+  <div class="sheet">
+    <h2>World at War</h2>
+    <div class="rule">— Grand Campaign of 1805 —</div>
+    <p style="text-align:center;max-width:480px;margin:0 auto 4px">
+      Six empires contend for the globe. Armies hold the land; fleets hold the sea —
+      and no army crosses an ocean its nation does not command.<br><span style="color:#7a6a4a;font-size:12px">Each rival is dealt a doctrine — Conqueror, Sentinel, Admiral, Opportunist or Strategist — and plays to it.</span>
+    </p>
+
+    <div class="lbl">Rival Powers</div>
+    <div class="opt-grid" id="optAI"></div>
+
+    <div class="lbl">Your Empire</div>
+    <div class="opt-grid" id="optFac"></div>
+
+    <button class="btn gold go" id="btnBegin">Begin the Campaign</button>
+  </div>
+</div>
+
+<!-- ---------- rules ---------- -->
+<div class="ov" id="ovHelp" hidden>
+  <div class="sheet">
+    <h2>Articles of War</h2>
+    <div class="rule">— how the campaign is fought —</div>
+
+    <h4>The Board</h4>
+    <p>The world is divided into <b>42 land territories</b> across six continents and
+    <b>19 sea zones</b> across three naval theatres. Land holds <b>armies</b>; sea holds <b>fleets</b>.
+    All land begins claimed. <b>All seas begin unclaimed and empty</b> — the navies of the world
+    are yet to sail.</p>
+
+    <h4>1 · Muster</h4>
+    <ul>
+      <li><b>Armies</b> = territories ÷ 3 (minimum 3) + continent bonuses. Place on any land you hold.</li>
+      <li><b>Fleets</b> = coastal territories ÷ 3 (minimum 3) + seas ÷ 3, rounded down — the same rule as armies. Place them in a sea you
+      already hold, <b>or in any empty unclaimed sea touching your coastline</b> — which claims it outright.</li>
+      <li>Holding an entire continent or naval theatre pays a bonus every turn.</li>
+    </ul>
+
+    <h4>2 · Campaign</h4>
+    <p>Attack from any region holding <b>2 or more units</b>. Attacker rolls up to 3 dice
+    (one fewer than its units, max 3); defender rolls up to 2. Highest against highest;
+    ties favour the defender. You choose how many dice to roll: more dice win battles faster, but <b>when you take a territory you must march in at least as many armies as dice you rolled in the final round</b>. Drop to 1 die for the last push if you want to keep your army at home.</p>
+    <ul>
+      <li><b>Army → adjacent land</b> — an ordinary land assault.</li>
+      <li><b>Army → adjacent sea</b> — a flotilla is launched; victorious armies become fleets. <b>An empty sea needs no battle</b> — any coastal territory with 2+ armies can simply sail into it and claim it. This is the fastest way to build a navy.</li>
+      <li><b>Fleet → adjacent sea</b> — a naval battle. An empty unclaimed sea is simply occupied.</li>
+      <li><b>Fleet → adjacent land: BOMBARDMENT.</b> Ships cannot take ground. A bombardment
+      kills defending armies but can never reduce a territory below 1, and captures nothing.
+      Use it to soften a coast before you land.</li>
+      <li><b>Amphibious assault.</b> Two land territories with no shared border may still fight —
+      but <em>only</em> if you command a sea zone touching both. This is the sole road between
+      continents: Britain, the Americas, Japan and the Indies fall only to a power that rules the waves.</li>
+    </ul>
+
+    <h4>3 · Manoeuvre</h4>
+    <p>Once per turn, move any number of units between two regions you hold, so long as an
+    unbroken chain of your own regions connects them. Units crossing from land to sea become
+    fleets, and fleets coming ashore become armies.</p>
+
+    <h4>Dispatch Cards</h4>
+    <p>Take at least one region <b>off a rival</b> in a turn and you draw a card. Sailing into an
+    empty unclaimed sea is not a conquest and earns nothing. Three of a kind — or three different —
+    may be exchanged at muster for a swelling reward (4, 6, 8, 10, 12, 15, then +5 each).
+    Five cards in hand forces an exchange. If a card in the set shows ground you already hold,
+    <b>2 extra armies</b> muster there at once. Break a power utterly and <b>its cards pass to you</b>.</p>
+
+    <h4>Your Rivals</h4>
+    <p>Every rival power is dealt one of five doctrines at the start of the campaign, and it shapes
+    everything they do — how slim the odds they will accept, whether they stack one fist or guard every
+    border, how hard they fight for the sea, and when they break off a losing assault. The doctrine is
+    named under each power in the list on the right; hover it for what it means.</p>
+    <ul>
+      <li><b>Conqueror</b> — attacks on the slimmest odds and rarely breaks off.</li>
+      <li><b>Sentinel</b> — digs in, strikes only at certainties, hoards its cards.</li>
+      <li><b>Admiral</b> — rules the waves first and shells the coast before landing.</li>
+      <li><b>Opportunist</b> — hunts the weakest border it can find and finishes cripples.</li>
+      <li><b>Strategist</b> — plays for whole continents and the bonuses they pay.</li>
+    </ul>
+
+    <h4>Ruin</h4>
+    <p>A power is finished the moment its <b>last land territory</b> falls. Ships take no ground,
+    so a navy without a homeland has no road back — when the flag comes down its fleets strike
+    their colours, and every sea it held falls open to be claimed afresh. Sinking an enemy
+    battle fleet is one way to break a rival; taking its last coast is the surer one.</p>
+
+    <h4>Victory</h4>
+    <p>Hold every land territory, or outlast every rival.</p>
+
+    <button class="btn gold go" id="btnCloseHelp">Return to the Map</button>
+  </div>
+</div>
+
+<!-- ---------- game over ---------- -->
+<div class="ov" id="ovEnd" hidden>
+  <div class="sheet" style="max-width:460px;text-align:center">
+    <h2 id="endTitle">Victory</h2>
+    <div class="rule" id="endSub"></div>
+    <p id="endBody" style="margin:0 auto;max-width:380px"></p>
+    <button class="btn gold go" id="btnAgain">New Campaign</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   WORLD AT WAR  —  Napoleonic Risk with a playable ocean
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- map --- */
+const MAP_W = 80, MAP_H = 36;
+
+// [continentChar, startCol, endCol] per row.  N=N.America S=S.America
+// E=Europe A=Africa I=Asia O=Oceania ; everything else is ocean.
+const LAND_ROWS = [
+/* 0 */ [],
+/* 1 */ [['N',34,38]],
+/* 2 */ [['N',34,38]],
+/* 3 */ [['N',18,30],['N',34,38],['I',50,79]],
+/* 4 */ [['N',11,31],['N',34,38],['E',40,41],['E',44,46],['I',48,79]],
+/* 5 */ [['N',10,31],['N',34,38],['E',40,41],['E',43,47],['I',48,79]],
+/* 6 */ [['N',10,31],['N',35,37],['E',43,48],['I',49,76]],
+/* 7 */ [['N',10,31],['E',40,41],['E',43,49],['I',50,76]],
+/* 8 */ [['N',11,33],['E',40,41],['E',43,50],['I',51,74]],
+/* 9 */ [['N',12,33],['E',40,41],['E',43,51],['I',52,72]],
+/*10 */ [['N',13,32],['E',43,50],['I',51,72],['I',74,75]],
+/*11 */ [['N',14,31],['E',43,47],['I',51,72],['I',74,75]],
+/*12 */ [['N',16,29],['I',52,70],['I',74,75]],
+/*13 */ [['N',18,28],['A',41,52],['I',53,70]],
+/*14 */ [['N',20,28],['A',40,51],['I',53,67]],
+/*15 */ [['N',22,28],['A',40,51],['I',53,66]],
+/*16 */ [['N',23,29],['A',39,51],['I',53,64]],
+/*17 */ [['N',25,30],['A',39,51],['I',54,63]],
+/*18 */ [['S',29,33],['A',40,51],['I',58,63],['O',66,70]],
+/*19 */ [['S',29,35],['A',41,51],['O',65,72]],
+/*20 */ [['S',29,36],['A',42,51],['O',64,72]],
+/*21 */ [['S',28,37],['A',43,51],['O',64,73]],
+/*22 */ [['S',28,37],['A',44,51],['O',65,73]],
+/*23 */ [['S',29,37],['A',44,51],['O',66,74]],
+/*24 */ [['S',29,37],['A',44,51],['O',67,75]],
+/*25 */ [['S',29,37],['A',44,51],['A',53,54],['O',67,75]],
+/*26 */ [['S',30,37],['A',44,51],['A',53,54],['O',67,75]],
+/*27 */ [['S',30,37],['A',45,50],['A',53,54],['O',67,75]],
+/*28 */ [['S',31,36],['A',45,49],['O',68,74]],
+/*29 */ [['S',31,35],['A',45,48],['O',68,73]],
+/*30 */ [['S',31,35],['A',46,47],['O',69,72]],
+/*31 */ [['S',31,34],['O',74,75]],
+/*32 */ [['S',31,33],['O',74,75]],
+/*33 */ [['S',31,32]],
+/*34 */ [['S',31,32]],
+/*35 */ []
+];
+
+const GROUPS = {
+  NA:{name:'North America',   bonus:5, sea:false},
+  SA:{name:'South America',   bonus:2, sea:false},
+  EU:{name:'Europe',          bonus:5, sea:false},
+  AF:{name:'Africa',          bonus:3, sea:false},
+  AS:{name:'Asia',            bonus:7, sea:false},
+  OC:{name:'Oceania',         bonus:2, sea:false},
+  ATL:{name:'Atlantic Theatre',bonus:6, sea:true},
+  PAC:{name:'Pacific Theatre', bonus:7, sea:true},
+  IND:{name:'Indian Theatre',  bonus:4, sea:true}
+};
+const CHAR2CONT = {N:'NA', S:'SA', E:'EU', A:'AF', I:'AS', O:'OC'};
+
+// t: 'L' land / 'S' sea ; s: seed cell [col,row]
+const REGIONS = [
+  // ---- North America
+  {id:'alaska',       name:'Russian Alaska',      t:'L', g:'NA', s:[12,5]},
+  {id:'nwterr',       name:'Northwest Territory', t:'L', g:'NA', s:[20,4]},
+  {id:'greenland',    name:'Greenland',           t:'L', g:'NA', s:[36,3]},
+  {id:'ruperts',      name:"Rupert's Land",       t:'L', g:'NA', s:[19,8]},
+  {id:'uppercanada',  name:'Upper Canada',        t:'L', g:'NA', s:[25,7]},
+  {id:'lowercanada',  name:'Lower Canada',        t:'L', g:'NA', s:[30,8]},
+  {id:'louisiana',    name:'Louisiana',           t:'L', g:'NA', s:[19,12]},
+  {id:'unitedstates', name:'United States',       t:'L', g:'NA', s:[25,12]},
+  {id:'newspain',     name:'New Spain',           t:'L', g:'NA', s:[27,16]},
+  // ---- South America
+  {id:'newgranada',   name:'New Granada',         t:'L', g:'SA', s:[31,19]},
+  {id:'peru',         name:'Peru',                t:'L', g:'SA', s:[31,24]},
+  {id:'brazil',       name:'Brazil',              t:'L', g:'SA', s:[35,23]},
+  {id:'plata',        name:'Río de la Plata',     t:'L', g:'SA', s:[32,30]},
+  // ---- Europe
+  {id:'iceland',      name:'Iceland',             t:'L', g:'EU', s:[40,4]},
+  {id:'britain',      name:'Great Britain',       t:'L', g:'EU', s:[40,8]},
+  {id:'scandinavia',  name:'Scandinavia',         t:'L', g:'EU', s:[45,4]},
+  {id:'germania',     name:'Germania',            t:'L', g:'EU', s:[45,8]},
+  {id:'france',       name:'France',              t:'L', g:'EU', s:[44,10]},
+  {id:'italy',        name:'Italy',               t:'L', g:'EU', s:[47,10]},
+  {id:'ruthenia',     name:'Ruthenia',            t:'L', g:'EU', s:[50,8]},
+  // ---- Africa
+  {id:'barbary',      name:'Barbary Coast',       t:'L', g:'AF', s:[44,14]},
+  {id:'egypt',        name:'Egypt',               t:'L', g:'AF', s:[51,13]},
+  {id:'abyssinia',    name:'Abyssinia',           t:'L', g:'AF', s:[50,19]},
+  {id:'congo',        name:'Congo',               t:'L', g:'AF', s:[46,22]},
+  {id:'cape',         name:'Cape Colony',         t:'L', g:'AF', s:[47,28]},
+  {id:'madagascar',   name:'Madagascar',          t:'L', g:'AF', s:[53,26]},
+  // ---- Asia
+  {id:'urals',        name:'The Urals',           t:'L', g:'AS', s:[55,7]},
+  {id:'siberia',      name:'Siberia',             t:'L', g:'AS', s:[61,6]},
+  {id:'yakutia',      name:'Yakutia',             t:'L', g:'AS', s:[67,4]},
+  {id:'kamchatka',    name:'Kamchatka',           t:'L', g:'AS', s:[73,6]},
+  {id:'irkutsk',      name:'Irkutsk',             t:'L', g:'AS', s:[65,8]},
+  {id:'mongolia',     name:'Mongolia',            t:'L', g:'AS', s:[66,10]},
+  {id:'japan',        name:'Japan',               t:'L', g:'AS', s:[74,11]},
+  {id:'persia',       name:'Persia',              t:'L', g:'AS', s:[57,11]},
+  {id:'qing',         name:'Qing China',          t:'L', g:'AS', s:[65,14]},
+  {id:'levant',       name:'The Levant',          t:'L', g:'AS', s:[54,14]},
+  {id:'hindustan',    name:'Hindustan',           t:'L', g:'AS', s:[59,17]},
+  {id:'indochina',    name:'Indochina',           t:'L', g:'AS', s:[62,17]},
+  // ---- Oceania
+  {id:'eastindies',   name:'East Indies',         t:'L', g:'OC', s:[67,20]},
+  {id:'newguinea',    name:'New Guinea',          t:'L', g:'OC', s:[72,21]},
+  {id:'newholland',   name:'New Holland',         t:'L', g:'OC', s:[69,27]},
+  {id:'newsouthwales',name:'New South Wales',     t:'L', g:'OC', s:[73,26]},
+
+  // ---- Atlantic theatre
+  {id:'arctic',    name:'Arctic Ocean',    t:'S', g:'ATL', s:[45,1]},
+  {id:'natlantic', name:'North Atlantic',  t:'S', g:'ATL', s:[35,11]},
+  {id:'northsea',  name:'Narrow Seas'    , t:'S', g:'ATL', s:[42,8]},
+  {id:'caribbean', name:'Caribbean Sea',   t:'S', g:'ATL', s:[31,15]},
+  {id:'medsea',    name:'Mediterranean',   t:'S', g:'ATL', s:[46,12]},
+  {id:'satlantic', name:'South Atlantic',  t:'S', g:'ATL', s:[40,25]},
+  // ---- Pacific theatre
+  {id:'bering',    name:'Bering Sea',      t:'S', g:'PAC', s:[78,7]},
+  {id:'npacific',  name:'North Pacific',   t:'S', g:'PAC', s:[6,8]},
+  {id:'epacific',  name:'East Pacific',    t:'S', g:'PAC', s:[14,18]},
+  {id:'spacific',  name:'South Pacific',   t:'S', g:'PAC', s:[10,28]},
+  {id:'japansea',  name:'Sea of Japan',    t:'S', g:'PAC', s:[73,11]},
+  {id:'philippine',name:'Philippine Sea',  t:'S', g:'PAC', s:[72,15]},
+  {id:'schina',    name:'South China Sea', t:'S', g:'PAC', s:[67,15]},
+  {id:'coral',     name:'Coral Sea',       t:'S', g:'PAC', s:[77,24]},
+  {id:'tasman',    name:'Tasman Sea',      t:'S', g:'PAC', s:[71,32]},
+  // ---- Indian theatre
+  {id:'arabian',   name:'Arabian Sea',     t:'S', g:'IND', s:[55,20]},
+  {id:'bengal',    name:'Bay of Bengal',   t:'S', g:'IND', s:[61,20]},
+  {id:'indian',    name:'Indian Ocean',    t:'S', g:'IND', s:[58,27]},
+  {id:'southern',  name:'Southern Ocean',  t:'S', g:'IND', s:[45,34]}
+];
+
+const FACTIONS = [
+  {name:'French Empire',      color:'#3f6fbd'},
+  {name:'British Empire',     color:'#b03a36'},
+  {name:'Russian Empire',     color:'#3f8055'},
+  {name:'United States',      color:'#c79b2e'},
+  {name:'Kingdom of Prussia', color:'#6d6478'},
+  {name:'Empire of Japan',    color:'#2a9193'}
+];
+
+// Each rival is dealt a doctrine at the start of the campaign. It steers how
+// boldly it attacks, how it spreads its muster, how much it cares about the
+// sea, and when it breaks off a losing fight — so no two opponents in a game
+// play the same way.
+//   odds        minimum attacker:defender ratio before it will attack
+//   attacks     how many assaults it will press in one turn
+//   claims      empty seas it will sail into per turn
+//   seaBias     extra appetite for taking sea zones
+//   contBonus   how badly it wants to complete a continent or theatre
+//   weakBias    preference for soft targets over hard ones
+//   bombardMin  fleets required in a sea before it will bombard a coast
+//   massing     share of its regions that receive reinforcements (low = stacks)
+//   navalMuster weight on claiming empty seas during muster
+//   grit        breaks off when attacker < defender x grit (low = stubborn)
+//   tradeFloor  card reward it holds out for before trading voluntarily
+const PERSONALITIES = [
+  {id:'conqueror',  name:'Conqueror',   blurb:'Attacks on the slimmest odds and rarely breaks off.',
+   odds:1.05, attacks:20, claims:2, seaBias:2,  contBonus:12, weakBias:2,  bombardMin:6, massing:0.25, navalMuster:6,  grit:0.65, tradeFloor:4},
+  {id:'sentinel',   name:'Sentinel',    blurb:'Digs in, strikes only at certainties, hoards its cards.',
+   odds:2.00, attacks:4,  claims:1, seaBias:1,  contBonus:8,  weakBias:6,  bombardMin:4, massing:0.70, navalMuster:8,  grit:1.45, tradeFloor:10},
+  {id:'admiral',    name:'Admiral',     blurb:'Rules the waves first and shells the coast before landing.',
+   odds:1.30, attacks:12, claims:4, seaBias:16, contBonus:10, weakBias:3,  bombardMin:3, massing:0.40, navalMuster:18, grit:1.00, tradeFloor:8},
+  {id:'opportunist',name:'Opportunist', blurb:'Hunts the weakest border it can find and finishes cripples.',
+   odds:1.50, attacks:10, claims:2, seaBias:3,  contBonus:6,  weakBias:12, bombardMin:5, massing:0.45, navalMuster:7,  grit:1.20, tradeFloor:6},
+  {id:'strategist', name:'Strategist',  blurb:'Plays for whole continents and the bonuses they pay.',
+   odds:1.35, attacks:12, claims:2, seaBias:4,  contBonus:26, weakBias:3,  bombardMin:5, massing:0.30, navalMuster:9,  grit:1.10, tradeFloor:8}
+];
+
+/* ------------------------------------------------------------- derived --- */
+const R = {};                       // id -> region def
+REGIONS.forEach(r => R[r.id] = r);
+const LAND_IDS = REGIONS.filter(r=>r.t==='L').map(r=>r.id);
+const SEA_IDS  = REGIONS.filter(r=>r.t==='S').map(r=>r.id);
+
+const GROUP_MEMBERS = {};
+for (const g in GROUPS) GROUP_MEMBERS[g] = REGIONS.filter(r=>r.g===g).map(r=>r.id);
+
+/* ---------------------------------------------------------- build cells --- */
+const contGrid = [];                // continent char, or null for ocean
+for (let r=0;r<MAP_H;r++){
+  const row = new Array(MAP_W).fill(null);
+  for (const [ch,a,b] of (LAND_ROWS[r]||[])) for (let c=a;c<=b && c<MAP_W;c++) row[c]=ch;
+  contGrid.push(row);
+}
+const kindAt = (c,r) => contGrid[r][c] || '~';
+const wrapC  = c => (c + MAP_W) % MAP_W;   // the map is a cylinder east-to-west
+
+// Regions grow as *geodesic* Voronoi cells: every map cell joins the nearest
+// seed measured through its own landmass or ocean body — so an island can
+// never be annexed by a region sitting across open water, and every region
+// comes out in one piece.
+const cellReg = Array.from({length:MAP_H}, ()=>new Array(MAP_W).fill(null));
+(function assignCells(){
+  const byKind = {};
+  for (let r=0;r<MAP_H;r++) for (let c=0;c<MAP_W;c++){
+    const k = kindAt(c,r);
+    (byKind[k] || (byKind[k]=[])).push([c,r]);
+  }
+  const STEP = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],
+                [1,1,1.4142],[1,-1,1.4142],[-1,1,1.4142],[-1,-1,1.4142]];
+
+  for (const k in byKind){
+    const pool = REGIONS.filter(rg => k==='~' ? rg.t==='S' : (rg.t==='L' && rg.g===CHAR2CONT[k]));
+    const seen = new Set();
+
+    for (const [c0,r0] of byKind[k]){
+      if (seen.has(r0*MAP_W+c0)) continue;
+
+      // flood-fill one landmass / one ocean body
+      const comp=[], q=[[c0,r0]];
+      seen.add(r0*MAP_W+c0);
+      while (q.length){
+        const [c,r] = q.pop(); comp.push([c,r]);
+        for (const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nc = c+dc, nr = r+dr;
+          if (nc<0||nr<0||nc>=MAP_W||nr>=MAP_H) continue;
+          const key = nr*MAP_W+nc;
+          if (seen.has(key) || kindAt(nc,nr)!==k) continue;
+          seen.add(key); q.push([nc,nr]);
+        }
+      }
+      const inComp = new Set(comp.map(([c,r])=>r*MAP_W+c));
+      const seeds = pool.filter(rg => inComp.has(rg.s[1]*MAP_W+rg.s[0]));
+
+      if (!seeds.length){            // outlying islet — hand it to the closest seed
+        let sx=0, sy=0;
+        for (const [c,r] of comp){ sx+=c; sy+=r; }
+        const ax=sx/comp.length, ay=sy/comp.length;
+        let best=pool[0], bd=1e9;
+        for (const rg of pool){
+          const d=(rg.s[0]-ax)*(rg.s[0]-ax)+(rg.s[1]-ay)*(rg.s[1]-ay);
+          if (d<bd){ bd=d; best=rg; }
+        }
+        for (const [c,r] of comp) cellReg[r][c] = best.id;
+        continue;
+      }
+
+      // multi-source Dijkstra, confined to this component
+      const dist=new Map(), who=new Map(), heap=[];
+      const push=(d,c,r,id)=>{
+        heap.push([d,c,r,id]);
+        let i=heap.length-1;
+        while(i>0){ const p=(i-1)>>1; if (heap[p][0]<=heap[i][0]) break;
+          const t=heap[p]; heap[p]=heap[i]; heap[i]=t; i=p; }
+      };
+      const pop=()=>{
+        const top=heap[0], last=heap.pop();
+        if (heap.length){
+          heap[0]=last; let i=0;
+          for(;;){
+            const l=2*i+1, rr=l+1; let m=i;
+            if (l<heap.length && heap[l][0]<heap[m][0]) m=l;
+            if (rr<heap.length && heap[rr][0]<heap[m][0]) m=rr;
+            if (m===i) break;
+            const t=heap[m]; heap[m]=heap[i]; heap[i]=t; i=m;
+          }
+        }
+        return top;
+      };
+      for (const rg of seeds) push(0, rg.s[0], rg.s[1], rg.id);
+      while (heap.length){
+        const [d,c,r,id] = pop(), key = r*MAP_W+c;
+        if (dist.has(key)) continue;
+        dist.set(key,d); who.set(key,id);
+        for (const [dc,dr,w] of STEP){
+          const nc = c+dc, nr = r+dr;
+          if (nc<0||nr<0||nc>=MAP_W||nr>=MAP_H) continue;
+          const nk = nr*MAP_W+nc;
+          if (!inComp.has(nk) || dist.has(nk)) continue;
+          // a diagonal step may not squeeze between two opposite corners —
+          // without this a sea zone leaks past a coastline into another basin
+          if (dc && dr && !(inComp.has(r*MAP_W+nc) && inComp.has(nr*MAP_W+c))) continue;
+          push(d+w, nc, nr, id);
+        }
+      }
+      for (const [c,r] of comp) cellReg[r][c] = who.get(r*MAP_W+c) || seeds[0].id;
+    }
+  }
+})();
+
+REGIONS.forEach(rg => rg.cells = []);
+for (let r=0;r<MAP_H;r++) for (let c=0;c<MAP_W;c++) R[cellReg[r][c]].cells.push([c,r]);
+
+// Adjacency is read straight off the finished map, so the board can never
+// promise a border it does not draw. Column 79 wraps round to column 0 —
+// the world is a cylinder, which is what joins the Bering Sea to the
+// North Pacific across the date line.
+const ADJ = {};
+(function deriveAdj(){
+  const s = {};
+  REGIONS.forEach(rg => s[rg.id] = new Set());
+  for (let r=0;r<MAP_H;r++) for (let c=0;c<MAP_W;c++){
+    const a = cellReg[r][c];
+    const right = cellReg[r][(c+1)%MAP_W];
+    if (right !== a){ s[a].add(right); s[right].add(a); }
+    if (r+1 < MAP_H){
+      const down = cellReg[r+1][c];
+      if (down !== a){ s[a].add(down); s[down].add(a); }
+    }
+  }
+  REGIONS.forEach(rg => ADJ[rg.id] = [...s[rg.id]]);
+})();
+
+// label anchor + outline geometry
+for (const reg of REGIONS){
+  let sx=0, sy=0;
+  for (const [c,r] of reg.cells){ sx+=c; sy+=r; }
+  const ax=sx/reg.cells.length, ay=sy/reg.cells.length;
+  let best=reg.cells[0], bd=1e9;
+  for (const [c,r] of reg.cells){
+    const d=(c-ax)*(c-ax)+(r-ay)*(r-ay)*1.6;
+    if (d<bd){ bd=d; best=[c,r]; }
+  }
+  reg.cx = best[0]+0.5; reg.cy = best[1]+0.5;
+  reg.outline = [];
+}
+const borderEdges = [];   // region against region
+const coastEdges  = [];   // land against sea
+function regAt(c,r){ return (c<0||r<0||c>=MAP_W||r>=MAP_H) ? null : cellReg[r][c]; }
+for (let r=0;r<MAP_H;r++) for (let c=0;c<MAP_W;c++){
+  const id = cellReg[r][c], isL = R[id].t==='L';
+  const probes = [[1,0,c+1,r,c+1,r+1],[-1,0,c,r,c,r+1],[0,1,c,r+1,c+1,r+1],[0,-1,c,r,c+1,r]];
+  for (const [dc,dr,x1,y1,x2,y2] of probes){
+    const nid = regAt(c+dc,r+dr);
+    if (nid === id) continue;
+    const e = [x1,y1,x2,y2];
+    R[id].outline.push(e);
+    if (dc===1||dr===1||nid===null) borderEdges.push(e);      // de-duplicated
+    const nIsL = nid ? R[nid].t==='L' : false;
+    if (isL !== nIsL && (dc===1||dr===1||nid===null)) coastEdges.push(e);
+  }
+}
+/* ------------------------------------------------------------- helpers --- */
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const rnd = n => Math.floor(Math.random()*n);
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];} return a; }
+function hex2rgb(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function mix(h1,h2,t){
+  const a=hex2rgb(h1), b=hex2rgb(h2);
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`;
+}
+const PARCH='#ddcfab', SEA0='#8fb0c6';
+
+/* --------------------------------------------------------------- state --- */
+const G = {
+  players:[], cur:0, phase:'reinforce', turn:1,
+  pendA:0, pendF:0, fortifyUsed:false, busy:false, over:false,
+  sel:null, targets:null, bombards:null,
+  battle:null, pendingMove:null, fortSel:null,
+  deck:[], discard:[], trades:0,
+  speed:1, you:0
+};
+const st = {};   // id -> {owner, units}
+
+const owner = id => st[id].owner;
+const units = id => st[id].units;
+const me    = () => G.players[G.cur];
+const isYou = () => G.cur === G.you && !G.players[G.cur].ai;
+
+/* ------------------------------------------------------------ new game --- */
+function newGame(nAI, facIdx){
+  const n = nAI+1;
+  G.players = [];
+  const order = [facIdx];
+  for (let i=0;i<FACTIONS.length && order.length<n;i++) if (i!==facIdx) order.push(i);
+  const doctrines = shuffle(PERSONALITIES.slice());
+  order.forEach((fi,i)=>{
+    G.players.push({
+      i, fac:fi, name:FACTIONS[fi].name, color:FACTIONS[fi].color,
+      ai: i!==0, cards:[], alive:true, conquered:false,
+      pers: i===0 ? null : doctrines[(i-1) % doctrines.length]
+    });
+  });
+  G.gen = (G.gen || 0) + 1; G.busy = false;
+  G.lastAggressor = -1;
+  G.you = 0; G.cur = 0; G.turn = 1; G.over=false; G.trades=0;
+  G.deck = buildDeck(); G.discard = [];
+  G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
+
+  REGIONS.forEach(r => st[r.id] = {owner:-1, units:0});
+
+  // hand out land territories
+  const ids = shuffle(LAND_IDS.slice());
+  ids.forEach((id,k)=>{ st[id].owner = k % n; st[id].units = 1; });
+  const base = [0,0,40,35,30,25,20][n] || 20;
+  for (let p=0;p<n;p++){
+    const mine = ids.filter(id=>st[id].owner===p);
+    let left = base - mine.length;
+    while (left-- > 0) st[mine[rnd(mine.length)]].units++;
+  }
+
+  $('#log').innerHTML='';
+  log(`<b class="g">The campaign of 1805 opens.</b> ${n} powers take the field.`);
+  log(`Every sea lies unclaimed — build a navy before your rivals do.`);
+  startTurn();
+}
+
+function buildDeck(){
+  const syms=['Infantry','Cavalry','Artillery'];
+  const d = LAND_IDS.map((id,i)=>({r:id, s:syms[i%3]}));
+  d.push({r:null,s:'Wild'}); d.push({r:null,s:'Wild'});
+  return shuffle(d);
+}
+function drawCard(p){
+  if (!G.deck.length){ G.deck = shuffle(G.discard); G.discard = []; }
+  if (!G.deck.length) return null;
+  const c = G.deck.pop(); p.cards.push(c); return c;
+}
+
+/* ------------------------------------------------------------- economy --- */
+function countLand(p){ return LAND_IDS.filter(id=>st[id].owner===p).length; }
+function countSea(p){ return SEA_IDS.filter(id=>st[id].owner===p).length; }
+function regionsOf(p){ return REGIONS.filter(r=>st[r.id].owner===p).map(r=>r.id); }
+function ownsGroup(p,g){ return GROUP_MEMBERS[g].every(id=>st[id].owner===p); }
+
+function armyIncome(p){
+  let n = Math.max(3, Math.floor(countLand(p)/3));
+  for (const g in GROUPS) if (!GROUPS[g].sea && ownsGroup(p,g)) n += GROUPS[g].bonus;
+  return n;
+}
+function fleetIncome(p){
+  const seas = countSea(p);
+  const coastal = LAND_IDS.filter(id => st[id].owner===p && ADJ[id].some(n=>R[n].t==='S')).length;
+  if (!seas && !coastal) return 0;
+  // shipyards: every three ports builds a fleet, and never fewer than three a
+  // turn — one lone fleet can hold a sea but can't attack out of it
+  let n = Math.max(3, Math.floor(coastal/3)) + Math.floor(seas/3);
+  for (const g in GROUPS) if (GROUPS[g].sea && ownsGroup(p,g)) n += GROUPS[g].bonus;
+  return n;
+}
+// seas a player may drop a new fleet into
+function fleetDropZones(p){
+  return SEA_IDS.filter(id =>
+    st[id].owner===p ||
+    (st[id].owner===-1 && ADJ[id].some(n=>R[n].t==='L' && st[n].owner===p))
+  );
+}
+
+/* ---------------------------------------------------------- legal moves --- */
+function attackTargets(id){
+  const out = new Map();                 // targetId -> viaSeaId|null
+  const s = st[id]; if (s.units < 2) return out;
+  const src = R[id];
+  for (const n of ADJ[id]){
+    if (st[n].owner === s.owner) continue;
+    if (src.t==='S' && R[n].t==='L') continue;   // fleets bombard, never invade
+    out.set(n, null);
+  }
+  if (src.t === 'L'){
+    for (const sea of ADJ[id]){
+      if (R[sea].t!=='S' || st[sea].owner !== s.owner) continue;
+      for (const n of ADJ[sea]){
+        if (R[n].t!=='L' || n===id || st[n].owner===s.owner) continue;
+        if (!out.has(n)) out.set(n, sea);
+      }
+    }
+  }
+  return out;
+}
+function bombardTargets(id){
+  const s = st[id];
+  if (R[id].t!=='S' || s.units < 2) return [];
+  return ADJ[id].filter(n => R[n].t==='L' && st[n].owner !== s.owner && st[n].units > 1);
+}
+function fortifyTargets(id){
+  const p = st[id].owner, seen = new Set([id]), q=[id], out=[];
+  while (q.length){
+    for (const n of ADJ[q.shift()]){
+      if (seen.has(n) || st[n].owner!==p) continue;
+      seen.add(n); q.push(n); out.push(n);
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------- combat --- */
+function roll(n){ return Array.from({length:n},()=>1+rnd(6)).sort((a,b)=>b-a); }
+function battleRound(aUnits, dUnits, aDice=3){
+  const ad = roll(Math.max(1, Math.min(aDice, 3, aUnits-1)));
+  const dd = roll(Math.min(2, dUnits));
+  let aL=0, dL=0;
+  for (let i=0;i<Math.min(ad.length,dd.length);i++){
+    if (ad[i] > dd[i]) dL++; else aL++;
+  }
+  return {ad, dd, aL, dL};
+}
+
+/* --------------------------------------------------------------- turns --- */
+function startTurn(){
+  const p = me();
+  if (!p.alive){ nextPlayer(); return; }
+  p.conquered = false;
+  G.phase = 'reinforce';
+  G.fortifyUsed = false;
+  G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
+  G.pendA = armyIncome(p.i);
+  G.pendF = fleetIncome(p.i);
+  if (!fleetDropZones(p.i).length) G.pendF = 0;
+
+  const count = (n,one,many) => `<span class="g">${n}</span> ${n===1?one:many}`;
+  log(`<b>${p.name}</b> musters ${count(G.pendA,'army','armies')}` +
+      (G.pendF ? ` and ${count(G.pendF,'fleet','fleets')}` : ``) + `.`);
+
+  if (p.ai){ render(); runAI(); }
+  else {
+    if (p.cards.length >= 5) log(`<span class="r">You must exchange a set of dispatch cards.</span>`);
+    render();
+  }
+}
+function nextPlayer(){
+  if (G.over) return;
+  let guard = 0;
+  do {
+    G.cur = (G.cur+1) % G.players.length;
+    if (G.cur === 0) G.turn++;
+  } while (!G.players[G.cur].alive && ++guard < 20);
+  startTurn();
+}
+function endTurn(){
+  const p = me();
+  if (p.conquered){
+    const c = drawCard(p);
+    if (c) log(`<b>${p.name}</b> receives a dispatch card.`);
+  }
+  nextPlayer();
+}
+
+// A power is finished when its last *land* territory falls. Ships cannot take
+// ground, so a navy with no homeland could never win back a coast — it would
+// linger for ever, and a human in that state would have armies to muster and
+// nowhere to put them. When the flag comes down the fleets strike their
+// colours with it, and the seas they held fall open to be claimed again.
+function checkElimination(){
+  let changed = false;
+  for (const p of G.players){
+    if (!p.alive || countLand(p.i) > 0) continue;
+    p.alive = false; changed = true;
+    let sunk = 0;
+    for (const id of SEA_IDS) if (st[id].owner === p.i){ st[id].owner = -1; st[id].units = 0; sunk++; }
+    log(`<span class="r"><b>${p.name}</b> is driven from the field` +
+        (sunk ? `; ${sunk} sea${sunk===1?' falls':'s fall'} open as its fleets strike their colours` : ``) +
+        `.</span>`);
+    const victor = G.players[G.lastAggressor];
+    if (victor && victor.alive && victor !== p && p.cards.length){
+      victor.cards.push(...p.cards);
+      log(`<b>${victor.name}</b> seizes ${p.cards.length} dispatch card${p.cards.length===1?'':'s'} from the wreckage.`);
+    } else G.discard.push(...p.cards);
+    p.cards = [];
+  }
+  const alive = G.players.filter(p=>p.alive);
+  const conqueror = alive.find(p => countLand(p.i) === LAND_IDS.length);
+  const you = G.players[G.you];
+  if (alive.length <= 1 || conqueror || (you && !you.alive)){
+    G.over = true;
+    showEnd(conqueror || alive.sort((a,b)=>countLand(b.i)-countLand(a.i))[0]);
+  }
+  return changed;
+}
+
+/* ================================ RENDER ================================ */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+// Cells are drawn a little taller than they are wide — a Mercator-ish stretch
+// that lets a 80x36 world fill a tall panel instead of letterboxing it.
+let SX = 16, SY = 16, DPR = 1;
+
+// Pan/zoom state. SX,SY are the cell size at "fit"; VIEW.z scales on top and
+// VIEW.ox/oy slide the board inside the canvas.
+const VIEW = {z:1, ox:0, oy:0, w:0, h:0, minZ:1, maxZ:7};
+
+function layout(){
+  const wrap = $('#mapwrap');
+  VIEW.w = wrap.clientWidth;
+  VIEW.h = wrap.clientHeight;
+  SX = VIEW.w / MAP_W;
+  SY = Math.min(VIEW.h / MAP_H, SX*1.45);
+  if (SY < SX) SX = SY;                       // height-limited: keep cells square
+  DPR = window.devicePixelRatio || 1;
+  cv.style.width  = VIEW.w+'px';
+  cv.style.height = VIEW.h+'px';
+  cv.width  = Math.round(VIEW.w*DPR);
+  cv.height = Math.round(VIEW.h*DPR);
+  if (typeof clampView === 'function') clampView();
+}
+
+function fillFor(reg){
+  const o = st[reg.id].owner;
+  if (reg.t==='L') return o<0 ? PARCH : mix(PARCH, G.players[o].color, .74);
+  return o<0 ? SEA0 : mix(SEA0, G.players[o].color, .52);
+}
+
+let hoverId = null;
+function render(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,VIEW.w,VIEW.h);
+  ctx.setTransform(DPR*VIEW.z,0,0,DPR*VIEW.z, VIEW.ox*DPR, VIEW.oy*DPR);
+
+  // ---- region fills
+  for (const reg of REGIONS){
+    ctx.fillStyle = fillFor(reg);
+    ctx.beginPath();
+    for (const [c,r] of reg.cells) ctx.rect(c*SX, r*SY, SX+0.6, SY+0.6);
+    ctx.fill();
+  }
+
+  // ---- sea texture
+  ctx.save();
+  ctx.globalAlpha = .13; ctx.strokeStyle = '#0d2233'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const reg of REGIONS){
+    if (reg.t!=='S') continue;
+    for (const [c,r] of reg.cells){
+      if ((r + (c%2)) % 3) continue;
+      ctx.moveTo(c*SX+SX*0.18, r*SY+SY*0.55);
+      ctx.lineTo(c*SX+SX*0.82, r*SY+SY*0.55);
+    }
+  }
+  ctx.stroke(); ctx.restore();
+
+  // ---- region borders
+  ctx.strokeStyle = 'rgba(58,44,28,.42)'; ctx.lineWidth = Math.max(1, SX*0.055);
+  ctx.beginPath();
+  for (const [x1,y1,x2,y2] of borderEdges){ ctx.moveTo(x1*SX,y1*SY); ctx.lineTo(x2*SX,y2*SY); }
+  ctx.stroke();
+
+  // ---- coastline
+  ctx.strokeStyle = 'rgba(38,28,16,.85)'; ctx.lineWidth = Math.max(1.4, SX*0.12);
+  ctx.beginPath();
+  for (const [x1,y1,x2,y2] of coastEdges){ ctx.moveTo(x1*SX,y1*SY); ctx.lineTo(x2*SX,y2*SY); }
+  ctx.stroke();
+
+  // ---- highlights
+  if (G.sel)     strokeRegion(G.sel,     '#ffd968', Math.max(2, SX*0.2));
+  if (G.fortSel) strokeRegion(G.fortSel, '#ffd968', Math.max(2, SX*0.2));
+  if (G.targets) for (const t of G.targets.keys()) strokeRegion(t, '#ff8a5c', Math.max(1.6, SX*0.14));
+  if (G.bombards) for (const t of G.bombards)      strokeRegion(t, '#78d8ff', Math.max(1.6, SX*0.14));
+  if (G.phase==='fortify' && G.fortSel && G.fortTargets)
+    for (const t of G.fortTargets) strokeRegion(t, '#9ad98a', Math.max(1.4, SX*0.11));
+  if (G.battle){
+    strokeRegion(G.battle.a, '#ffd968', Math.max(2, SX*0.2));
+    strokeRegion(G.battle.d, '#ff5b3d', Math.max(2, SX*0.2));
+  }
+  if (hoverId && hoverId!==G.sel) strokeRegion(hoverId, 'rgba(255,255,255,.55)', Math.max(1.2, SX*0.09));
+
+  // ---- routes
+  if (G.targets)  for (const [t,via] of G.targets) drawRoute(G.sel, t, via, '#ff8a5c');
+  if (G.bombards) for (const t of G.bombards)      drawRoute(G.sel, t, null, '#78d8ff');
+
+  // ---- labels + unit badges
+  const rad = Math.max(7, Math.min(SX,SY)*0.48);
+  const fh  = Math.max(9, SX*0.62);
+  const labelY = reg => reg.cy*SY - rad - fh*0.62;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  // Reserve the space every unit badge needs, then fit names around them.
+  // Cramped corners of the map (the Channel, the Indies) have more names than
+  // room, so the biggest regions claim their label first and anything that
+  // would overlap is left to the hover tooltip instead of printing on top.
+  const taken = [];
+  const clear = (x,y,w,h) => !taken.some(b =>
+    x < b.x+b.w && x+w > b.x && y < b.y+b.h && y+h > b.y);
+  for (const reg of REGIONS) if (st[reg.id].units > 0)
+    taken.push({x:reg.cx*SX-rad, y:reg.cy*SY-rad, w:rad*2, h:rad*2});
+
+  const shown = new Set();
+  if (SX*VIEW.z >= 9){
+    const order = REGIONS.slice().sort((a,b) =>
+      (b.t==='L') - (a.t==='L') || b.cells.length - a.cells.length);
+    for (const reg of order){
+      ctx.font = `${reg.t==='S'?'italic ':''}${fh}px Georgia, serif`;
+      const w = ctx.measureText(reg.name).width + 4, h = fh + 2;
+      const x = reg.cx*SX - w/2, y = labelY(reg) - h/2;
+      if (!clear(x,y,w,h)) continue;
+      taken.push({x,y,w,h}); shown.add(reg.id);
+    }
+  }
+  const drawName = reg => {
+    ctx.font = `${reg.t==='S'?'italic ':''}${fh}px Georgia, serif`;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = reg.t==='S' ? 'rgba(18,34,48,.6)' : 'rgba(250,244,228,.8)';
+    ctx.strokeText(reg.name, reg.cx*SX, labelY(reg));
+    ctx.fillStyle = reg.t==='S' ? 'rgba(232,244,252,.94)' : 'rgba(46,36,22,.96)';
+    ctx.fillText(reg.name, reg.cx*SX, labelY(reg));
+  };
+  for (const reg of REGIONS) if (shown.has(reg.id)) drawName(reg);
+
+  for (const reg of REGIONS){
+    const u = st[reg.id].units; if (u <= 0) continue;
+    const x = reg.cx*SX, y = reg.cy*SY, o = st[reg.id].owner;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
+    ctx.fillStyle = o<0 ? '#6b6b6b' : G.players[o].color;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.2, SX*0.09);
+    ctx.strokeStyle = 'rgba(245,238,220,.92)'; ctx.stroke();
+    ctx.font = `bold ${Math.max(9, rad*1.2)}px Georgia, serif`;
+    ctx.fillStyle = '#fff8e6';
+    ctx.fillText(String(u), x, y+rad*0.06);
+  }
+
+  // whatever the cursor is on always gets its name, crowded or not
+  for (const id of [G.sel, G.fortSel, hoverId])
+    if (id && !shown.has(id)){ drawName(R[id]); shown.add(id); }
+}
+
+function strokeRegion(id, color, w){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap='round';
+  ctx.beginPath();
+  for (const [x1,y1,x2,y2] of R[id].outline){ ctx.moveTo(x1*SX,y1*SY); ctx.lineTo(x2*SX,y2*SY); }
+  ctx.stroke(); ctx.restore();
+}
+
+function drawRoute(a, b, via, color){
+  const chain = via ? [R[a],R[via],R[b]] : [R[a],R[b]];
+  for (let i=0;i<chain.length-1;i++)
+    drawLeg(chain[i], chain[i+1], color, i === chain.length-2);
+}
+// A leg whose shorter path runs round the back of the world is drawn as two
+// stubs leaving opposite edges of the map, not as a line straight across it.
+function drawLeg(p1, p2, color, head){
+  const dx = p2.cx - p1.cx;
+  if (Math.abs(dx) > MAP_W/2){
+    const westward = dx > 0;
+    drawSeg(p1.cx, p1.cy, westward ? 0 : MAP_W, p1.cy, color, false);
+    drawSeg(westward ? MAP_W : 0, p2.cy, p2.cx, p2.cy, color, head);
+  } else {
+    drawSeg(p1.cx, p1.cy, p2.cx, p2.cy, color, head);
+  }
+}
+function drawSeg(x1,y1,x2,y2,color,head){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.4, SX*0.11);
+  ctx.setLineDash([SX*0.34, SX*0.32]); ctx.globalAlpha = .85;
+  ctx.beginPath(); ctx.moveTo(x1*SX, y1*SY); ctx.lineTo(x2*SX, y2*SY); ctx.stroke();
+  if (head){
+    const ang = Math.atan2((y2-y1)*SY, (x2-x1)*SX);
+    const hx = x2*SX - Math.cos(ang)*SX*0.8, hy = y2*SY - Math.sin(ang)*SX*0.8;
+    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(hx + Math.cos(ang)*SX*0.6, hy + Math.sin(ang)*SX*0.6);
+    ctx.lineTo(hx + Math.cos(ang+2.5)*SX*0.44, hy + Math.sin(ang+2.5)*SX*0.44);
+    ctx.lineTo(hx + Math.cos(ang-2.5)*SX*0.44, hy + Math.sin(ang-2.5)*SX*0.44);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+/* ================================== UI ================================== */
+function log(html){
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  const box = $('#log');
+  box.appendChild(d);
+  while (box.children.length > 120) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+let bannerTimer = null;
+function banner(txt, ms=1400){
+  const b = $('#banner'); b.textContent = txt; b.style.display='block';
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(()=>b.style.display='none', ms);
+}
+
+function syncUI(){
+  const p = me();
+  document.querySelectorAll('.ph').forEach(e=>e.classList.toggle('on', e.dataset.ph===G.phase));
+  $('#poolA').textContent = G.pendA;
+  $('#poolF').textContent = G.pendF;
+  $('#turnInfo').innerHTML =
+    `Year ${1804+G.turn} &nbsp;·&nbsp; <span style="color:${p.color}">${p.name}</span>` +
+    (p.ai ? ' <span style="color:#8d7c60">(rival)</span>' : ' <span class="youtag">YOU</span>');
+
+  // players
+  const pl = $('#plist'); pl.innerHTML='';
+  for (const q of G.players){
+    const row = document.createElement('div');
+    row.className = 'prow' + (q.i===G.cur?' active':'') + (q.alive?'':' dead');
+    row.title = q.pers ? q.pers.name + ' — ' + q.pers.blurb : '';
+    row.innerHTML =
+      `<span class="swatch" style="background:${q.color}"></span>` +
+      `<span class="nm">${q.name}${q.i===G.you?' <span class="youtag">YOU</span>':''}` +
+        (q.pers ? `<span class="pers">${q.pers.name}</span>` : '') + `</span>` +
+      `<span class="st">${countLand(q.i)}🛡 ${countSea(q.i)}⚓</span>`;
+    pl.appendChild(row);
+  }
+
+  // cards
+  const you = G.players[G.you];
+  $('#cardCount').textContent = `(${you.cards.length})`;
+  const cbox = $('#cards'); cbox.innerHTML='';
+  for (const c of you.cards){
+    const e = document.createElement('span');
+    const k = c.s==='Wild'?'wild':c.s==='Infantry'?'inf':c.s==='Cavalry'?'cav':'art';
+    e.className = 'card '+k;
+    e.textContent = c.r ? `${R[c.r].name.slice(0,14)} · ${c.s[0]}` : 'WILD';
+    cbox.appendChild(e);
+  }
+  const set = findSet(you.cards);
+  $('#btnTrade').disabled = !(set && isYou() && G.phase==='reinforce');
+  $('#btnTrade').textContent = set ? `Exchange Set (+${tradeValue()})` : 'Exchange Set';
+
+  // battle panel
+  const bp = $('#battle');
+  if (G.battle){
+    bp.style.display='block';
+    const B = G.battle, ao=st[B.a].owner, doo=st[B.d].owner;
+    $('#btTitle').textContent = B.bombard ? 'Bombardment' : (B.via ? 'Amphibious Assault' : 'Engagement');
+    $('#btAC').style.background = ao<0?'#666':G.players[ao].color;
+    $('#btDC').style.background = doo<0?'#666':G.players[doo].color;
+    $('#btAN').textContent = R[B.a].name;
+    $('#btDN').textContent = R[B.d].name;
+    $('#btAU').textContent = st[B.a].units;
+    $('#btDU').textContent = st[B.d].units;
+    $('#btVia').textContent = B.via ? `↓ across the ${R[B.via].name} ↓`
+                : B.bombard ? '↓ broadsides ↓' : '↓';
+    renderDice('#btAD', B.lastA||[], B.lastAL||[], 'a');
+    renderDice('#btDD', B.lastD||[], B.lastDL||[], 'd');
+    const canFight = st[B.a].units >= 2 && st[B.d].units >= (B.bombard?2:1);
+    $('#btRoll').disabled = !canFight || G.busy;
+    $('#btBlitz').disabled = !canFight || G.busy;
+    $('#btRoll').textContent = B.bombard ? 'Fire' : 'Engage';
+    $('#btBlitz').style.display = B.bombard ? 'none' : '';
+    const avail = Math.max(1, Math.min(3, st[B.a].units-1));
+    if (!B.dice || B.dice > avail) B.dice = avail;
+    document.querySelectorAll('#btPick button').forEach(b=>{
+      const n = +b.dataset.n;
+      b.classList.toggle('gold', n===B.dice);
+      b.disabled = n > avail || G.busy;
+    });
+    $('#btPickHint').textContent = B.bombard
+      ? 'Bombardment captures nothing, so dice carry no move-in cost.'
+      : `Roll ${B.dice}: if this round wins, at least ${B.dice} must march in.`;
+  } else bp.style.display='none';
+
+  // move panel
+  $('#movesec').style.display = G.pendingMove ? 'block' : 'none';
+  $('#mvCancel').style.display = G.pendingMove && G.pendingMove.kind !== 'conquer' ? '' : 'none';
+
+  // hint
+  $('#hint').innerHTML = hintText();
+
+  // buttons
+  const yours = isYou() && !G.over;
+  const mustTrade = G.phase==='reinforce' && p.cards.length >= 5 && !!findSet(p.cards);
+  $('#btnPhase').disabled = !yours || !!G.pendingMove || G.phase==='fortify' ||
+      (G.phase==='reinforce' && (G.pendA>0 || G.pendF>0 || mustTrade));
+  $('#btnEnd').disabled = !yours || !!G.pendingMove || G.phase==='reinforce';
+  $('#btnPhase').textContent = G.phase==='reinforce' ? 'Begin Campaign'
+                            : G.phase==='attack'    ? 'Manoeuvre' : '—';
+}
+
+function renderDice(sel, vals, losses, cls){
+  const box = $(sel); box.innerHTML='';
+  const pips = ['','⚀','⚁','⚂','⚃','⚄','⚅'];
+  vals.forEach((v,i)=>{
+    const d = document.createElement('span');
+    d.className = 'die '+cls+(losses[i]?' lose':'');
+    d.textContent = pips[v];
+    box.appendChild(d);
+  });
+}
+
+function hintText(){
+  if (G.over) return 'The campaign is decided.';
+  if (!isYou()) return `<em>${me().name}</em> is deliberating…`;
+  if (G.pendingMove) return G.pendingMove.kind === 'conquer'
+    ? 'Choose how many units advance.'
+    : 'Choose how many units go — or <em>Cancel</em> to change your mind. Nothing is committed until you confirm.';
+  if (G.battle) return 'Press <em>Engage</em> for one exchange, or <em>All Out</em> to press the attack.';
+  if (G.phase==='reinforce'){
+    if (G.pendA>0) return `Place <em>${G.pendA}</em> armies on your territories. <span style="color:#8d7c60">Tap again to add more.</span>`;
+    if (G.pendF>0) return `Place <em>${G.pendF}</em> fleets in a sea you hold, or an <em>empty sea</em> touching your coast.`;
+    if (me().cards.length >= 5 && findSet(me().cards))
+      return 'Five dispatches in hand — you <em>must</em> exchange a set before marching.';
+    return 'Muster complete — begin the campaign.';
+  }
+  if (G.phase==='attack'){
+    if (!G.sel){
+      const free = SEA_IDS.filter(s => st[s].owner===-1 &&
+        ADJ[s].some(n => st[n].owner===G.cur && st[n].units>=2)).length;
+      return 'Tap one of your regions (2+ units) to choose an attacker. <span style="color:#8d7c60">Orange = assault, blue = bombard.</span>' +
+        (free ? `<br><em>${free} empty sea${free===1?'':'s'}</em> within reach — select a coastal territory and click the sea to sail armies in unopposed. They become fleets.` : '');
+    }
+    const emptySeas = [...G.targets.keys()].filter(t => st[t].units===0).length;
+    if (emptySeas)
+      return `Tap an orange target to attack. <em>${emptySeas} empty sea${emptySeas===1?'':'s'}</em> can be sailed into unopposed — your armies become fleets.`;
+    return 'Tap an orange target to attack, a blue coast to bombard, or click your region again to deselect.';
+  }
+  if (G.phase==='fortify'){
+    if (G.fortifyUsed) return 'Your manoeuvre is spent. End the turn.';
+    if (!G.fortSel) return 'Tap a region to move units <em>from</em> — or end your turn.';
+    return 'Tap a green region to move units into.';
+  }
+  return '';
+}
+
+/* ------------------------------------------------------------- cards --- */
+function tradeValue(){
+  const t = G.trades;
+  return t < 6 ? [4,6,8,10,12,15][t] : 15 + 5*(t-5);
+}
+function isSet(a,b,c){
+  const s=[a.s,b.s,c.s];
+  if (s.some(x=>x==='Wild')) return true;
+  return (s[0]===s[1] && s[1]===s[2]) || (s[0]!==s[1] && s[1]!==s[2] && s[0]!==s[2]);
+}
+function findSet(cards){
+  for (let i=0;i<cards.length;i++)
+    for (let j=i+1;j<cards.length;j++)
+      for (let k=j+1;k<cards.length;k++)
+        if (isSet(cards[i],cards[j],cards[k])) return [i,j,k];
+  return null;
+}
+function doTrade(p){
+  const set = findSet(p.cards); if (!set) return 0;
+  const val = tradeValue(); G.trades++;
+  const taken = set.map(i=>p.cards[i]);
+  G.discard.push(...taken);
+  p.cards = p.cards.filter((_,i)=>!set.includes(i));
+  log(`<b>${p.name}</b> exchanges dispatches for <span class="g">${val}</span> armies.`);
+  // one card in the set showing ground you already hold raises two extra
+  // regiments on the spot
+  const home = taken.find(c => c.r && st[c.r].owner === p.i);
+  if (home){
+    st[home.r].units += 2;
+    log(`Local levies raise <span class="g">2</span> more in <b>${R[home.r].name}</b>.`);
+  }
+  return val;
+}
+
+/* ============================= INTERACTION ============================== */
+function cellFromEvent(e){
+  const rect = cv.getBoundingClientRect();
+  const c = Math.floor((e.clientX - rect.left - VIEW.ox) / (SX*VIEW.z));
+  const r = Math.floor((e.clientY - rect.top  - VIEW.oy) / (SY*VIEW.z));
+  if (c<0||r<0||c>=MAP_W||r>=MAP_H) return null;
+  return cellReg[r][c];
+}
+
+cv.addEventListener('click', e=>{
+  if (G.busy || G.over || !isYou() || G.pendingMove) return;
+  const id = cellFromEvent(e); if (!id) return;
+  const p = me();
+
+  if (G.phase === 'reinforce'){
+    const s = st[id];
+    if (R[id].t === 'L'){
+      if (s.owner !== p.i || G.pendA <= 0) return banner('Place armies on your own land.');
+      const n = Math.min(G.pendA, e.shiftKey?5:1);
+      s.units += n; G.pendA -= n;
+    } else {
+      if (G.pendF <= 0) return banner(G.pendA>0 ? 'Place your armies first.' : 'No fleets to place.');
+      if (!fleetDropZones(p.i).includes(id))
+        return banner('Only a sea you hold, or an empty sea on your coast.');
+      const n = Math.min(G.pendF, e.shiftKey?5:1);
+      if (s.owner === -1){
+        s.owner = p.i;
+        log(`<b>${p.name}</b> claims the <span class="g">${R[id].name}</span>.`);
+      }
+      s.units += n; G.pendF -= n;
+    }
+    render(); syncUI(); return;
+  }
+
+  if (G.phase === 'attack'){
+    if (G.battle) return;
+    if (G.sel === id){ clearSel(); render(); syncUI(); return; }
+    if (G.targets && G.targets.has(id)) return beginBattle(G.sel, id, G.targets.get(id), false);
+    if (G.bombards && G.bombards.includes(id)) return beginBattle(G.sel, id, null, true);
+    if (st[id].owner !== p.i) return;
+    if (st[id].units < 2) return banner(R[id].t==='S'
+      ? 'A lone fleet holds its sea but needs 2+ to attack — add fleets here at muster.'
+      : 'Needs at least 2 armies to attack.', 2600);
+    G.sel = id;
+    G.targets = attackTargets(id);
+    G.bombards = bombardTargets(id);
+    if (!G.targets.size && !G.bombards.length) banner('No targets within reach.');
+    render(); syncUI(); return;
+  }
+
+  if (G.phase === 'fortify'){
+    if (G.fortifyUsed) return banner('Manoeuvre already used.');
+    if (G.fortSel === id){ G.fortSel=null; G.fortTargets=null; render(); syncUI(); return; }
+    if (G.fortSel && G.fortTargets && G.fortTargets.includes(id)){
+      openMove(G.fortSel, id, 1, 'fortify');
+      return;
+    }
+    if (st[id].owner !== p.i || st[id].units < 2) return;
+    G.fortSel = id;
+    G.fortTargets = fortifyTargets(id);
+    if (!G.fortTargets.length) banner('Nowhere to march.');
+    render(); syncUI();
+  }
+});
+
+function clearSel(){ G.sel=null; G.targets=null; G.bombards=null; }
+
+/* ------------------------------------------------------------ battles --- */
+function beginBattle(a, d, via, bombard){
+  // an empty unclaimed sea is simply sailed into — no battle. Nothing is
+  // claimed yet: the commander picks how many board, or cancels outright.
+  if (!bombard && st[d].units === 0 && st[d].owner === -1){
+    clearSel();
+    openMove(a, d, 1, 'claim');
+    return;
+  }
+  G.battle = {a, d, via, bombard, lastA:[], lastD:[], lastAL:[], lastDL:[]};
+  render(); syncUI();
+}
+
+function doRound(){
+  const B = G.battle; if (!B) return false;
+  const A = st[B.a], D = st[B.d];
+  if (A.units < 2) return false;
+  if (B.bombard && D.units < 2) return false;
+  if (D.units < 1) return false;
+
+  const res = battleRound(A.units, D.units, B.dice || 3);
+  B.lastA = res.ad; B.lastD = res.dd;
+  B.lastAL = res.ad.map((v,i)=> i<Math.min(res.ad.length,res.dd.length) && v <= res.dd[i]);
+  B.lastDL = res.dd.map((v,i)=> i<Math.min(res.ad.length,res.dd.length) && v < res.ad[i]);
+
+  A.units -= res.aL;
+  let dLoss = res.dL;
+  if (B.bombard) dLoss = Math.min(dLoss, D.units - 1);
+  D.units -= dLoss;
+
+  if (D.units <= 0){
+    const atk = A.owner, def = D.owner;
+    const defName = def<0 ? 'no one' : G.players[def].name;
+    G.lastAggressor = atk;
+    D.owner = atk;
+    D.units = 0;
+    G.players[atk].conquered = true;
+    const verb = R[B.d].t==='S' ? 'sweeps' : 'seizes';
+    log(`<b>${G.players[atk].name}</b> ${verb} <span class="g">${R[B.d].name}</span> from ${defName}.`);
+    const maxMove = A.units - 1;
+    G.battle = null;
+    clearSel();
+    openMove(B.a, B.d, Math.min(maxMove, Math.max(1, res.ad.length)), 'conquer');
+    return 'won';
+  }
+  return true;
+}
+
+$('#btRoll').onclick = ()=>{ if (!G.busy){ doRound(); render(); syncUI(); } };
+$('#btBlitz').onclick = async ()=>{
+  if (G.busy) return;
+  G.busy = true;
+  const gen = G.gen;
+  let guard = 0;
+  while (G.battle && ++guard < 200){
+    const r = doRound();
+    render(); syncUI();
+    if (r === 'won' || r === false) break;
+    await sleep(120);
+    if (G.gen !== gen) return;          // a new campaign began mid-battle
+  }
+  G.busy = false; render(); syncUI();
+};
+document.querySelectorAll('#btPick button').forEach(b => b.onclick = () => {
+  if (G.battle && !G.busy){ G.battle.dice = +b.dataset.n; syncUI(); }
+});
+$('#btCancel').onclick = ()=>{ G.battle=null; clearSel(); render(); syncUI(); };
+
+/* --------------------------------------------------------- move dialog --- */
+function openMove(from, to, min, kind){
+  const max = st[from].units - 1;
+  const lo = Math.max(1, Math.min(min, max));
+  G.pendingMove = {from, to, min:lo, max, kind};
+  const r = $('#mvRange');
+  r.min = lo; r.max = Math.max(lo, max); r.value = Math.max(lo, max);
+  $('#mvVal').textContent = r.value;
+  $('#mvTitle').textContent = kind==='conquer' ? `Occupy ${R[to].name}`
+    : kind==='claim' ? `Sail into the ${R[to].name}` : `March to ${R[to].name}`;
+  render(); syncUI();
+}
+$('#mvRange').oninput = e => $('#mvVal').textContent = e.target.value;
+$('#mvMax').onclick = ()=>{ const r=$('#mvRange'); r.value=r.max; $('#mvVal').textContent=r.max; };
+$('#mvOk').onclick = ()=>{
+  const M = G.pendingMove; if (!M) return;
+  const n = Math.max(M.min, Math.min(M.max, +$('#mvRange').value));
+  applyMove(M, n);
+  if (M.kind === 'fortify'){
+    G.fortifyUsed = true; G.fortSel=null; G.fortTargets=null;
+    log(`<b>${me().name}</b> marches ${n} to ${R[M.to].name}.`);
+  }
+  render(); syncUI();
+};
+// Backing out is only offered where nothing has happened yet: sailing into an
+// empty sea, or a manoeuvre. After a won battle the ground is already taken.
+$('#mvCancel').onclick = ()=>{
+  const M = G.pendingMove; if (!M || M.kind === 'conquer') return;
+  G.pendingMove = null;
+  if (M.kind === 'fortify'){ G.fortSel = null; G.fortTargets = null; }
+  render(); syncUI();
+};
+function applyMove(M, n){
+  if (M.kind === 'claim'){
+    // Sailing into open water is not a conquest, so it earns no dispatch card —
+    // only taking a region off a rival does.
+    const p = st[M.from].owner;
+    st[M.to].owner = p;
+    log(`<b>${G.players[p].name}</b> sails unopposed into the <span class="g">${R[M.to].name}</span>.`);
+  }
+  st[M.from].units -= n;
+  st[M.to].units   += n;
+  G.pendingMove = null;
+  checkElimination();
+}
+
+/* ---------------------------------------------------------- phase btns --- */
+$('#btnPhase').onclick = ()=>{
+  if (G.phase==='reinforce'){ G.phase='attack'; clearSel(); }
+  else if (G.phase==='attack'){ G.phase='fortify'; clearSel(); G.battle=null; }
+  render(); syncUI();
+};
+$('#btnEnd').onclick = ()=>{
+  if (G.phase==='reinforce') return;
+  G.battle=null; clearSel(); G.fortSel=null; G.fortTargets=null;
+  endTurn(); render(); syncUI();
+};
+$('#btnTrade').onclick = ()=>{
+  const p = G.players[G.you];
+  const n = doTrade(p);
+  if (n){ G.pendA += n; render(); syncUI(); }
+};
+
+/* ================================== AI ================================== */
+function aiScoreRegion(id, p){
+  // value = how contested / how useful
+  let s = 0;
+  for (const n of ADJ[id]){
+    if (st[n].owner === p) continue;
+    s += 2 + Math.min(6, st[n].units);
+  }
+  if (R[id].t==='S') s += 1;
+  const g = R[id].g;
+  const held = GROUP_MEMBERS[g].filter(x=>st[x].owner===p).length;
+  const total = GROUP_MEMBERS[g].length;
+  if (held === total-1) s += 9;
+  else if (held > total/2) s += 3;
+  return s;
+}
+
+// Every campaign gets a number. An AI turn is a chain of timed pauses, so if
+// the player starts a New Campaign mid-turn the old turn would otherwise wake
+// up inside the new game and keep playing — spending the human's muster,
+// grabbing seas, and ending their turn for them. Each pause checks the number
+// and abandons the turn the moment it belongs to a finished campaign.
+const STALE = Symbol('stale campaign');
+async function runAI(){
+  try { await aiTurn(G.gen); }
+  catch (e){ if (e !== STALE) throw e; }
+}
+async function aiTurn(gen){
+  const p = me();
+  const T = p.pers || PERSONALITIES[0];
+  G.busy = true;
+  const pause = async ms => { await sleep(ms * G.speed); if (G.gen !== gen) throw STALE; };
+
+  // --- forced / opportunistic card trade
+  while (p.cards.length >= 5 || (findSet(p.cards) && p.cards.length >= 3 && tradeValue() >= T.tradeFloor)){
+    const n = doTrade(p); if (!n) break; G.pendA += n;
+    if (p.cards.length < 3) break;
+  }
+
+  await pause(220);
+
+  // --- reinforce armies
+  const myLand = LAND_IDS.filter(id=>st[id].owner===p.i);
+  if (myLand.length){
+    const scored = myLand.map(id=>({id, s:aiScoreRegion(id,p.i) + Math.random()*2}))
+                         .sort((a,b)=>b.s-a.s);
+    const front = scored.filter(x=>ADJ[x.id].some(n=>st[n].owner!==p.i && R[n].t==='L'));
+    const pool = (front.length?front:scored).slice(0, Math.max(2, Math.ceil(scored.length*T.massing)));
+    let i = 0;
+    while (G.pendA > 0){
+      const w = pool[i % pool.length];
+      const chunk = Math.max(1, Math.round(G.pendA / Math.min(pool.length, 4)));
+      const n = Math.min(G.pendA, chunk);
+      st[w.id].units += n; G.pendA -= n; i++;
+      if (i > 400) break;
+    }
+  } else G.pendA = 0;
+
+  // --- reinforce fleets (prefer claiming empty seas)
+  const zones = fleetDropZones(p.i);
+  if (zones.length){
+    const zs = zones.map(id=>({
+      id,
+      s: (st[id].owner === -1 ? T.navalMuster : 0) + aiScoreRegion(id,p.i) + Math.random()*3
+    })).sort((a,b)=>b.s-a.s);
+    let i=0;
+    while (G.pendF > 0 && i < 500){
+      const z = zs[Math.min(i, zs.length-1)];
+      if (st[z.id].owner === -1){
+        st[z.id].owner = p.i;
+        log(`<b>${p.name}</b> claims the <span class="g">${R[z.id].name}</span>.`);
+        st[z.id].units += 1; G.pendF -= 1;
+      } else {
+        const n = Math.min(G.pendF, Math.max(1, Math.ceil(G.pendF/2)));
+        st[z.id].units += n; G.pendF -= n;
+      }
+      i++;
+    }
+  }
+  G.pendF = 0;
+  render(); syncUI();
+  await pause(420);
+
+  // --- attack
+  G.phase = 'attack'; syncUI();
+  let acts = 0, claims = 0;
+  while (acts++ < T.attacks && !G.over){
+    const opt = aiBestAttack(p.i, claims >= T.claims, T);
+    if (!opt) break;
+    G.sel = opt.from; G.targets = new Map([[opt.to, opt.via]]); G.bombards = [];
+    render();
+    await pause(300);
+
+    if (st[opt.to].units === 0){
+      claims++;
+      beginBattle(opt.from, opt.to, opt.via, false);
+      settleMove(p.i);
+      render(); syncUI(); await pause(260); continue;
+    }
+
+    G.battle = {a:opt.from, d:opt.to, via:opt.via, bombard:false, lastA:[],lastD:[],lastAL:[],lastDL:[]};
+    render(); syncUI();
+    let guard = 0, outcome = true;
+    while (G.battle && ++guard < 100){
+      // retreat if the attack has gone badly
+      if (st[opt.from].units < 2) break;
+      if (guard > 1 && st[opt.from].units < st[opt.to].units * T.grit && st[opt.from].units < 6) break;
+      outcome = doRound();
+      render(); syncUI();
+      await pause(150);
+      if (outcome === 'won' || outcome === false) break;
+    }
+    settleMove(p.i);
+    G.battle = null; clearSel();
+    render(); syncUI();
+    if (G.over) break;
+    await pause(140);
+  }
+
+  // --- occasional bombardment
+  if (!G.over){
+    for (const sea of SEA_IDS){
+      if (st[sea].owner !== p.i || st[sea].units < T.bombardMin) continue;
+      const t = bombardTargets(sea).sort((a,b)=>st[b].units-st[a].units)[0];
+      if (!t) continue;
+      G.sel = sea; G.bombards = [t]; G.targets = new Map();
+      G.battle = {a:sea, d:t, via:null, bombard:true, lastA:[],lastD:[],lastAL:[],lastDL:[]};
+      render(); syncUI();
+      let g2=0;
+      while (G.battle && ++g2 < 4 && st[sea].units >= T.bombardMin && st[t].units > 1){
+        doRound(); render(); syncUI(); await pause(150);
+      }
+      log(`<b>${p.name}</b> bombards <span class="g">${R[t].name}</span> from the ${R[sea].name}.`);
+      G.battle=null; clearSel(); render(); syncUI();
+      await pause(180);
+      break;
+    }
+  }
+
+  // --- fortify
+  if (!G.over){
+    G.phase='fortify'; syncUI();
+    const move = aiBestFortify(p.i);
+    if (move){
+      st[move.from].units -= move.n; st[move.to].units += move.n;
+      log(`<b>${p.name}</b> marches ${move.n} to ${R[move.to].name}.`);
+      render(); syncUI(); await pause(320);
+    }
+  }
+
+  G.busy = false;
+  if (!G.over){ endTurn(); render(); syncUI(); }
+  else { render(); syncUI(); }
+}
+
+// Decide how much of a victorious force follows into the captured region.
+// Putting a whole frontier army out to sea is how a rival loses its coastline,
+// so a land force boarding ship sends only a token squadron.
+function settleMove(p){
+  const M = G.pendingMove; if (!M) return;
+  const exposed = ADJ[M.from].some(n => st[n].owner !== p);
+  let n;
+  if (R[M.from].t === 'L' && R[M.to].t === 'S') n = exposed ? 1 : 2;
+  else n = M.max - (exposed ? 1 : 0);
+  n = Math.max(M.min, Math.min(M.max, n));
+  applyMove(M, n);
+}
+
+function aiBestAttack(p, noFreeClaims, T){
+  let best=null;
+  for (const id of regionsOf(p)){
+    const s = st[id]; if (s.units < 2) continue;
+    const tg = attackTargets(id);
+    for (const [t, via] of tg){
+      const d = st[t];
+      let score;
+      if (d.units === 0){                                      // free sea
+        if (noFreeClaims) continue;
+        score = 30 + T.seaBias + s.units;
+      }
+      else {
+        const ratio = s.units / (d.units + 0.5);
+        if (ratio < T.odds) continue;
+        score = ratio * 8 - d.units * 0.6 + T.weakBias / (d.units + 1);
+        // finishing a continent / theatre is worth a lot
+        const g = R[t].g;
+        const held = GROUP_MEMBERS[g].filter(x=>st[x].owner===p).length;
+        if (held === GROUP_MEMBERS[g].length - 1) score += T.contBonus;
+        if (R[t].t === 'S') score += T.seaBias;
+        if (via) score += 3;                                   // amphibious gains reach
+        if (d.owner === -1) score += 6;
+      }
+      score += Math.random()*3;
+      if (!best || score > best.score) best = {from:id, to:t, via, score};
+    }
+  }
+  return best;
+}
+
+function aiBestFortify(p){
+  const mine = regionsOf(p);
+  const front = new Set(mine.filter(id=>ADJ[id].some(n=>st[n].owner!==p)));
+  let best=null;
+  for (const id of mine){
+    if (front.has(id) || st[id].units < 2) continue;
+    // nearest front region through own territory
+    const seen=new Set([id]), q=[[id,0]];
+    while (q.length){
+      const [cur,dist] = q.shift();
+      if (cur!==id && front.has(cur)){
+        const score = st[id].units * 3 - dist;
+        if (!best || score > best.score)
+          best = {from:id, to:cur, n:st[id].units-1, score};
+        break;
+      }
+      for (const n of ADJ[cur]){
+        if (seen.has(n) || st[n].owner!==p) continue;
+        seen.add(n); q.push([n, dist+1]);
+      }
+    }
+  }
+  return best;
+}
+
+/* ============================== END SCREEN ============================== */
+function showEnd(w){
+  const you = G.players[G.you];
+  const won = !!w && w.i === G.you && w.alive;
+  const lastStanding = G.players.filter(p=>p.alive).length <= 1;
+  $('#endTitle').textContent = won ? 'Victory' : 'Defeat';
+  $('#endSub').textContent = `— ${1804+G.turn} —`;
+  $('#endBody').innerHTML =
+      !w ? 'The world is spent, and no power remains.'
+    : won ? `<b>${w.name}</b> stands master of the world, holding
+             <b>${countLand(w.i)}</b> territories and <b>${countSea(w.i)}</b> seas.`
+    : lastStanding ? `<b>${w.name}</b> stands alone as master of the world.`
+    : `${you ? you.name : 'Your empire'} is driven from the field. <b>${w.name}</b>
+       leads what remains, with <b>${countLand(w.i)}</b> territories and
+       <b>${countSea(w.i)}</b> seas.`;
+  $('#ovEnd').hidden = false;
+  log(`<b class="g">${w ? w.name+' carries the day.' : 'The campaign ends.'}</b>`);
+}
+
+/* ============================== SETUP UI ================================ */
+let setupAI = 2, setupFac = 0;
+(function buildSetup(){
+  const a = $('#optAI');
+  for (let i=1;i<=5;i++){
+    const b = document.createElement('button');
+    b.className = 'opt' + (i===setupAI?' on':''); b.textContent = i;
+    b.onclick = ()=>{
+      setupAI=i;
+      [...a.children].forEach(c=>c.classList.remove('on'));
+      b.classList.add('on');
+      renderFacOpts();
+    };
+    a.appendChild(b);
+  }
+  renderFacOpts();
+})();
+function renderFacOpts(){
+  const f = $('#optFac'); f.innerHTML='';
+  FACTIONS.forEach((fc,i)=>{
+    const b = document.createElement('button');
+    b.className = 'opt fac' + (i===setupFac?' on':'');
+    b.innerHTML = `<span class="sw" style="background:${fc.color}"></span><span>${fc.name}</span>`;
+    b.onclick = ()=>{ setupFac=i; renderFacOpts(); };
+    f.appendChild(b);
+  });
+}
+$('#btnBegin').onclick = ()=>{
+  $('#ovSetup').hidden = true;
+  $('#ovEnd').hidden = true;
+  layout(); newGame(setupAI, setupFac); render(); syncUI();
+};
+$('#btnNew').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
+$('#btnAgain').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
+$('#btnHelp').onclick = ()=>{ $('#ovHelp').hidden=false; };
+$('#btnCloseHelp').onclick = ()=>{ $('#ovHelp').hidden=true; };
+const SPEEDS = [[1,'Normal'],[0.45,'Fast'],[0.12,'Instant']];
+let spIdx = 0;
+$('#btnSpeed').onclick = ()=>{
+  spIdx = (spIdx+1) % SPEEDS.length;
+  G.speed = SPEEDS[spIdx][0];
+  $('#btnSpeed').textContent = 'AI Speed: ' + SPEEDS[spIdx][1];
+};
+
+window.addEventListener('resize', ()=>{ layout(); render(); });
+
+// boot: draw an idle map behind the setup sheet
+REGIONS.forEach(r => st[r.id] = {owner:-1, units:0});
+G.players = [{i:0,fac:0,name:'—',color:'#888',ai:false,cards:[],alive:true,conquered:false}];
+
+/* ==================== touch layer (iPhone build) ====================== */
+// The board is 80x36 cells — at fit-to-width on a phone a cell is ~5px, which
+// is fine for reading who owns what but far too small to tap or label. So the
+// map pans and pinch-zooms: "fit" is the overview, and you zoom in to play.
+
+// Drag to pan, pinch to zoom, tap to select. A tap is only a tap if the finger
+// barely moved — otherwise it was a pan, and selecting on lift would fight the
+// player every time they scrolled the map.
+(function touchMap(){
+  const TAP_SLOP = 12, TAP_MS = 500;
+  let mode = null;            // 'pan' | 'pinch'
+  let sx0=0, sy0=0, t0=0, moved=false;
+  let pinchD0=1, pinchZ0=1, pinchCx=0, pinchCy=0;
+
+  const dist = (a,b) => Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+
+  cv.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    if (e.touches.length === 1){
+      mode='pan'; moved=false; t0=Date.now();
+      sx0=e.touches[0].clientX; sy0=e.touches[0].clientY;
+    } else if (e.touches.length === 2){
+      mode='pinch'; moved=true;
+      pinchD0 = Math.max(1, dist(e.touches[0], e.touches[1]));
+      pinchZ0 = VIEW.z;
+      const r = cv.getBoundingClientRect();
+      pinchCx = (e.touches[0].clientX + e.touches[1].clientX)/2 - r.left;
+      pinchCy = (e.touches[0].clientY + e.touches[1].clientY)/2 - r.top;
+    }
+  }, {passive:false});
+
+  cv.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    if (mode === 'pan' && e.touches.length === 1){
+      const dx = e.touches[0].clientX - sx0, dy = e.touches[0].clientY - sy0;
+      if (Math.hypot(dx,dy) > TAP_SLOP) moved = true;
+      if (moved){
+        VIEW.ox += dx; VIEW.oy += dy;
+        sx0 = e.touches[0].clientX; sy0 = e.touches[0].clientY;
+        clampView(); render();
+      }
+    } else if (mode === 'pinch' && e.touches.length === 2){
+      const z = pinchZ0 * (dist(e.touches[0], e.touches[1]) / pinchD0);
+      zoomAt(pinchCx, pinchCy, z);
+    }
+  }, {passive:false});
+
+  cv.addEventListener('touchend', e=>{
+    e.preventDefault();
+    if (mode === 'pan' && !moved && Date.now()-t0 < TAP_MS){
+      // replay it as a click so the desktop turn logic handles it unchanged
+      cv.dispatchEvent(new MouseEvent('click', {clientX:sx0, clientY:sy0, bubbles:true}));
+      showSelInfo(sx0, sy0);
+    }
+    if (!e.touches.length) mode = null;
+  }, {passive:false});
+
+  cv.addEventListener('touchcancel', ()=>{ mode=null; }, {passive:false});
+})();
+
+// The desktop shows a hover tooltip; a finger has no hover, so the last region
+// touched is named in a corner card instead.
+function showSelInfo(clientX, clientY){
+  const box = $('#sel');
+  const id = cellFromEvent({clientX, clientY});
+  if (!id){ box.style.display='none'; return; }
+  const reg = R[id], s = st[id];
+  const own = s.owner<0 ? '<span style="color:#9b9b9b">Unclaimed</span>'
+            : `<span style="color:${G.players[s.owner].color}">${G.players[s.owner].name}</span>`;
+  box.innerHTML =
+    `<div class="sub">${GROUPS[reg.g].name}${reg.t==='S'?' · sea':''}</div>` +
+    `<b>${reg.name}</b> — ${own}<br>${s.units} ${reg.t==='S'?'fleet':'army'}${s.units===1?'':reg.t==='S'?'s':' units'}`;
+  box.style.display='block';
+}
+
+function zoomAt(px, py, z){
+  const nz = Math.max(VIEW.minZ, Math.min(VIEW.maxZ, z));
+  if (nz === VIEW.z) return;
+  // keep the point under the fingers pinned while the scale changes
+  VIEW.ox = px - (px - VIEW.ox) * (nz / VIEW.z);
+  VIEW.oy = py - (py - VIEW.oy) * (nz / VIEW.z);
+  VIEW.z = nz;
+  clampView(); render();
+}
+function clampView(){
+  const w = MAP_W*SX*VIEW.z, h = MAP_H*SY*VIEW.z;
+  VIEW.ox = w <= VIEW.w ? (VIEW.w - w)/2 : Math.min(0, Math.max(VIEW.w - w, VIEW.ox));
+  VIEW.oy = h <= VIEW.h ? (VIEW.h - h)/2 : Math.min(0, Math.max(VIEW.h - h, VIEW.oy));
+}
+function zoomBy(f){ zoomAt(VIEW.w/2, VIEW.h/2, VIEW.z*f); }
+
+$('#zIn').onclick  = ()=> zoomBy(1.5);
+$('#zOut').onclick = ()=> zoomBy(1/1.5);
+$('#zFit').onclick = ()=>{ VIEW.z = VIEW.minZ; clampView(); render(); };
+
+// Zoom to whatever the game wants the player looking at, so a fresh turn or a
+// battle never leaves the relevant coast off screen.
+function focusOn(id){
+  if (!id || !R[id]) return;
+  if (VIEW.z < 2.2) VIEW.z = 2.2;
+  VIEW.ox = VIEW.w/2 - R[id].cx * SX * VIEW.z;
+  VIEW.oy = VIEW.h/2 - R[id].cy * SY * VIEW.z;
+  clampView(); render();
+}
+
+/* ---------- bottom-sheet tabs ---------- */
+document.querySelectorAll('.tab').forEach(t => t.onclick = ()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on', x===t));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on', p.id===t.dataset.pane));
+});
+function showPane(id){
+  const tab = [...document.querySelectorAll('.tab')].find(t=>t.dataset.pane===id);
+  if (tab) tab.click();
+}
+
+// A battle or a troop-allocation prompt lives in the Turn pane — jump there so
+// it is never hidden behind whichever tab the player left open.
+const mobSync = syncUI;
+syncUI = function(){
+  mobSync();
+  if ((G.battle || G.pendingMove) && !$('#panePlay').classList.contains('on')) showPane('panePlay');
+  const b = G.battle;
+  if (b && b.d !== lastFocus){ lastFocus = b.d; focusOn(b.d); }
+  if (!b) lastFocus = null;
+};
+let lastFocus = null;
+
+/* ---------- speed button ---------- */
+const SPEED_LABEL = {1:'1x', 0.45:'2x', 0.12:'8x'};
+const origSpeedBtn = $('#btnSpeed').onclick;
+$('#btnSpeed').onclick = function(){
+  origSpeedBtn.call(this);
+  this.textContent = SPEED_LABEL[G.speed] || '1x';
+};
+
+/* ---------- boot ---------- */
+layout(); render(); syncUI();
+</script>
+</body>
+</html>
