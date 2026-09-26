@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World at War — 1805</title>
 <style>
@@ -809,9 +810,9 @@ function newGame(nAI, facIdx){
   startTurn();
 }
 
+const CARD_SYMBOLS = ['Infantry','Cavalry','Artillery','Wild'];
 function buildDeck(){
-  const syms=['Infantry','Cavalry','Artillery'];
-  const d = LAND_IDS.map((id,i)=>({r:id, s:syms[i%3]}));
+  const d = LAND_IDS.map((id,i)=>({r:id, s:CARD_SYMBOLS[i%3]}));
   d.push({r:null,s:'Wild'}); d.push({r:null,s:'Wild'});
   return shuffle(d);
 }
@@ -1791,6 +1792,7 @@ function showEnd(w){
        leads what remains, with <b>${countLand(w.i)}</b> territories and
        <b>${countSea(w.i)}</b> seas.`;
   $('#ovEnd').hidden = false;
+  clearSave();
   log(`<b class="g">${w ? w.name+' carries the day.' : 'The campaign ends.'}</b>`);
 }
 
@@ -1838,12 +1840,191 @@ $('#btnSpeed').onclick = ()=>{
   $('#btnSpeed').textContent = 'AI Speed: ' + SPEEDS[spIdx][1];
 };
 
+
+/* ============================ SAVED CAMPAIGN ===========================
+   iOS reclaims memory from backgrounded web pages, so a game left while you
+   answer a text can be gone when you come back. The campaign is autosaved
+   after every action and restored on load.
+
+   Security notes, because this data crosses a trust boundary on its way
+   back in:
+   · Only numbers and fixed IDs are stored — never names or any other text
+     that ends up in the page. Names are looked up from the code on load, so
+     a tampered save has no route into the DOM.
+   · Everything is validated against the live board before it is trusted:
+     real region ids, real player slots, whole numbers in range, every land
+     territory holding at least one army. Anything off and the save is
+     dropped and a fresh campaign starts — it is never patched up, because
+     guessing at broken data is how bugs get in.
+   · The checksum catches corruption and truncation. It is NOT a security
+     control: anything already running on this page could recompute it.
+   · All storage access is wrapped — Private Browsing and a full disk both
+     throw, and the game must keep playing without a save.
+====================================================================== */
+const SAVE_KEY = 'worldatwar.campaign.v1';   // namespaced: all the arcade
+                                             // games share one origin
+
+function storage(){                          // may be unavailable entirely
+  try { const s = window.localStorage; s.getItem(SAVE_KEY); return s; }
+  catch (e){ return null; }
+}
+function checksum(str){                      // corruption check, not a guard
+  let h = 5381;
+  for (let i=0;i<str.length;i++) h = ((h*33) ^ str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function snapshot(){
+  return {
+    v: 1, turn: G.turn, cur: G.cur, you: G.you, phase: G.phase,
+    pendA: G.pendA, pendF: G.pendF, fortifyUsed: G.fortifyUsed,
+    trades: G.trades, lastAggressor: G.lastAggressor,
+    players: G.players.map(p => ({
+      fac: p.fac, ai: p.ai ? 1 : 0, alive: p.alive ? 1 : 0,
+      conquered: p.conquered ? 1 : 0,
+      pers: p.pers ? p.pers.id : null,
+      cards: p.cards.map(c => [c.r === null ? -1 : LAND_IDS.indexOf(c.r), CARD_SYMBOLS.indexOf(c.s)])
+    })),
+    owners: REGIONS.map(r => st[r.id].owner),
+    units:  REGIONS.map(r => st[r.id].units),
+    deck:    G.deck.map(c => [c.r === null ? -1 : LAND_IDS.indexOf(c.r), CARD_SYMBOLS.indexOf(c.s)]),
+    discard: G.discard.map(c => [c.r === null ? -1 : LAND_IDS.indexOf(c.r), CARD_SYMBOLS.indexOf(c.s)])
+  };
+}
+
+let saveTimer = null;
+function saveSoon(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 350);
+}
+function saveNow(){
+  clearTimeout(saveTimer);
+  // Never snapshot mid-AI-turn or mid-dialog: resuming is only clean at a
+  // settled position.
+  if (G.over || G.busy || G.pendingMove || G.players.length < 2) return;
+  const s = storage(); if (!s) return;
+  try {
+    const body = JSON.stringify(snapshot());
+    s.setItem(SAVE_KEY, JSON.stringify({c: checksum(body), body}));
+  } catch (e){ /* quota or private mode — play on without a save */ }
+}
+function clearSave(){
+  const s = storage(); if (!s) return;
+  try { s.removeItem(SAVE_KEY); } catch (e){}
+}
+
+// ---- validation: nothing below trusts a single field it has not checked
+const isInt = (n, lo, hi) => Number.isInteger(n) && n >= lo && n <= hi;
+
+function parseCard(pair, nPlayers){
+  if (!Array.isArray(pair) || pair.length !== 2) return null;
+  const [ri, si] = pair;
+  if (!isInt(si, 0, CARD_SYMBOLS.length-1)) return null;
+  if (ri === -1) return {r:null, s:CARD_SYMBOLS[si]};
+  if (!isInt(ri, 0, LAND_IDS.length-1)) return null;
+  return {r:LAND_IDS[ri], s:CARD_SYMBOLS[si]};
+}
+
+function validate(d){
+  if (!d || d.v !== 1) return null;
+  if (!Array.isArray(d.players) || d.players.length < 2 || d.players.length > FACTIONS.length) return null;
+  const n = d.players.length;
+  if (!isInt(d.turn, 1, 9999) || !isInt(d.cur, 0, n-1) || !isInt(d.you, 0, n-1)) return null;
+  if (!['reinforce','attack','fortify'].includes(d.phase)) return null;
+  if (!isInt(d.pendA, 0, 999) || !isInt(d.pendF, 0, 999) || !isInt(d.trades, 0, 9999)) return null;
+  if (!isInt(d.lastAggressor, -1, n-1)) return null;
+  if (!Array.isArray(d.owners) || d.owners.length !== REGIONS.length) return null;
+  if (!Array.isArray(d.units)  || d.units.length  !== REGIONS.length) return null;
+
+  const players = [];
+  for (let i=0;i<n;i++){
+    const p = d.players[i];
+    if (!p || !isInt(p.fac, 0, FACTIONS.length-1)) return null;
+    if (!Array.isArray(p.cards) || p.cards.length > 20) return null;
+    const pers = p.pers === null ? null : PERSONALITIES.find(x => x.id === p.pers);
+    if (p.pers !== null && !pers) return null;
+    const cards = [];
+    for (const c of p.cards){ const card = parseCard(c, n); if (!card) return null; cards.push(card); }
+    players.push({
+      i, fac:p.fac, name:FACTIONS[p.fac].name, color:FACTIONS[p.fac].color,   // text from code, never the save
+      ai: !!p.ai, alive: !!p.alive, conquered: !!p.conquered, pers, cards
+    });
+  }
+  if (new Set(players.map(p=>p.fac)).size !== n) return null;      // no duplicate empires
+
+  const owners = [], units = [];
+  for (let k=0;k<REGIONS.length;k++){
+    const o = d.owners[k], u = d.units[k];
+    if (!isInt(o, -1, n-1) || !isInt(u, 0, 9999)) return null;
+    const land = REGIONS[k].t === 'L';
+    if (land && (o < 0 || u < 1)) return null;         // land is always held, always garrisoned
+    if (o < 0 && u !== 0) return null;                 // unclaimed means empty
+    if (!land && o >= 0 && u < 1) return null;         // a held sea carries a fleet
+    owners.push(o); units.push(u);
+  }
+  if (!players.some(p => p.alive)) return null;
+  for (const p of players){                            // alive iff holding land
+    const holdsLand = REGIONS.some((r,k)=> r.t === 'L' && owners[k] === p.i);
+    if (p.alive !== holdsLand) return null;
+  }
+  const deck = [], discard = [];
+  if (!Array.isArray(d.deck) || !Array.isArray(d.discard)) return null;
+  for (const c of d.deck){ const card = parseCard(c, n); if (!card) return null; deck.push(card); }
+  for (const c of d.discard){ const card = parseCard(c, n); if (!card) return null; discard.push(card); }
+
+  return {d, players, owners, units, deck, discard};
+}
+
+function resumeGame(){
+  const s = storage(); if (!s) return false;
+  let raw;
+  try { raw = s.getItem(SAVE_KEY); } catch (e){ return false; }
+  if (!raw) return false;
+  let ok = null;
+  try {
+    const wrap = JSON.parse(raw);
+    if (!wrap || typeof wrap.body !== 'string' || wrap.c !== checksum(wrap.body)) { clearSave(); return false; }
+    ok = validate(JSON.parse(wrap.body));
+  } catch (e){ ok = null; }
+  if (!ok){ clearSave(); return false; }
+
+  const {d, players, owners, units, deck, discard} = ok;
+  G.gen = (G.gen || 0) + 1;
+  G.players = players;
+  G.turn = d.turn; G.cur = d.cur; G.you = d.you; G.phase = d.phase;
+  G.pendA = d.pendA; G.pendF = d.pendF; G.fortifyUsed = !!d.fortifyUsed;
+  G.trades = d.trades; G.lastAggressor = d.lastAggressor;
+  G.deck = deck; G.discard = discard;
+  G.over = false; G.busy = false;
+  G.sel = null; G.targets = null; G.bombards = null;
+  G.battle = null; G.pendingMove = null; G.fortSel = null; G.fortTargets = null;
+  REGIONS.forEach((r,k) => st[r.id] = {owner:owners[k], units:units[k]});
+  log(`<b class="g">Campaign restored</b> — year ${1804+G.turn}, ${G.players[G.cur].name} to move.`);
+  return true;
+}
+
+// Autosave on every settled change, and again the moment the page is hidden —
+// that last one is what survives iOS suspending a backgrounded tab.
+const saveSync = syncUI;
+syncUI = function(){ saveSync(); saveSoon(); };
+addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'hidden') saveNow(); });
+addEventListener('pagehide', saveNow);
+
 window.addEventListener('resize', ()=>{ layout(); render(); });
 
 // boot: draw an idle map behind the setup sheet
 REGIONS.forEach(r => st[r.id] = {owner:-1, units:0});
 G.players = [{i:0,fac:0,name:'—',color:'#888',ai:false,cards:[],alive:true,conquered:false}];
-layout(); render();
+layout();
+// Boot: pick up an interrupted campaign if there is a good save, otherwise
+// draw an idle map behind the setup sheet.
+if (resumeGame()){
+  $('#ovSetup').hidden = true;
+  render(); syncUI();
+  if (me().ai && !G.busy) runAI();       // we were interrupted on a rival's turn
+} else {
+  render();
+}
 </script>
 </body>
 </html>
