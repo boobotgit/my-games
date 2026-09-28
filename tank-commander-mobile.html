@@ -137,11 +137,6 @@
 
   <button id="tapStart" aria-label="Start game"></button>
   <div id="tiltNote" hidden></div>
-  <!-- Haptics: iPhone Safari has no navigator.vibrate, but toggling a native switch
-       (iOS 18+) gives a haptic tick. Kept offscreen and invisible. -->
-  <label id="hapticLbl" aria-hidden="true" style="position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none">
-    <input type="checkbox" switch tabindex="-1">
-  </label>
 
   <div id="rotate">
     <div class="ph">📱</div>
@@ -327,25 +322,47 @@
   let fireHeld = false, fireQueue = 0, turretIn = 0;
 
   // ── Haptics ── small tick when firing, a stronger triple-buzz when hit.
-  // Android: navigator.vibrate. iPhone: tap the hidden switch (one tick per tap, so a
-  // "bigger" buzz is several ticks in quick succession).
-  const hapticLbl = document.getElementById('hapticLbl');
-  let firedByTapBuzz = false;
-  function haptic(kind) {
-    if (typeof navigator.vibrate === 'function') {
-      try { navigator.vibrate(kind === 'hit' ? [90, 40, 120] : 25); } catch (e) {}
-      return;
-    }
-    const tick = () => { try { hapticLbl.click(); } catch (e) {} };
-    tick();                                           // first one synchronously (inside the tap)
-    if (kind === 'hit') { setTimeout(tick, 70); setTimeout(tick, 140); }
+  // Android: navigator.vibrate works any time.
+  // iPhone: Safari has no vibrate API. The only way in is toggling a native
+  // <input type=checkbox switch> (iOS 18+), which ticks the Taptic Engine, and iOS only
+  // allows it while handling a finger LIFT (touchend), not touch-down and not from the
+  // game loop. So buzzes are "owed" and paid out on the next finger lift anywhere,
+  // as long as that comes soon enough to still feel connected.
+  const canVibrate = typeof navigator.vibrate === 'function';
+  const owed = { fire: 0, hit: 0 };          // time (s) until each owed buzz goes stale
+  function switchTick() {
+    // same recipe as the open-source ios-haptics library: fresh hidden switch, click, remove
+    try {
+      const label = document.createElement('label');
+      label.ariaHidden = 'true'; label.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.setAttribute('switch', '');
+      label.appendChild(input);
+      document.head.appendChild(label);
+      label.click();
+      document.head.removeChild(label);
+    } catch (e) {}
   }
+  function haptic(kind) {
+    if (canVibrate) { try { navigator.vibrate(kind === 'hit' ? [90, 40, 120] : 25); } catch (e) {} return; }
+    if (kind === 'hit') owed.hit = 1.5; else owed.fire = 0.6;
+  }
+  function payOwedBuzz() {
+    if (owed.hit > 0) {
+      owed.hit = 0; owed.fire = 0;
+      switchTick();
+      // WebKit carries the tap's permission into short timers, so the extra ticks may land too
+      setTimeout(switchTick, 90); setTimeout(switchTick, 180);
+    } else if (owed.fire > 0) {
+      owed.fire = 0;
+      switchTick();
+    }
+  }
+  document.addEventListener('touchend', payOwedBuzz, { capture: true, passive: true });
   const btnFire = document.getElementById('btnFire');
   btnFire.addEventListener('pointerdown', e => {
     e.preventDefault(); btnFire.setPointerCapture(e.pointerId);
     fireHeld = true; fireQueue = 0.3; btnFire.classList.add('down');
-    // buzz here, inside the tap, where iOS is most willing to allow it (shot fires next frame)
-    if (state === 'play' && player.alive && player.cd <= 0) { haptic('fire'); firedByTapBuzz = true; }
   });
   const fireUp = () => { fireHeld = false; btnFire.classList.remove('down'); };
   btnFire.addEventListener('pointerup', fireUp);
@@ -683,8 +700,7 @@
       player.cd = 0.75; fireQueue = 0;
       recoil = 1; muzzle = 0.09; shake = Math.max(shake, 0.5);
       sfx.fire();
-      if (!firedByTapBuzz) haptic('fire');   // auto-fire while holding / keyboard
-      firedByTapBuzz = false;
+      haptic('fire');
       setTimeout(() => { if (state === 'play') sfx.reload(); }, 650);
     }
     if (player.inv > 0) player.inv -= dt;
@@ -892,6 +908,7 @@
     muzzle = Math.max(0, muzzle - dt);
     hurt = Math.max(0, hurt - dt);
     zeroFlash = Math.max(0, zeroFlash - dt);
+    owed.fire = Math.max(0, owed.fire - dt); owed.hit = Math.max(0, owed.hit - dt);
     for (const f of fx) f.t += dt;
     fx = fx.filter(f => f.t < f.dur);
 
@@ -1520,7 +1537,7 @@
     player, keys, tiltSim,
     get state() { return state; }, get enemies() { return enemies; }, get shells() { return shells; },
     get map() { return map; }, get level() { return level; }, get score() { return score; }, get lives() { return lives; },
-    get tilt() { return tilt; }, get baseline() { return baseline; }, get side() { return side; },
+    get tilt() { return tilt; }, owed, payOwedBuzz, get baseline() { return baseline; }, get side() { return side; },
     start: beginPlay, setLevel(i) { initLevel(i); state = 'play'; },
     step(dt, n) { for (let i = 0; i < (n || 1); i++) update(dt || 1 / 60); render(); },
     readTreads,
