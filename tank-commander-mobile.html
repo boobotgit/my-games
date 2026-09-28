@@ -137,6 +137,11 @@
 
   <button id="tapStart" aria-label="Start game"></button>
   <div id="tiltNote" hidden></div>
+  <!-- Haptics: iPhone Safari has no navigator.vibrate, but toggling a native switch
+       (iOS 18+) gives a haptic tick. Kept offscreen and invisible. -->
+  <label id="hapticLbl" aria-hidden="true" style="position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none">
+    <input type="checkbox" switch tabindex="-1">
+  </label>
 
   <div id="rotate">
     <div class="ph">📱</div>
@@ -320,10 +325,27 @@
 
   // ── Touch controls ───────────────────────────────────────────────────────
   let fireHeld = false, fireQueue = 0, turretIn = 0;
+
+  // ── Haptics ── small tick when firing, a stronger triple-buzz when hit.
+  // Android: navigator.vibrate. iPhone: tap the hidden switch (one tick per tap, so a
+  // "bigger" buzz is several ticks in quick succession).
+  const hapticLbl = document.getElementById('hapticLbl');
+  let firedByTapBuzz = false;
+  function haptic(kind) {
+    if (typeof navigator.vibrate === 'function') {
+      try { navigator.vibrate(kind === 'hit' ? [90, 40, 120] : 25); } catch (e) {}
+      return;
+    }
+    const tick = () => { try { hapticLbl.click(); } catch (e) {} };
+    tick();                                           // first one synchronously (inside the tap)
+    if (kind === 'hit') { setTimeout(tick, 70); setTimeout(tick, 140); }
+  }
   const btnFire = document.getElementById('btnFire');
   btnFire.addEventListener('pointerdown', e => {
     e.preventDefault(); btnFire.setPointerCapture(e.pointerId);
     fireHeld = true; fireQueue = 0.3; btnFire.classList.add('down');
+    // buzz here, inside the tap, where iOS is most willing to allow it (shot fires next frame)
+    if (state === 'play' && player.alive && player.cd <= 0) { haptic('fire'); firedByTapBuzz = true; }
   });
   const fireUp = () => { fireHeld = false; btnFire.classList.remove('down'); };
   btnFire.addEventListener('pointerup', fireUp);
@@ -378,9 +400,9 @@
   //   bank   = dipping one end of the phone lower than the other
   //            (positive = RIGHT end lower)                 -> one tread more than the other
   const PITCH_DIR = 1, BANK_DIR = 1;
-  // TREAD_SWAP = 1: dipping the LEFT side drives the LEFT tread forward (tank swings right),
-  // like a real tank. Set to -1 if it feels backwards on the phone (steering-wheel feel).
-  const TREAD_SWAP = 1;
+  // TREAD_SWAP = -1 (user's choice after playing): steering-wheel feel. Dip the LEFT side and
+  // the RIGHT tread drives, so the tank turns LEFT. Set to 1 for literal tank logic.
+  const TREAD_SWAP = -1;
   const DEG = Math.PI / 180;
   const tilt = { beta: 0, gamma: 0, ux: 0, uy: 0, uz: 1, active: false };
   const baseline = { ux: 0, uy: 0, uz: 1, set: false };
@@ -597,7 +619,7 @@
     };
     const both = ramp(dP, 6, 18);          // whole phone tipped forward/back
     const diff = ramp(dB, 5, 18) * TREAD_SWAP;   // + = right end dipped
-    // Dip the LEFT end -> left tread gets more forward drive; dip RIGHT -> right tread
+    // With TREAD_SWAP = -1: dip the LEFT end -> tank turns left; dip RIGHT -> turns right
     return [clamp(both - diff, -1, 1), clamp(both + diff, -1, 1)];
   }
 
@@ -661,6 +683,8 @@
       player.cd = 0.75; fireQueue = 0;
       recoil = 1; muzzle = 0.09; shake = Math.max(shake, 0.5);
       sfx.fire();
+      if (!firedByTapBuzz) haptic('fire');   // auto-fire while holding / keyboard
+      firedByTapBuzz = false;
       setTimeout(() => { if (state === 'play') sfx.reload(); }, 650);
     }
     if (player.inv > 0) player.inv -= dt;
@@ -850,7 +874,7 @@
       } else if (player.alive && Math.hypot(s.x - player.x, s.y - player.y) < 0.38) {
         s.dead = true;
         if (player.inv > 0) { fx.push({ kind: 'spark', x: s.x, y: s.y, t: 0, dur: 0.3 }); sfx.clang(); continue; }
-        player.hp--; hurt = 0.5; shake = 1.2; sfx.hit();
+        player.hp--; hurt = 0.5; shake = 1.2; sfx.hit(); haptic('hit');
         if (player.hp <= 0) {
           player.alive = false; lives--; deadT = 2.2;
           boom(player.x, player.y, true); sfx.boom(true);
@@ -1406,7 +1430,7 @@
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - 170 * S, H * 0.2, 340 * S, 44 * S);
       ctx.fillStyle = '#f0e0a0'; ctx.font = f(10); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       if (level === 0) {
-        ctx.fillText('Tip the phone forward to roll · dip one side to turn', W / 2, H * 0.2 + 7 * S);
+        ctx.fillText('Tip the phone forward to roll · dip a side to turn that way', W / 2, H * 0.2 + 7 * S);
         ctx.fillText('Protect the golden eagle behind you!', W / 2, H * 0.2 + 24 * S);
       } else {
         ctx.fillText('STAGE ' + (level + 1) + ' — ' + ENEMY_WAVES[level].length + ' enemy tanks', W / 2, H * 0.2 + 15 * S);
@@ -1440,8 +1464,8 @@
     const lines = [
       ['Tip the whole phone forward', 'both treads forward'],
       ['Tip it back', 'both treads reverse'],
-      ['Dip just the LEFT side', 'left tread drives → tank swings right'],
-      ['Dip just the RIGHT side', 'right tread drives → tank swings left'],
+      ['Dip the LEFT side', 'turn left (like a steering wheel)'],
+      ['Dip the RIGHT side', 'turn right'],
       ['Slide the TURRET bar', 'turn the gun · CENTER snaps it back'],
       ['FIRE', 'shoot · protect the golden eagle'],
     ];
