@@ -77,7 +77,7 @@
     position:absolute; top:16px; left:50%; transform:translateX(-50%);
     background:rgba(20,15,10,.93); border:1px solid var(--gold-dim); color:var(--gold);
     padding:8px 20px; border-radius:3px; font-size:14px; letter-spacing:.12em;
-    text-transform:uppercase; display:none; z-index:35; box-shadow:0 6px 22px rgba(0,0,0,.6)
+    text-transform:uppercase; display:none; z-index:35; pointer-events:none; box-shadow:0 6px 22px rgba(0,0,0,.6)
   }
 
   /* ---------- sidebar ---------- */
@@ -317,6 +317,10 @@
     <div class="lbl">Your Empire</div>
     <div class="opt-grid" id="optFac"></div>
 
+    <div class="lbl">Difficulty</div>
+    <div class="opt-grid" id="optDiff"></div>
+    <p id="diffBlurb" style="text-align:center;font-size:12.5px;color:#6b5636;margin:4px 0 0"></p>
+
     <button class="btn gold go" id="btnBegin">Begin the Campaign</button>
   </div>
 </div>
@@ -381,6 +385,15 @@
       <li><b>Opportunist</b> — hunts the weakest border it can find and finishes cripples.</li>
       <li><b>Strategist</b> — plays for whole continents and the bonuses they pay.</li>
     </ul>
+
+    <h4>Difficulty</h4>
+    <ul>
+      <li><b>Officer</b> — rivals muster normally and fight their own wars.</li>
+      <li><b>General</b> — rivals muster 20% more armies, reinforce the borders of any continent they hold,
+      and once any power holds 30% of the land they turn on it together.</li>
+      <li><b>Marshal</b> — rivals muster 40% more and close ranks hard against the leader.</li>
+    </ul>
+    <p>The bonus is only ever the rivals'. Your own muster follows the normal rules at every level.</p>
 
     <h4>Ruin</h4>
     <p>A power is finished the moment its <b>last land territory</b> falls. Ships take no ground,
@@ -579,6 +592,34 @@ const PERSONALITIES = [
   {id:'strategist', name:'Strategist',  blurb:'Plays for whole continents and the bonuses they pay.',
    odds:1.35, attacks:12, claims:2, seaBias:4,  contBonus:26, weakBias:3,  bombardMin:5, massing:0.30, navalMuster:9,  grit:1.10, tradeFloor:8}
 ];
+
+// How hard the rivals play. These apply to every rival power and never to the
+// human seat (G.you).
+//   income  multiplier on a rival's army muster
+//   leader  how hard rivals turn on whoever is running away with the war —
+//           the thing real players at a table do and the old AI never did
+//   guard   extra muster weight on the borders of a continent a rival holds
+const DIFFICULTIES = [
+  {id:'officer', name:'Officer', income:1.00, leader:0,  guard:0,
+   blurb:'Rivals muster normally and fight their own wars.'},
+  {id:'general', name:'General', income:1.20, leader:8,  guard:6,
+   blurb:'Rivals muster 20% more, guard their continents, and turn on whoever leads.'},
+  {id:'marshal', name:'Marshal', income:1.40, leader:14, guard:10,
+   blurb:'Rivals muster 40% more and close ranks hard against the leader.'}
+];
+const DIFF = () => DIFFICULTIES.find(d => d.id === G.diff) || DIFFICULTIES[0];
+
+// The power running away with the war, once anyone holds 30% of the land.
+// Before that nobody is a clear threat, and ganging up early just looks random.
+function currentLeader(){
+  let best = -1, most = -1;
+  for (const q of G.players){
+    if (!q.alive) continue;
+    const n = countLand(q.i);
+    if (n > most){ most = n; best = q.i; }
+  }
+  return most >= LAND_IDS.length * 0.3 ? best : -1;
+}
 
 /* ------------------------------------------------------------- derived --- */
 const R = {};                       // id -> region def
@@ -788,6 +829,7 @@ function newGame(nAI, facIdx){
   });
   G.gen = (G.gen || 0) + 1; G.busy = false;
   G.lastAggressor = -1;
+  G.diff = setupDiff;
   G.you = 0; G.cur = 0; G.turn = 1; G.over=false; G.trades=0;
   G.deck = buildDeck(); G.discard = [];
   G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
@@ -909,6 +951,7 @@ function startTurn(){
   G.fortifyUsed = false;
   G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
   G.pendA = armyIncome(p.i);
+  if (p.i !== G.you) G.pendA = Math.ceil(G.pendA * DIFF().income);
   G.pendF = fleetIncome(p.i);
   if (!fleetDropZones(p.i).length) G.pendF = 0;
 
@@ -1000,6 +1043,24 @@ function fillFor(reg){
 }
 
 let hoverId = null;
+// What render() actually painted, in board pixels. Names sit above their
+// badge and long ones cross borders — "France" is drawn mostly over Germania —
+// so a click has to be resolved against the badge or name the player can
+// see, not merely the map cell underneath the pointer.
+let HIT_BADGES = [], HIT_LABELS = [];
+function regionAtBoard(bx, by){
+  for (let i=HIT_BADGES.length-1;i>=0;i--){
+    const b = HIT_BADGES[i];
+    if ((bx-b.x)*(bx-b.x) + (by-b.y)*(by-b.y) <= b.r*b.r) return b.id;
+  }
+  for (let i=HIT_LABELS.length-1;i>=0;i--){      // last drawn is on top
+    const l = HIT_LABELS[i];
+    if (bx >= l.x && bx <= l.x+l.w && by >= l.y && by <= l.y+l.h) return l.id;
+  }
+  const c = Math.floor(bx/SX), r = Math.floor(by/SY);
+  if (c<0||r<0||c>=MAP_W||r>=MAP_H) return null;
+  return cellReg[r][c];
+}
 function render(){
   ctx.clearRect(0,0,MAP_W*SX, MAP_H*SY);
 
@@ -1082,8 +1143,11 @@ function render(){
       taken.push({x,y,w,h}); shown.add(reg.id);
     }
   }
+  HIT_BADGES = []; HIT_LABELS = [];
   const drawName = reg => {
     ctx.font = `${reg.t==='S'?'italic ':''}${fh}px Georgia, serif`;
+    const w = ctx.measureText(reg.name).width + 4, h = fh + 2;
+    HIT_LABELS.push({id:reg.id, x:reg.cx*SX - w/2, y:labelY(reg) - h/2, w, h});
     ctx.lineWidth = 3;
     ctx.strokeStyle = reg.t==='S' ? 'rgba(18,34,48,.6)' : 'rgba(250,244,228,.8)';
     ctx.strokeText(reg.name, reg.cx*SX, labelY(reg));
@@ -1095,6 +1159,7 @@ function render(){
   for (const reg of REGIONS){
     const u = st[reg.id].units; if (u <= 0) continue;
     const x = reg.cx*SX, y = reg.cy*SY, o = st[reg.id].owner;
+    HIT_BADGES.push({id:reg.id, x, y, r:rad});
     ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
     ctx.fillStyle = o<0 ? '#6b6b6b' : G.players[o].color;
     ctx.fill();
@@ -1177,7 +1242,8 @@ function syncUI(){
     (p.ai ? ' <span style="color:#8d7c60">(rival)</span>' : ' <span class="youtag">YOU</span>');
 
   // players
-  const pl = $('#plist'); pl.innerHTML='';
+  const pl = $('#plist');
+  pl.innerHTML = `<div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#8d7c60;padding:0 6px 3px">Difficulty · <span style="color:var(--gold)">${DIFF().name}</span></div>`;
   for (const q of G.players){
     const row = document.createElement('div');
     row.className = 'prow' + (q.i===G.cur?' active':'') + (q.alive?'':' dead');
@@ -1337,9 +1403,7 @@ function doTrade(p){
 /* ============================= INTERACTION ============================== */
 function cellFromEvent(e){
   const rect = cv.getBoundingClientRect();
-  const c = Math.floor((e.clientX-rect.left)/SX), r = Math.floor((e.clientY-rect.top)/SY);
-  if (c<0||r<0||c>=MAP_W||r>=MAP_H) return null;
-  return cellReg[r][c];
+  return regionAtBoard(e.clientX - rect.left, e.clientY - rect.top);
 }
 
 cv.addEventListener('mousemove', e=>{
@@ -1371,7 +1435,8 @@ cv.addEventListener('click', e=>{
   if (G.phase === 'reinforce'){
     const s = st[id];
     if (R[id].t === 'L'){
-      if (s.owner !== p.i || G.pendA <= 0) return banner('Place armies on your own land.');
+      if (s.owner !== p.i) return banner('Place armies on your own land.');
+      if (G.pendA <= 0) return banner(G.pendF > 0 ? 'Armies all placed — now your fleets.' : 'Muster complete.');
       const n = Math.min(G.pendA, e.shiftKey?5:1);
       s.units += n; G.pendA -= n;
     } else {
@@ -1566,6 +1631,8 @@ function aiScoreRegion(id, p){
   const total = GROUP_MEMBERS[g].length;
   if (held === total-1) s += 9;
   else if (held > total/2) s += 3;
+  if (p !== G.you && DIFF().guard && held === total &&
+      ADJ[id].some(n => st[n].owner !== p)) s += DIFF().guard;   // a bonus worth keeping
   return s;
 }
 
@@ -1722,6 +1789,8 @@ function settleMove(p){
 
 function aiBestAttack(p, noFreeClaims, T){
   let best=null;
+  const D = DIFF();
+  const leader = (p !== G.you && D.leader) ? currentLeader() : -1;
   for (const id of regionsOf(p)){
     const s = st[id]; if (s.units < 2) continue;
     const tg = attackTargets(id);
@@ -1734,8 +1803,10 @@ function aiBestAttack(p, noFreeClaims, T){
       }
       else {
         const ratio = s.units / (d.units + 0.5);
-        if (ratio < T.odds) continue;
+        const onLeader = leader >= 0 && d.owner === leader && leader !== p;
+        if (ratio < (onLeader ? T.odds * 0.85 : T.odds)) continue;
         score = ratio * 8 - d.units * 0.6 + T.weakBias / (d.units + 1);
+        if (onLeader) score += D.leader;
         // finishing a continent / theatre is worth a lot
         const g = R[t].g;
         const held = GROUP_MEMBERS[g].filter(x=>st[x].owner===p).length;
@@ -1797,7 +1868,7 @@ function showEnd(w){
 }
 
 /* ============================== SETUP UI ================================ */
-let setupAI = 2, setupFac = 0;
+let setupAI = 2, setupFac = 0, setupDiff = 'general';
 (function buildSetup(){
   const a = $('#optAI');
   for (let i=1;i<=5;i++){
@@ -1812,7 +1883,19 @@ let setupAI = 2, setupFac = 0;
     a.appendChild(b);
   }
   renderFacOpts();
+  renderDiffOpts();
 })();
+function renderDiffOpts(){
+  const box = $('#optDiff'); box.innerHTML='';
+  DIFFICULTIES.forEach(d=>{
+    const b = document.createElement('button');
+    b.className = 'opt' + (d.id===setupDiff?' on':'');
+    b.textContent = d.name;
+    b.onclick = ()=>{ setupDiff = d.id; renderDiffOpts(); };
+    box.appendChild(b);
+  });
+  $('#diffBlurb').textContent = DIFFICULTIES.find(d=>d.id===setupDiff).blurb;
+}
 function renderFacOpts(){
   const f = $('#optFac'); f.innerHTML='';
   FACTIONS.forEach((fc,i)=>{
@@ -1876,7 +1959,7 @@ function checksum(str){                      // corruption check, not a guard
 
 function snapshot(){
   return {
-    v: 1, turn: G.turn, cur: G.cur, you: G.you, phase: G.phase,
+    v: 1, diff: G.diff, turn: G.turn, cur: G.cur, you: G.you, phase: G.phase,
     pendA: G.pendA, pendF: G.pendF, fortifyUsed: G.fortifyUsed,
     trades: G.trades, lastAggressor: G.lastAggressor,
     players: G.players.map(p => ({
@@ -1931,6 +2014,7 @@ function validate(d){
   const n = d.players.length;
   if (!isInt(d.turn, 1, 9999) || !isInt(d.cur, 0, n-1) || !isInt(d.you, 0, n-1)) return null;
   if (!['reinforce','attack','fortify'].includes(d.phase)) return null;
+  if (d.diff !== undefined && !DIFFICULTIES.some(x => x.id === d.diff)) return null;
   if (!isInt(d.pendA, 0, 999) || !isInt(d.pendF, 0, 999) || !isInt(d.trades, 0, 9999)) return null;
   if (!isInt(d.lastAggressor, -1, n-1)) return null;
   if (!Array.isArray(d.owners) || d.owners.length !== REGIONS.length) return null;
@@ -1994,6 +2078,8 @@ function resumeGame(){
   G.turn = d.turn; G.cur = d.cur; G.you = d.you; G.phase = d.phase;
   G.pendA = d.pendA; G.pendF = d.pendF; G.fortifyUsed = !!d.fortifyUsed;
   G.trades = d.trades; G.lastAggressor = d.lastAggressor;
+  // saves from before difficulty existed resume as Officer — how they were being played
+  G.diff = d.diff === undefined ? 'officer' : d.diff;
   G.deck = deck; G.discard = discard;
   G.over = false; G.busy = false;
   G.sel = null; G.targets = null; G.bombards = null;
