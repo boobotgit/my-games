@@ -212,32 +212,32 @@ function persist() {
 
 // ───────────────────────── The Poms ─────────────────────────
 const POMS = [
-  { id: 'boo', name: 'Boo', coat: 'Orange sable', trait: 'Playful', rarity: 'Common', w: 26,
+  { tc: { body: '#f59a42', face: '#f6a14c', cheek: '#f59a42', legs: '#f7b36a', paws: '#fde2b8', muzzle: '#fde6c2', bib: '#fff1d9', tail: '#f59a42' }, id: 'boo', name: 'Boo', coat: 'Orange sable', trait: 'Playful', rarity: 'Common', w: 26,
     size: 1, fluff: 1, ear: 1, eye: 1, snout: 1, leg: 1, tail: 1, speed: 1.15, voice: 1,
     col: { root: '#f7d9a6', mid: '#e3893a', tip: '#b8641f' }, face: { root: '#f5d29c', mid: '#e8954a', tip: '#cf7d33' }, legs: { root: '#f3cf98', mid: '#eba35c', tip: '#e6a057' },
     likes: { zoomies: 3, spin: 2.5, bow: 3, trot: 2, bark: 1.2, sleep: .4 },
     blurb: "The original fox-faced fluff ball. Never met a zoomie it didn't like." },
-  { id: 'mochi', name: 'Mochi', coat: 'Cream', trait: 'Sleepy', rarity: 'Common', w: 26,
+  { tc: { body: '#fbf2e2', face: '#fdf6ea', legs: '#f8ecd7', muzzle: '#fffaf2', tail: '#fbf2e2' }, id: 'mochi', name: 'Mochi', coat: 'Cream', trait: 'Sleepy', rarity: 'Common', w: 26,
     size: 1.05, fluff: 1.35, ear: .72, eye: .95, snout: .75, leg: .85, tail: 1.2, speed: .72, voice: .92,
     col: { root: '#fffaf1', mid: '#f4e2c4', tip: '#fff6e6' }, face: { root: '#fff8ee', mid: '#f5e5cb', tip: '#fffaf2' },
     likes: { sleep: 4, lie: 3, yawn: 3, sit: 1.5, wander: .7, zoomies: .2, trot: .4, spin: .3, bark: .3 }, durMul: { sleep: 1.6, lie: 1.4 },
     blurb: 'A cloud with a nose. Will nap on any surface, but prefers yours.' },
-  { id: 'pepper', name: 'Pepper', coat: 'Black & tan', trait: 'Sassy', rarity: 'Uncommon', w: 16,
+  { tc: { body: '#2c2626', face: '#2c2626', legs: '#d9964f', muzzle: '#dc9a55', bib: '#d9964f' }, id: 'pepper', name: 'Pepper', coat: 'Black & tan', trait: 'Sassy', rarity: 'Uncommon', w: 16,
     size: .9, fluff: .92, ear: 1.35, eye: 1.12, snout: 1.05, leg: 1.1, tail: .95, speed: 1.05, voice: 1.18, barky: true, prance: true,
     col: { root: '#3b3331', mid: '#1d1a19', tip: '#2e2926' }, point: '#c98640', brows: true,
     likes: { bark: 4, sit: 2.5, trot: 2, beg: 2, tilt: 1.2, sleep: .5, roll: .5 },
     blurb: 'Tiny body, enormous opinions. Barks first, asks questions never.' },
-  { id: 'biscuit', name: 'Biscuit', coat: 'Orange parti', trait: 'Curious', rarity: 'Uncommon', w: 16,
+  { tc: { body: '#fffaf3', face: '#fffaf3', legs: '#fffaf3', muzzle: '#fffdf8', paws: '#fffdf8' }, id: 'biscuit', name: 'Biscuit', coat: 'Orange parti', trait: 'Curious', rarity: 'Uncommon', w: 16,
     size: .95, fluff: 1.05, ear: 1.08, eye: 1.3, snout: .9, leg: 1, tail: 1.05, speed: 1, voice: 1.05,
     col: { root: '#fffdf8', mid: '#f7f1e6', tip: '#fffcf6' }, patch: '#e08c3e', patchAmt: 1, patchScale: 3.2,
     likes: { sniff: 4, dig: 3, tilt: 3, wander: 2, idle: 1.5 },
     blurb: 'Big eyes, bigger questions. Has to smell everything twice.' },
-  { id: 'smokey', name: 'Smokey', coat: 'Blue merle', trait: 'Shy', rarity: 'Rare', w: 8,
+  { tc: { body: '#a9b3bd', face: '#b3bcc5', legs: '#c3cad1', muzzle: '#e3e7eb', bib: '#e6eaee' }, id: 'smokey', name: 'Smokey', coat: 'Blue merle', trait: 'Shy', rarity: 'Rare', w: 8,
     size: .95, fluff: .95, ear: 1.2, eye: 1.1, snout: 1.2, leg: 1.1, tail: 1, speed: .9, voice: 1.1, shy: true, blueEye: true,
-    col: { root: '#cdd2d7', mid: '#98a1aa', tip: '#b6bdc4' }, patch: '#2c3136', patchAmt: 1, patchScale: 6.5,
+    col: { root: '#cdd2d7', mid: '#98a1aa', tip: '#b6bdc4' }, patch: '#4d5660', patchAmt: 1, patchScale: 8, patchCut: .6,
     likes: { idle: 2, lie: 2.2, sniff: 2, tilt: 2.5, zoomies: .3, bark: .2, beg: .3 },
     blurb: 'One blue eye, one brown, all nerves. Treats help.' },
-  { id: 'cocoa', name: 'Cocoa', coat: 'Chocolate', trait: 'Goofy', rarity: 'Rare', w: 8,
+  { tc: { body: '#8c5534', face: '#935b39', legs: '#9c6341', muzzle: '#c9946b', bib: '#c48d64', paws: '#b27b55' }, id: 'cocoa', name: 'Cocoa', coat: 'Chocolate', trait: 'Goofy', rarity: 'Rare', w: 8,
     size: 1.08, fluff: 1.15, ear: .95, eye: .9, snout: .95, leg: .95, tail: 1.1, speed: 1, voice: .86, tongueOut: .3,
     col: { root: '#b27b52', mid: '#6f4127', tip: '#8d5836' }, face: { root: '#a8744d', mid: '#744429', tip: '#8a5433' },
     likes: { roll: 3.5, blep: 12, trip: 50, spin: 2, shake: 2, zoomies: 1.5 },
@@ -437,160 +437,222 @@ function addPrint(x, z, size, op, life) {
   p.m.position.set(x, .0022, z); p.m.scale.set(size, size, 1); p.life = p.max = life; p.op = op;
 }
 
-// ───────────────────────── Fur shader ─────────────────────────
-const FUR_VS = `
-attribute float aLayer;
-uniform float uLen, uFlowK, uDensity;
-uniform vec3 uFlow, uScl;
-varying float vH; varying vec3 vP; varying vec3 vO; varying vec3 vN;
-void main(){
-  float h = aLayer;
-  vec3 wn = normalize(mat3(modelMatrix) * (normal / (uScl * uScl)));
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  wp.xyz += wn * (uLen * h) + uFlow * (uFlowK * uLen * h * h);
-  vH = h; vO = position; vP = position * uScl * uDensity; vN = wn;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}`;
-const FUR_FS = `
-uniform vec3 uRoot, uMid, uTip, uPoint, uPatch, uLightDir, uLightCol, uSky, uGround, uScl;
-uniform float uPointMode, uPointY, uPatchAmt, uPatchScale, uSeed;
-varying float vH; varying vec3 vP; varying vec3 vO; varying vec3 vN;
+// ───────────────────────── Toon rendering ─────────────────────────
+// Cartoon look: flat two-tone shading, dark outlines (inverted hull), puffy "cloud" fluff geometry.
+const NOISE_GLSL = `
 float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vnoise(vec3 x){ vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
-             mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+             mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z); }`;
+const TOON_VS = `
+attribute float aTuft;
+uniform vec3 uFlow, uScl; uniform float uFlowK;
+varying vec3 vN; varying vec3 vO; varying vec3 vW; varying float vT;
 void main(){
-  vec3 c = floor(vP);
-  float r = hash(c + uSeed);
-  if (vH > 0.0) {
-    float len = 0.35 + 0.65 * r;
-    if (vH > len) discard;
-    vec3 j = vec3(hash(c + 3.1), hash(c + 7.7), hash(c + 11.3)) - 0.5;
-    vec3 f = fract(vP) - 0.5 - j * 0.35;
-    float q = vH / len; float rad = 0.62 * (1.0 - q * q) + 0.08;
-    if (dot(f, f) > rad * rad) discard;
-  }
-  vec3 base = vH < 0.5 ? mix(uRoot, uMid, vH * 2.0) : mix(uMid, uTip, vH * 2.0 - 1.0);
+  vec3 wn = normalize(mat3(modelMatrix) * (normal / (uScl * uScl)));
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  wp.xyz += uFlow * (uFlowK * aTuft * 0.02);
+  vN = wn; vO = position; vW = wp.xyz; vT = aTuft;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+const TOON_FS = `
+uniform vec3 uCol, uPoint, uPatch, uLightDir, uLightCol, uSky, uScl;
+uniform float uPointMode, uPointY, uPointZ, uPatchAmt, uPatchScale, uPatchCut, uSeed;
+varying vec3 vN; varying vec3 vO; varying vec3 vW; varying float vT;
+${NOISE_GLSL}
+void main(){
+  vec3 base = uCol;
   if (uPatchAmt > 0.0) {
     vec3 q = vO * uScl * uPatchScale + uSeed;
     float n = vnoise(q) * 0.7 + vnoise(q * 2.3 + 5.0) * 0.3;
-    base = mix(base, uPatch * (0.85 + 0.3 * vH), smoothstep(0.5, 0.56, n) * uPatchAmt);
+    base = mix(base, uPatch, smoothstep(uPatchCut, uPatchCut + 0.02, n) * uPatchAmt);
   }
-  if (uPointMode > 0.5) base = mix(base, uPoint * (0.85 + 0.3 * vH), smoothstep(uPointY + 0.12, uPointY - 0.12, vO.y));
-  base *= 0.9 + 0.2 * r;
-  float ao = mix(0.42, 1.0, sqrt(clamp(vH, 0.0, 1.0)));
-  vec3 n = normalize(vN);
-  float diff = clamp(dot(n, uLightDir) * 0.55 + 0.45, 0.0, 1.0);
-  vec3 amb = mix(uGround, uSky, n.y * 0.5 + 0.5);
-  gl_FragColor = vec4(base * ao * (amb + uLightCol * diff), 1.0);
+  if (uPointMode > 0.5) base = mix(base, uPoint, smoothstep(uPointY + 0.03, uPointY - 0.03, vO.y) * smoothstep(uPointZ - 0.03, uPointZ + 0.03, vO.z));
+  base *= 0.97 + 0.08 * vT;
+  vec3 n = normalize(vN); vec3 v = normalize(cameraPosition - vW);
+  float lit = smoothstep(-0.42, -0.3, dot(n, uLightDir));
+  vec3 col = mix(base * vec3(0.8, 0.76, 0.86), base, lit);
+  vec3 L = uLightCol + uSky * 0.6; float lum = max(dot(L, vec3(0.3, 0.59, 0.11)), 0.01);
+  col *= mix(vec3(1.0), L / lum, 0.3) * clamp(0.45 + lum * 0.62, 0.62, 1.1);
+  float rim = smoothstep(0.62, 0.82, 1.0 - max(dot(n, v), 0.0)) * smoothstep(-0.1, 0.5, n.y);
+  col += rim * 0.15;
+  gl_FragColor = vec4(col, 1.0);
 }`;
+const OUT_VS = `
+attribute float aTuft;
+uniform vec3 uFlow, uScl; uniform float uFlowK, uOW;
+void main(){
+  vec3 wn = normalize(mat3(modelMatrix) * (normal / (uScl * uScl)));
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  wp.xyz += uFlow * (uFlowK * aTuft * 0.02);
+  wp.xyz += wn * uOW * length(cameraPosition - wp.xyz);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+const OUT_FS = `uniform vec3 uOCol; void main(){ gl_FragColor = vec4(uOCol, 1.0); }`;
+
+function withTuft(g) { g.setAttribute('aTuft', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count), 1)); return g; }
 const GEO = {
-  sphere: new THREE.SphereGeometry(1, 30, 22),
-  sphereLo: new THREE.SphereGeometry(1, 18, 12),
-  cone: new THREE.ConeGeometry(1, 1, 14, 1),
+  sphere: withTuft(new THREE.SphereGeometry(1, 32, 24)),
+  sphereLo: withTuft(new THREE.SphereGeometry(1, 20, 14)),
+  cone: withTuft(new THREE.ConeGeometry(1, 1, 18, 1)),
 };
-const furGeoCache = new Map();
-function furGeo(base, shells) {
-  const key = base.uuid + shells;
-  if (furGeoCache.has(key)) return furGeoCache.get(key);
-  const g = new THREE.InstancedBufferGeometry();
-  g.index = base.index; g.setAttribute('position', base.attributes.position); g.setAttribute('normal', base.attributes.normal);
-  const L = new Float32Array(shells); for (let i = 0; i < shells; i++) L[i] = i / (shells - 1);
-  g.setAttribute('aLayer', new THREE.InstancedBufferAttribute(L, 1));
-  g.instanceCount = shells;
-  furGeoCache.set(key, g); return g;
+// A sphere puffed out into rounded tufts, like a cartoon cloud. Normals are computed from the
+// displacement function itself, so the UV seam never shows a crease.
+const tuftCache = new Map();
+function tuftGeo(o) {
+  const g = new THREE.SphereGeometry(1, 56, 40);
+  const P = g.attributes.position, N = g.attributes.normal;
+  let s = (o.seed * 7919) % 233280;
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const dirs = [], bias = o.bias ? new V3(...o.bias) : null;
+  for (let guard = 0; dirs.length < o.n && guard < o.n * 40; guard++) {
+    const d = new V3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1);
+    const l = d.lengthSq(); if (l > 1 || l < .02) continue;
+    d.normalize(); if (bias) d.addScaledVector(bias, o.biasK || 0).normalize();
+    if (o.skip && o.skip(d)) continue;
+    dirs.push([d.x, d.y, d.z, .7 + .3 * rnd()]);
+  }
+  const R = v => {
+    let b = 0;
+    for (let i = 0; i < dirs.length; i++) { const d = dirs[i], c = v.x * d[0] + v.y * d[1] + v.z * d[2]; if (c > 0) { const t = Math.pow(c, o.sharp) * d[3]; if (t > b) b = t; } }
+    return b;
+  };
+  const tuft = new Float32Array(P.count);
+  const n = new V3(), t1 = new V3(), t2 = new V3(), a = new V3(), b = new V3(), c = new V3(), nn = new V3(), UP = new V3(0, 1, 0), AX = new V3(1, 0, 0);
+  for (let i = 0; i < P.count; i++) {
+    n.fromBufferAttribute(P, i).normalize();
+    const tv = R(n); tuft[i] = tv;
+    t1.crossVectors(n, Math.abs(n.y) < .9 ? UP : AX).normalize(); t2.crossVectors(n, t1);
+    a.copy(n).multiplyScalar(1 + o.amp * tv);
+    b.copy(n).addScaledVector(t1, .01).normalize(); b.multiplyScalar(1 + o.amp * R(b));
+    c.copy(n).addScaledVector(t2, .01).normalize(); c.multiplyScalar(1 + o.amp * R(c));
+    b.sub(a); c.sub(a); nn.crossVectors(b, c).normalize(); if (nn.dot(n) < 0) nn.negate();
+    P.setXYZ(i, a.x, a.y, a.z); N.setXYZ(i, nn.x, nn.y, nn.z);
+  }
+  g.setAttribute('aTuft', new THREE.BufferAttribute(tuft, 1));
+  return g;
 }
+function tuft(key, o) { if (!tuftCache.has(key)) tuftCache.set(key, tuftGeo(o)); return tuftCache.get(key); }
 const C = h => new THREE.Color(h);
-function furMat(o) {
+function toonMat(o) {
   return new THREE.ShaderMaterial({
-    vertexShader: FUR_VS, fragmentShader: FUR_FS,
+    vertexShader: TOON_VS, fragmentShader: TOON_FS,
     uniforms: {
-      uLen: { value: o.len }, uFlow: o.flow, uFlowK: { value: o.flowK ?? 1 }, uScl: { value: new V3(1, 1, 1) }, uDensity: { value: o.density ?? 115 },
-      uRoot: { value: C(o.c.root) }, uMid: { value: C(o.c.mid) }, uTip: { value: C(o.c.tip) },
-      uPoint: { value: C(o.point || '#000000') }, uPointMode: { value: o.point ? 1 : 0 }, uPointY: { value: o.pointY ?? -.2 },
-      uPatch: { value: C(o.patch || '#000000') }, uPatchAmt: { value: o.patchAmt || 0 }, uPatchScale: { value: o.patchScale || 3 }, uSeed: { value: o.seed || 0 },
-      uLightDir: U.lightDir, uLightCol: U.lightCol, uSky: U.sky, uGround: U.ground,
+      uFlow: o.flow, uFlowK: { value: o.flowK ?? 1 }, uScl: { value: new V3(1, 1, 1) },
+      uCol: { value: C(o.col) }, uPoint: { value: C(o.point || '#000000') }, uPointMode: { value: o.point ? 1 : 0 }, uPointY: { value: o.pointY ?? -.3 }, uPointZ: { value: o.pointZ ?? -2 },
+      uPatch: { value: C(o.patch || '#000000') }, uPatchAmt: { value: o.patchAmt || 0 }, uPatchScale: { value: o.patchScale || 3 }, uPatchCut: { value: o.patchCut ?? .5 }, uSeed: { value: o.seed || 0 },
+      uLightDir: U.lightDir, uLightCol: U.lightCol, uSky: U.sky,
     },
   });
 }
+function outMat(o) {
+  const col = C(o.col); const l = col.r * .3 + col.g * .59 + col.b * .11;
+  return new THREE.ShaderMaterial({
+    vertexShader: OUT_VS, fragmentShader: OUT_FS, side: THREE.BackSide,
+    uniforms: { uFlow: o.flow, uFlowK: { value: o.flowK ?? 1 }, uScl: { value: new V3(1, 1, 1) }, uOW: { value: o.ow ?? .0032 },
+      uOCol: { value: col.multiplyScalar(l > .5 ? .3 : .45).lerp(C('#1a1020'), .35) } },
+  });
+}
 const MAT = {
-  eye: new THREE.MeshPhongMaterial({ color: 0x0d0808, specular: 0x777777, shininess: 90 }),
-  blue: new THREE.MeshPhongMaterial({ color: 0x5c9fd8, specular: 0x777777, shininess: 90 }),
-  nose: new THREE.MeshPhongMaterial({ color: 0x161212, specular: 0x555555, shininess: 60 }),
-  tongue: new THREE.MeshPhongMaterial({ color: 0xe4707c, specular: 0x442222, shininess: 40 }),
-  mouth: new THREE.MeshPhongMaterial({ color: 0x3a1418, shininess: 10 }),
+  eye: new THREE.MeshBasicMaterial({ color: 0x1c1214 }),
+  blue: new THREE.MeshBasicMaterial({ color: 0x4d9be3 }),
+  nose: new THREE.MeshBasicMaterial({ color: 0x241a1c }),
+  tongue: new THREE.MeshBasicMaterial({ color: 0xff7d93 }),
+  mouth: new THREE.MeshBasicMaterial({ color: 0x6e2030 }),
+  line: new THREE.MeshBasicMaterial({ color: 0x3a2226 }),
   white: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  blush: new THREE.MeshBasicMaterial({ color: 0xff8da6, transparent: true, opacity: .5, depthWrite: false }),
   treat: new THREE.MeshPhongMaterial({ color: 0xc98a4b, specular: 0x222222, shininess: 20 }),
   proxy: new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
 };
+const MOUTH_GEO = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+  new V3(-.055, .012, -.012), new V3(-.028, -.012, 0), new V3(0, .006, .004), new V3(.028, -.012, 0), new V3(.055, .012, -.012)]), 24, .0065, 6, false);
 
 // ───────────────────────── Build a Pom ─────────────────────────
+const ZAX = new V3(0, 0, 1);
 function buildDog(p) {
   const S = .24 * p.size;
   const flow = { value: new V3(0, -.5, 0) };
   const root = new THREE.Group(); root.scale.setScalar(S);
   const rig = { root, S, flow, mats: [], legs: [], ears: [], eyes: [] };
   const body = new THREE.Group(); root.add(body); rig.body = body;
-  const F = p.fluff, seed = Math.random() * 40;
-  const cB = p.col, cF = p.face || p.col, cL = p.legs || p.face || p.col;
-  const tanC = p.point ? { root: p.point, mid: p.point, tip: '#d8995a' } : null;
-  const M = (c, len, extra = {}) => {
-    const m = furMat(Object.assign({ c, len: len * S, flow, seed, patch: p.patch, patchAmt: p.patchAmt || 0, patchScale: p.patchScale || 3 }, extra));
-    rig.mats.push(m); return m;
+  const F = p.fluff, T = p.tc, k = p.id, sd = p.id.charCodeAt(0) + p.id.length * 13;
+  const common = { flow, seed: sd % 17, patch: p.patch, patchAmt: p.patchAmt || 0, patchScale: p.patchScale || 3, patchCut: p.patchCut ?? .5 };
+  const place = (m, pos, scl, rot) => { m.position.set(pos[0], pos[1], pos[2]); if (scl) m.scale.set(scl[0], scl[1], scl[2]); if (rot) m.rotation.set(rot[0], rot[1], rot[2]); m.frustumCulled = false; return m; };
+  const part = (parent, geo, col, pos, scl, rot, extra = {}) => {
+    const o = Object.assign({}, common, { col }, extra);
+    const m = place(new THREE.Mesh(geo, toonMat(o)), pos, scl, rot);
+    m.material.uniforms.uScl.value.copy(m.scale); parent.add(m); rig.mats.push(m.material);
+    if (!extra.noLine) {
+      const ol = place(new THREE.Mesh(geo, outMat(o)), pos, scl, rot);
+      ol.material.uniforms.uScl.value.copy(ol.scale); parent.add(ol); rig.mats.push(ol.material);
+    }
+    return m;
   };
-  const fur = (parent, base, shells, mat, pos, scl, rot) => {
-    const m = new THREE.Mesh(furGeo(base, shells), mat);
-    m.position.set(pos[0], pos[1], pos[2]); if (scl) m.scale.set(scl[0], scl[1], scl[2]); if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
-    mat.uniforms.uScl.value.copy(m.scale); m.frustumCulled = false; parent.add(m); return m;
+  const basic = (parent, mat, pos, scl, dir) => {
+    const m = place(new THREE.Mesh(GEO.sphereLo, mat), pos, scl);
+    if (dir) m.quaternion.setFromUnitVectors(ZAX, dir);
+    parent.add(m); return m;
   };
-  const proxy = (parent, pos, scl, rot) => {
-    const m = new THREE.Mesh(GEO.sphereLo, MAT.proxy); m.position.set(...pos); m.scale.set(...scl); if (rot) m.rotation.set(...rot);
-    m.castShadow = true; parent.add(m); return m;
-  };
-  // torso, mane and "pants"
-  fur(body, GEO.sphere, 22, M(cB, .13 * F), [0, 0, -.02], [.34, .31, .5]);
-  proxy(body, [0, 0, -.02], [.44, .41, .6]);
-  fur(body, GEO.sphere, 26, M(cB, .2 * F, p.point ? { point: p.point, pointY: -.25 } : {}), [0, .1, .3], [.4, .41, .36]);
-  proxy(body, [0, .1, .3], [.55, .56, .5]);
-  fur(body, GEO.sphere, 22, M(cB, .16 * F), [0, -.02, -.34], [.3, .3, .28]);
-  // head
-  const head = new THREE.Group(); head.position.set(0, .34, .5); head.rotation.order = 'YXZ'; body.add(head); rig.head = head;
-  fur(head, GEO.sphere, 14, M(cF, .06 * F, { flowK: .35, ...(p.point ? { point: p.point, pointY: -.45 } : {}) }), [0, .07, .09], [.32, .3, .3]);
-  fur(head, GEO.sphere, 20, M(cB, .12 * F, { flowK: .6, ...(p.point ? { point: p.point, pointY: -.3 } : {}) }), [0, -.04, -.01], [.37, .27, .26]);
-  proxy(head, [0, .05, .07], [.39, .37, .37]);
-  const sn = p.snout, muz = tanC || cF, mz = .335 + .06 * sn;
-  fur(head, GEO.sphereLo, 8, M(muz, .022, { flowK: .2 }), [0, 0, mz], [.11, .085, .13 * sn]);
-  const nose = new THREE.Mesh(GEO.sphereLo, MAT.nose); nose.position.set(0, .035, mz + .125 * sn); nose.scale.set(.045, .034, .034); head.add(nose);
-  const mouth = new THREE.Mesh(GEO.sphereLo, MAT.mouth); mouth.position.set(0, -.045, mz - .01); mouth.scale.set(.075, .035, .1 * sn); head.add(mouth);
-  const jaw = new THREE.Group(); jaw.position.set(0, -.05, .305); head.add(jaw); rig.jaw = jaw;
-  fur(jaw, GEO.sphereLo, 6, M(muz, .015, { flowK: .2 }), [0, -.012, .02 + .1 * sn], [.085, .04, .1 * sn]);
-  const tongue = new THREE.Mesh(GEO.sphereLo, MAT.tongue); tongue.scale.set(.045, .012, .075); jaw.add(tongue);
-  rig.tongue = tongue; rig.tongueZ = .05 + .09 * sn;
+  const proxy = (parent, pos, scl, rot) => { const m = place(new THREE.Mesh(GEO.sphereLo, MAT.proxy), pos, scl, rot); m.castShadow = true; parent.add(m); return m; };
+
+  // body, chest ruff (with a lighter bib), fluffy "pants"
+  part(body, tuft(k + 'body', { n: 38, amp: .2 * F, sharp: 14, seed: sd + 1, bias: [0, 0, -1], biasK: .5 }), T.body, [0, 0, -.04], [.4, .37, .52]);
+  proxy(body, [0, 0, -.04], [.44, .41, .58]);
+  part(body, tuft(k + 'mane', { n: 52, amp: .3 * F, sharp: 13, seed: sd + 2, bias: [0, -.4, .3], biasK: .35 }), T.body, [0, .1, .3], [.48, .48, .42], null,
+    T.bib ? { point: T.bib, pointY: .05, pointZ: .15 } : {});
+  proxy(body, [0, .1, .3], [.56, .56, .5]);
+  part(body, tuft(k + 'pants', { n: 30, amp: .24 * F, sharp: 13, seed: sd + 3, bias: [0, -.3, -1], biasK: .5 }), T.body, [0, -.04, -.36], [.34, .33, .3]);
+
+  // head: round skull, fluffy cheek ruff framing the face, short cute snout
+  const head = new THREE.Group(); head.position.set(0, .36, .52); head.rotation.order = 'YXZ'; body.add(head); rig.head = head;
+  const HC = new V3(0, .1, .1), HR = new V3(.37, .34, .34);
+  const onHead = (d, out) => new V3(HC.x + d.x * HR.x, HC.y + d.y * HR.y, HC.z + d.z * HR.z).addScaledVector(d, out);
+  part(head, tuft(k + 'head', { n: 20, amp: .07, sharp: 10, seed: sd + 4, skip: d => d.z > .3 || d.y < -.35 }), T.face, [HC.x, HC.y, HC.z], [HR.x, HR.y, HR.z]);
+  proxy(head, [0, .05, .07], [.42, .38, .38]);
+  part(head, tuft(k + 'cheek', { n: 34, amp: .3 * F, sharp: 13, seed: sd + 5, skip: d => d.z > .5 }), T.cheek || T.body, [0, -.04, -.03], [.42, .3, .27], null,
+    p.point ? { point: p.point, pointY: -.15 } : {});
+  const sn = p.snout, mz = .37 + .02 * sn;
+  part(head, GEO.sphere, T.muzzle, [0, -.02, mz], [.13, .1, .11 * sn], null, { patchAmt: 0 });
+  const nose = basic(head, MAT.nose, [0, .035, mz + .105 * sn], [.042, .031, .03]);
+  basic(nose, MAT.white, [-.3, .45, .75], [.32, .25, .3]);
+  const smile = new THREE.Mesh(MOUTH_GEO, MAT.line); smile.position.set(0, -.045, mz + .095 * sn); head.add(smile);
+  basic(head, MAT.mouth, [0, -.058, mz - .005], [.075, .032, .09 * sn]);
+  const jaw = new THREE.Group(); jaw.position.set(0, -.07, mz - .02); head.add(jaw); rig.jaw = jaw;
+  part(jaw, GEO.sphereLo, T.muzzle, [0, -.006, .025 + .03 * sn], [.085, .04, .075 * sn], null, { patchAmt: 0 });
+  const tongue = basic(jaw, MAT.tongue, [0, 0, 0], [.045, .013, .07]);
+  rig.tongue = tongue; rig.tongueZ = .04 + .06 * sn;
   for (const s of [-1, 1]) {
-    const blueEye = p.blueEye && s < 0;
-    const e = new THREE.Mesh(GEO.sphereLo, blueEye ? MAT.blue : MAT.eye);
-    e.position.set(s * .125, .14, .385); e.scale.setScalar(.047 * p.eye); head.add(e);
-    if (blueEye) { const pu = new THREE.Mesh(GEO.sphereLo, MAT.eye); pu.position.set(0, 0, .5); pu.scale.setScalar(.58); e.add(pu); }
-    const hl = new THREE.Mesh(GEO.sphereLo, MAT.white); hl.position.set(-.25, .38, .82); hl.scale.setScalar(.26); e.add(hl);
-    rig.eyes.push(e); e.userData.s = .047 * p.eye;
-    if (p.brows) fur(head, GEO.sphereLo, 5, M(tanC, .012), [s * .115, .235, .335], [.036, .026, .03]);
-    const ep = new THREE.Group(); ep.position.set(s * .145, .33, .05); ep.rotation.z = -s * .28; head.add(ep); rig.ears.push(ep);
-    fur(ep, GEO.cone, 7, M(cF, .035 * F, { flowK: .3 }), [0, .08 * p.ear, 0], [.085 * p.ear, .17 * p.ear, .06 * p.ear]);
+    // big glossy anime eyes
+    const d = new V3(s * .42, .12, .9).normalize();
+    const e = basic(head, p.blueEye && s < 0 ? MAT.blue : MAT.eye, onHead(d, .012).toArray(), [.068 * p.eye, .08 * p.eye, .024], d);
+    if (p.blueEye && s < 0) basic(e, MAT.eye, [0, -.05, .55], [.55, .55, .6]);
+    basic(e, MAT.white, [-.3, .36, .9], [.36, .32, .3]);
+    basic(e, MAT.white, [.34, -.38, .85], [.16, .15, .3]);
+    e.userData.s = .08 * p.eye; rig.eyes.push(e);
+    // blush
+    const bd = new V3(s * .7, -.16, .7).normalize();
+    basic(head, MAT.blush, onHead(bd, .035).toArray(), [.058, .034, .012], bd);
+    if (p.brows) basic(head, new THREE.MeshBasicMaterial({ color: new THREE.Color(p.point) }), onHead(new V3(s * .36, .42, .83).normalize(), .02).toArray(), [.036, .022, .012], new V3(s * .36, .42, .83).normalize());
+    // ears: rounded triangles with pink insides
+    const ep = new THREE.Group(); ep.position.set(s * .17, .39, .04); ep.rotation.set(-.1, 0, -s * .32); head.add(ep); rig.ears.push(ep);
+    part(ep, GEO.cone, T.face, [0, .1 * p.ear, 0], [.1 * p.ear, .2 * p.ear, .075 * p.ear]);
+    part(ep, GEO.cone, '#ffb3c3', [0, .085 * p.ear, .036 * p.ear], [.058 * p.ear, .14 * p.ear, .03 * p.ear], null, { noLine: true, patchAmt: 0 });
   }
   // legs: 0 FL, 1 FR, 2 HL, 3 HR
   const L = .44 * p.leg;
-  const legC = tanC || cL;
   [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([s, fr]) => {
     const lp = new THREE.Group(); lp.position.set(s * (fr > 0 ? .16 : .17), -.16, fr > 0 ? .3 : -.3); body.add(lp);
-    fur(lp, GEO.sphereLo, 8, M(legC, (fr > 0 ? .04 : .07) * F, { flowK: .5 }), [0, -L / 2, 0], [fr > 0 ? .072 : .085, L / 2, fr > 0 ? .08 : .1]);
-    fur(lp, GEO.sphereLo, 6, M(legC, .025), [0, -L + .04, .025], [.07, .045, .095]);
+    part(lp, GEO.sphereLo, T.legs, [0, -L / 2, 0], [fr > 0 ? .085 : .095, L / 2, fr > 0 ? .09 : .1], null, { patchAmt: 0 });
+    const paw = part(lp, GEO.sphereLo, T.paws || T.legs, [0, -L + .045, .025], [.085, .055, .105], null, { patchAmt: 0 });
     proxy(lp, [0, -L / 2, 0], [.1, L / 2, .1]);
-    rig.legs.push({ g: lp, y0: -.16, front: fr > 0, s });
+    rig.legs.push({ g: lp, paw, y0: -.16, front: fr > 0, s });
   });
-  // tail plume, lying over the back
-  const tail = new THREE.Group(); tail.position.set(0, .2, -.42); body.add(tail); rig.tail = tail;
-  fur(tail, GEO.sphere, 24, M(cB, .2 * F * p.tail, { flowK: 1.1 }), [0, .2, .15], [.17 * p.tail, .15 * p.tail, .3 * p.tail], [-.25, 0, 0]);
-  proxy(tail, [0, .2, .15], [.3 * p.tail, .28 * p.tail, .45 * p.tail], [-.25, 0, 0]);
+  // tail plume curled over the back
+  const tail = new THREE.Group(); tail.position.set(0, .22, -.44); body.add(tail); rig.tail = tail;
+  part(tail, tuft(k + 'tail', { n: 36, amp: .38 * F, sharp: 11, seed: sd + 6, bias: [0, .3, -1], biasK: .6 }), T.tail || T.body,
+    [0, .22, .14], [.2 * p.tail, .18 * p.tail, .32 * p.tail], [-.25, 0, 0], { flowK: 1.4 });
+  proxy(tail, [0, .22, .14], [.28 * p.tail, .26 * p.tail, .42 * p.tail], [-.25, 0, 0]);
   rig.standY = .16 + L;
   return rig;
 }
@@ -921,7 +983,7 @@ function footstep(d, i, s) {
   if (s.step === 'click') { if (d.speed > .15) sfx.click(); }
   else if (s.step === 'rustle') { if (Math.random() < .5) sfx.rustle(); }
   else if (Math.random() < .35) sfx.soft();
-  if (s.prints) { d.rig.legs[i].g.children[1].getWorldPosition(_wp); addPrint(_wp.x, _wp.z, d.rig.S * .22, s.prints, 7); }
+  if (s.prints) { d.rig.legs[i].paw.getWorldPosition(_wp); addPrint(_wp.x, _wp.z, d.rig.S * .22, s.prints, 7); }
 }
 function inView(d) { _v.set(d.pos.x, .06, d.pos.z).project(camera); return _v.z < 1 && Math.abs(_v.x) < 1.02 && Math.abs(_v.y) < 1.02; }
 
@@ -1074,7 +1136,7 @@ function updateFov() {
 }
 let lastVW = 0;
 function updateCamera(dt) {
-  if (mode === 'intro') { camera.position.set(0, .36, 0); camera.quaternion.setFromEuler(eul.set(-11 * D2R, 0, 0, 'YXZ')); angSpeed = 0; return; }
+  if (mode === 'intro') { camera.position.set(0, .42, 0); camera.quaternion.setFromEuler(eul.set(-26 * D2R, 0, 0, 'YXZ')); angSpeed = 0; return; }
   if (oriSeen && ori) {
     eul.set(ori.b * D2R, ori.a * D2R, -ori.g * D2R, 'YXZ');
     qT.setFromEuler(eul); qT.multiply(q1); qT.multiply(q0.setFromAxisAngle(ZEE, -screenAngle() * D2R));
@@ -1574,7 +1636,7 @@ function step(dt) {
       if (key !== grassKey || Math.hypot(d.pos.x - grassC.x, d.pos.z - grassC.z) > .04) { grassKey = key; rebuildGrass(d.pos, s.blades); }
       grass.visible = true;
       const push = grassMat.uniforms.uPush.value;
-      d.rig.legs.forEach((l, i) => { l.g.children[1].getWorldPosition(_wp); push[i].set(_wp.x, _wp.z, S * .35, _wp.y < .03 ? 1 : .3); });
+      d.rig.legs.forEach((l, i) => { l.paw.getWorldPosition(_wp); push[i].set(_wp.x, _wp.z, S * .35, _wp.y < .03 ? 1 : .3); });
       push[4].set(d.pos.x, d.pos.z, S * (.8 + .6 * lying), .35 + .65 * lying);
       if (srcMode === 'demo') grassMat.uniforms.uBase.value.set(s.demo);
     } else { grass.visible = false; grassKey = ''; }
