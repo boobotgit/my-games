@@ -12,8 +12,12 @@
 <style>
   :root{
     --parch:#efe3c8; --gold:#d9b558; --gold-dim:#8f7534;
+    /* Defaults straight from the phone; applySafeAreas() re-measures these at
+       runtime and corrects them when iOS under-reports (see there). */
     --safeT:env(safe-area-inset-top,0px);
     --safeB:env(safe-area-inset-bottom,0px);
+    --safeL:env(safe-area-inset-left,0px);
+    --safeR:env(safe-area-inset-right,0px);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{height:100%; overflow:hidden; overscroll-behavior:none}
@@ -28,7 +32,7 @@
   /* ---------- top bar ---------- */
   header{
     flex:0 0 auto; display:flex; align-items:center; gap:8px;
-    padding:calc(var(--safeT) + 6px) 10px 6px;
+    padding:calc(var(--safeT) + 8px) 10px 7px;
     background:linear-gradient(#2b2219,#1c160f); border-bottom:1px solid var(--gold-dim);
   }
   header h1{margin:0; font-size:13px; letter-spacing:.14em; text-transform:uppercase;
@@ -79,7 +83,8 @@
   #sheet{
     flex:0 0 auto; display:flex; flex-direction:column; max-height:50%; min-height:0;
     background:linear-gradient(#251e16,#1a150f); border-top:2px solid var(--gold-dim);
-    padding-bottom:var(--safeB);
+    /* clear the home indicator, without the full inset's extra dead band */
+    padding-bottom:max(calc(var(--safeB) - 12px), 6px);
   }
   /* Tabs and action buttons are pinned to the bottom edge, like an iOS tab
      bar. The panel's height follows its content, so tabs at the top of it slid
@@ -105,12 +110,13 @@
     #app{display:grid; grid-template-columns:minmax(0,1fr) 290px;
          grid-template-rows:auto minmax(0,1fr)}
     header{grid-column:1 / -1;
-           padding-left:calc(env(safe-area-inset-left,0px) + 10px);
-           padding-right:calc(env(safe-area-inset-right,0px) + 10px)}
-    #mapwrap{grid-column:1; grid-row:2; margin-left:env(safe-area-inset-left,0px)}
+           padding-top:8px;
+           padding-left:calc(var(--safeL) + 10px);
+           padding-right:calc(var(--safeR) + 10px)}
+    #mapwrap{grid-column:1; grid-row:2; margin-left:var(--safeL)}
     #sheet{grid-column:2; grid-row:2; max-height:none; height:100%;
            border-top:0; border-left:2px solid var(--gold-dim);
-           padding-right:env(safe-area-inset-right,0px)}
+           padding-right:var(--safeR)}
   }
 
   .phase-row{display:flex; gap:5px; margin-bottom:8px}
@@ -2108,11 +2114,39 @@ addEventListener('pagehide', saveNow);
 // box itself is what makes this reliable: iOS fires its window 'resize' before
 // a rotation has settled, so measuring then gets the old size, and nothing
 // re-measured afterwards. That is what left the map stuck at landscape size.
+// Room to leave for the status bar, Dynamic Island and home indicator. iOS is
+// meant to report these through env(safe-area-inset-*), but Safari can draw
+// the page underneath the status bar while reporting a top inset of zero —
+// which put the header buttons under the island, blurred by the status bar.
+// So measure what the phone actually reports, and on a notched iPhone never
+// accept less than the island needs.
+function applySafeAreas(){
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;' +
+    'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) ' +
+    'env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  let t = parseFloat(cs.paddingTop)    || 0, b = parseFloat(cs.paddingBottom) || 0;
+  let l = parseFloat(cs.paddingLeft)   || 0, r = parseFloat(cs.paddingRight)  || 0;
+  probe.remove();
+  const notched = /iPhone/.test(navigator.userAgent) &&
+                  Math.max(screen.width, screen.height) >= 812;     // X and later
+  if (notched){
+    if (innerHeight >= innerWidth){ if (t < 44) t = 50; }       // island at the top
+    else { if (l < 30) l = 44; if (r < 30) r = 44; }            // island on a side
+  }
+  const s = document.documentElement.style;
+  s.setProperty('--safeT', t+'px'); s.setProperty('--safeB', b+'px');
+  s.setProperty('--safeL', l+'px'); s.setProperty('--safeR', r+'px');
+}
+applySafeAreas();
+
 let relayoutQueued = false;
 function relayout(){
   if (relayoutQueued) return;
   relayoutQueued = true;
-  requestAnimationFrame(()=>{ relayoutQueued = false; layout(); render(); });
+  requestAnimationFrame(()=>{ relayoutQueued = false; applySafeAreas(); layout(); render(); });
 }
 if (window.ResizeObserver) new ResizeObserver(relayout).observe($('#mapwrap'));
 window.addEventListener('resize', relayout);
