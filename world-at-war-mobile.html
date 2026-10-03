@@ -5,7 +5,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Opaque, not black-translucent: in translucent mode iOS 18 ran this page
+     under the status bar and drew only the top 793 of 852 points, leaving a
+     dead band at the bottom (measured on the user's iPhone). -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="World at War">
 <meta name="theme-color" content="#15110c">
 <title>World at War — 1805</title>
@@ -24,13 +27,10 @@
      — that is what blew the log up after landscape → portrait. Lock it. */
   html{-webkit-text-size-adjust:100%; text-size-adjust:100%}
   html,body{height:100%; overflow:hidden; overscroll-behavior:none}
-  /* Height comes from --appH (set by applySafeAreas): normally 100%, but the
-     full screen height when launched from the home screen, where iOS can make
-     the page box shorter than the screen by the status bar's height. */
   body{
     margin:0; background:#15110c; color:#e8ddc6;
     font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
-    position:fixed; left:0; top:0; right:0; height:var(--appH,100%); touch-action:none;
+    position:fixed; inset:0; touch-action:none;
     user-select:none; -webkit-user-select:none;
   }
   #app{display:flex; flex-direction:column; height:100%}
@@ -38,7 +38,7 @@
   /* ---------- top bar ---------- */
   header{
     flex:0 0 auto; display:flex; align-items:center; gap:8px;
-    padding:calc(var(--safeT) + 6px) 10px 6px;
+    padding:calc(var(--safeT) + 8px) 10px 6px;
     flex-wrap:wrap; row-gap:4px;
     background:linear-gradient(#2b2219,#1c160f); border-bottom:1px solid var(--gold-dim);
   }
@@ -2162,34 +2162,19 @@ function applySafeAreas(){
     'env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
   document.body.appendChild(probe);
   const cs = getComputedStyle(probe);
-  let t = parseFloat(cs.paddingTop)    || 0, b = parseFloat(cs.paddingBottom) || 0;
-  let l = parseFloat(cs.paddingLeft)   || 0, r = parseFloat(cs.paddingRight)  || 0;
+  const t = parseFloat(cs.paddingTop)    || 0, b = parseFloat(cs.paddingBottom) || 0;
+  const l = parseFloat(cs.paddingLeft)   || 0, r = parseFloat(cs.paddingRight)  || 0;
   probe.remove();
-  const notched = /iPhone/.test(navigator.userAgent) &&
-                  Math.max(screen.width, screen.height) >= 812;     // X and later
-  const portrait = innerHeight >= innerWidth;
-  if (notched){
-    // the status bar on island iPhones is ~54pt; never sit inside it
-    if (portrait){ if (t < 54) t = 54; }                        // island at the top
-    else { if (l < 30) l = 44; if (r < 30) r = 44; }            // island on a side
-  }
-  // Launched from a home-screen icon, iOS can make the page box shorter than
-  // the screen by the status bar's height while still drawing it from the
-  // very top — header too high and a dead band at the bottom. Size the page to
-  // the real screen height instead.
-  let appH = '100%';
-  // iPhone only: an iPad home-screen app can genuinely run in a smaller
-  // window, and stretching it to the screen would push the tabs off it
-  if (isStandalone() && /iPhone/.test(navigator.userAgent)){
-    const full = portrait ? Math.max(screen.width, screen.height)
-                          : Math.min(screen.width, screen.height);
-    if (innerHeight < full - 1) appH = full + 'px';
-  }
+  // Trust what the phone reports. A real iPhone 16 Pro readout (iOS 18.7,
+  // home-screen app) gave the correct 59pt top inset; what went wrong there
+  // was iOS's translucent-status-bar mode itself — it ran the page under the
+  // status bar and only drew the top 793 of 852 points, leaving a dead band
+  // at the bottom. The page now asks for an opaque status bar instead (see
+  // the apple-mobile-web-app-status-bar-style meta), so no guessing here.
   const s = document.documentElement.style;
   s.setProperty('--safeT', t+'px'); s.setProperty('--safeB', b+'px');
   s.setProperty('--safeL', l+'px'); s.setProperty('--safeR', r+'px');
-  s.setProperty('--appH', appH);
-  SAFE = {envT:parseFloat(cs.paddingTop)||0, t, b, l, r, appH};
+  SAFE = {t, b, l, r};
 }
 let SAFE = {};
 function isStandalone(){
@@ -2200,7 +2185,14 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-10-03 · d';
+const BUILD = '2026-10-03 · e';
+// Under an opaque status bar the page starts below it and the top inset is 0;
+// under a translucent one the page runs underneath it (inset ~59 on an island
+// iPhone). So the reported inset tells us which mode iOS actually applied.
+function statusBarMode(){
+  if (!isStandalone()) return 'Safari';
+  return SAFE.t > 0 ? 'translucent' : 'opaque';
+}
 function showDiagnostics(){
   const box = $('#diag');
   if (!box.hidden){ box.hidden = true; return; }
@@ -2211,8 +2203,8 @@ function showDiagnostics(){
     `iOS ${ios}  ·  ${isStandalone() ? 'home-screen app' : 'in Safari'}`,
     `screen ${screen.width}×${screen.height}  ·  dpr ${+devicePixelRatio.toFixed(2)}`,
     `window ${innerWidth}×${innerHeight}` + (vv ? `  ·  visible ${Math.round(vv.width)}×${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : ''),
-    `phone reports top ${SAFE.envT}  →  using top ${SAFE.t}`,
-    `bottom ${SAFE.b}  left ${SAFE.l}  right ${SAFE.r}  ·  page ${SAFE.appH}`,
+    `status bar ${statusBarMode()}  ·  came from ${(document.referrer.split('/').pop() || '(home screen)').slice(0,24)}`,
+    `edges  top ${SAFE.t}  bottom ${SAFE.b}  left ${SAFE.l}  right ${SAFE.r}`,
     `header ends at ${Math.round($('header').getBoundingClientRect().bottom)}  ·  tabs end at ${Math.round(document.querySelector('.tabs').getBoundingClientRect().bottom)}`,
     `(tap the title again to close)`
   ].join('\n');
