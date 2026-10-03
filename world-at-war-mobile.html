@@ -20,11 +20,17 @@
     --safeR:env(safe-area-inset-right,0px);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  /* iOS enlarges text it judges "too small" after a rotation (text autosizing)
+     — that is what blew the log up after landscape → portrait. Lock it. */
+  html{-webkit-text-size-adjust:100%; text-size-adjust:100%}
   html,body{height:100%; overflow:hidden; overscroll-behavior:none}
+  /* Height comes from --appH (set by applySafeAreas): normally 100%, but the
+     full screen height when launched from the home screen, where iOS can make
+     the page box shorter than the screen by the status bar's height. */
   body{
     margin:0; background:#15110c; color:#e8ddc6;
     font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
-    position:fixed; inset:0; touch-action:none;
+    position:fixed; left:0; top:0; right:0; height:var(--appH,100%); touch-action:none;
     user-select:none; -webkit-user-select:none;
   }
   #app{display:flex; flex-direction:column; height:100%}
@@ -32,12 +38,17 @@
   /* ---------- top bar ---------- */
   header{
     flex:0 0 auto; display:flex; align-items:center; gap:8px;
-    padding:calc(var(--safeT) + 8px) 10px 7px;
+    padding:calc(var(--safeT) + 6px) 10px 6px;
+    flex-wrap:wrap; row-gap:4px;
     background:linear-gradient(#2b2219,#1c160f); border-bottom:1px solid var(--gold-dim);
   }
   header h1{margin:0; font-size:13px; letter-spacing:.14em; text-transform:uppercase;
             color:var(--gold); white-space:nowrap}
-  #turnInfo{font-size:11px; color:#b7a889; flex:1; overflow:hidden;
+  header h1{margin-right:auto; cursor:pointer}   /* tap: diagnostics readout */
+  /* portrait: year and empire get their own full-width line under the title,
+     instead of being cut off between the title and the buttons */
+  #turnInfo{order:10; flex:1 0 100%; padding-left:2px;
+            font-size:11px; color:#b7a889; overflow:hidden;
             text-overflow:ellipsis; white-space:nowrap}
   .btn{
     font-family:inherit; font-size:12px; background:linear-gradient(#4a3c2a,#33291c);
@@ -87,7 +98,7 @@
     flex:0 0 auto; display:flex; flex-direction:column; height:clamp(280px, 38%, 340px); min-height:0;
     background:linear-gradient(#251e16,#1a150f); border-top:2px solid var(--gold-dim);
     /* clear the home indicator, without the full inset's extra dead band */
-    padding-bottom:max(calc(var(--safeB) - 12px), 6px);
+    padding-bottom:max(calc(var(--safeB) - 20px), 4px);
   }
   /* Tabs and action buttons are pinned to the bottom edge, like an iOS tab
      bar. The panel's height follows its content, so tabs at the top of it slid
@@ -120,6 +131,8 @@
            padding-top:8px;
            padding-left:calc(var(--safeL) + 10px);
            padding-right:calc(var(--safeR) + 10px)}
+    header h1{margin-right:0}
+    #turnInfo{order:0; flex:1 1 auto; padding-left:0}
     #mapwrap{grid-column:1; grid-row:2; margin-left:var(--safeL)}
     #sheet{grid-column:2; grid-row:2; max-height:none; height:100%;
            border-top:0; border-left:2px solid var(--gold-dim);
@@ -232,6 +245,13 @@
   .go{display:block; margin:18px auto 0; padding:14px 30px; font-size:14px;
       letter-spacing:.12em; text-transform:uppercase}
 
+  #diag{
+    position:fixed; left:50%; top:calc(var(--safeT) + 52px); transform:translateX(-50%);
+    z-index:90; width:min(94vw, 380px); white-space:pre-wrap; cursor:pointer;
+    background:rgba(12,9,6,.96); border:1px solid var(--gold); border-radius:6px;
+    color:#e8ddc6; font:11px/1.55 ui-monospace, Menlo, monospace; padding:9px 11px;
+  }
+  #diag[hidden]{display:none}
   #home{
     flex:0 0 auto; background:rgba(20,15,10,.6); border:1px solid var(--gold-dim);
     color:var(--gold); border-radius:4px; padding:7px 9px; font-size:13px;
@@ -240,6 +260,7 @@
 </style>
 </head>
 <body>
+<div id="diag" hidden></div>
 <div id="app">
   <header>
     <a id="home" href="index.html">&#8962;</a>
@@ -2146,13 +2167,56 @@ function applySafeAreas(){
   probe.remove();
   const notched = /iPhone/.test(navigator.userAgent) &&
                   Math.max(screen.width, screen.height) >= 812;     // X and later
+  const portrait = innerHeight >= innerWidth;
   if (notched){
-    if (innerHeight >= innerWidth){ if (t < 44) t = 50; }       // island at the top
+    // the status bar on island iPhones is ~54pt; never sit inside it
+    if (portrait){ if (t < 54) t = 54; }                        // island at the top
     else { if (l < 30) l = 44; if (r < 30) r = 44; }            // island on a side
+  }
+  // Launched from a home-screen icon, iOS can make the page box shorter than
+  // the screen by the status bar's height while still drawing it from the
+  // very top — header too high and a dead band at the bottom. Size the page to
+  // the real screen height instead.
+  let appH = '100%';
+  // iPhone only: an iPad home-screen app can genuinely run in a smaller
+  // window, and stretching it to the screen would push the tabs off it
+  if (isStandalone() && /iPhone/.test(navigator.userAgent)){
+    const full = portrait ? Math.max(screen.width, screen.height)
+                          : Math.min(screen.width, screen.height);
+    if (innerHeight < full - 1) appH = full + 'px';
   }
   const s = document.documentElement.style;
   s.setProperty('--safeT', t+'px'); s.setProperty('--safeB', b+'px');
   s.setProperty('--safeL', l+'px'); s.setProperty('--safeR', r+'px');
+  s.setProperty('--appH', appH);
+  SAFE = {envT:parseFloat(cs.paddingTop)||0, t, b, l, r, appH};
+}
+let SAFE = {};
+function isStandalone(){
+  return navigator.standalone === true ||
+         (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+}
+
+// Tap the title for a readout of exactly what this phone reports about its
+// screen — so a layout problem on a real device can be fixed from a
+// screenshot rather than guessed at.
+const BUILD = '2026-10-03 · d';
+function showDiagnostics(){
+  const box = $('#diag');
+  if (!box.hidden){ box.hidden = true; return; }
+  const vv = window.visualViewport;
+  const ios = (navigator.userAgent.match(/OS (\d+)_(\d+)/) || []).slice(1).join('.') || '?';
+  box.textContent = [
+    `World at War  build ${BUILD}`,
+    `iOS ${ios}  ·  ${isStandalone() ? 'home-screen app' : 'in Safari'}`,
+    `screen ${screen.width}×${screen.height}  ·  dpr ${+devicePixelRatio.toFixed(2)}`,
+    `window ${innerWidth}×${innerHeight}` + (vv ? `  ·  visible ${Math.round(vv.width)}×${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : ''),
+    `phone reports top ${SAFE.envT}  →  using top ${SAFE.t}`,
+    `bottom ${SAFE.b}  left ${SAFE.l}  right ${SAFE.r}  ·  page ${SAFE.appH}`,
+    `header ends at ${Math.round($('header').getBoundingClientRect().bottom)}  ·  tabs end at ${Math.round(document.querySelector('.tabs').getBoundingClientRect().bottom)}`,
+    `(tap the title again to close)`
+  ].join('\n');
+  box.hidden = false;
 }
 applySafeAreas();
 
@@ -2320,6 +2384,9 @@ syncUI = function(){
 };
 let lastFocus = null;
 $('#tradeQuick').onclick = ()=> $('#btnTrade').click();
+
+$('header h1').addEventListener('click', showDiagnostics);
+$('#diag').addEventListener('click', ()=>{ $('#diag').hidden = true; });
 
 // put each side's dice on the same line as its name and count
 (function compactBattle(){
