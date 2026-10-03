@@ -173,6 +173,14 @@
     display:flex; align-items:center; justify-content:center; padding:24px;
   }
   .ov[hidden]{display:none}
+  #ovHelp{cursor:pointer}
+  #ovHelp .sheet{cursor:auto; position:relative}
+  .closeX{
+    position:sticky; top:0; float:right; margin:-12px -14px 0 0; z-index:2;
+    width:34px; height:34px; border-radius:50%; border:1px solid #9b8355; cursor:pointer;
+    background:#efe3c8; color:#4a3a22; font-size:20px; line-height:1; font-family:inherit;
+  }
+  .closeX:hover{background:#fff6e0}
   .sheet{
     background:linear-gradient(#efe3c8,#ddcfae); color:#2e2519;
     border:3px double #6b5636; border-radius:4px; max-width:660px; width:100%;
@@ -328,6 +336,7 @@
 <!-- ---------- rules ---------- -->
 <div class="ov" id="ovHelp" hidden>
   <div class="sheet">
+    <button class="closeX" id="btnXHelp" aria-label="Close rules">&times;</button>
     <h2>Articles of War</h2>
     <div class="rule">— how the campaign is fought —</div>
 
@@ -1340,10 +1349,11 @@ function hintText(){
     : 'Choose how many units go — or <em>Cancel</em> to change your mind. Nothing is committed until you confirm.';
   if (G.battle) return 'Press <em>Engage</em> for one exchange, or <em>All Out</em> to press the attack.';
   if (G.phase==='reinforce'){
+    // a required exchange comes first — it adds armies, and it blocks marching
+    if (me().cards.length >= 5 && findSet(me().cards))
+      return 'Five dispatch cards in hand — you <em>must exchange a set</em> before you can march. It adds armies to place.';
     if (G.pendA>0) return `Place <em>${G.pendA}</em> armies on your territories. <span style="color:#8d7c60">Shift-click places 5.</span>`;
     if (G.pendF>0) return `Place <em>${G.pendF}</em> fleets in a sea you hold, or an <em>empty sea</em> touching your coast.`;
-    if (me().cards.length >= 5 && findSet(me().cards))
-      return 'Five dispatches in hand — you <em>must</em> exchange a set before marching.';
     return 'Muster complete — begin the campaign.';
   }
   if (G.phase==='attack'){
@@ -1915,6 +1925,9 @@ $('#btnNew').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false
 $('#btnAgain').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
 $('#btnHelp').onclick = ()=>{ $('#ovHelp').hidden=false; };
 $('#btnCloseHelp').onclick = ()=>{ $('#ovHelp').hidden=true; };
+// the rules also close from the × or a click on the darkened backdrop
+$('#btnXHelp').onclick = ()=>{ $('#ovHelp').hidden=true; };
+$('#ovHelp').addEventListener('click', e=>{ if (e.target === e.currentTarget) $('#ovHelp').hidden=true; });
 const SPEEDS = [[1,'Normal'],[0.45,'Fast'],[0.12,'Instant']];
 let spIdx = 0;
 $('#btnSpeed').onclick = ()=>{

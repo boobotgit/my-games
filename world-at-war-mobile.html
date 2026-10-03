@@ -48,9 +48,12 @@
   .icobtn{padding:7px 9px; font-size:13px; line-height:1}
 
   /* ---------- map ---------- */
-  #mapwrap{flex:1 1 auto; position:relative; min-height:0;
+  /* The canvas fills its box exactly and can never spill out of it; layout()
+     reads the box's real size whenever it changes (see the ResizeObserver). */
+  #mapwrap{flex:1 1 auto; position:relative; min-height:0; overflow:hidden;
            background:radial-gradient(ellipse at 50% 40%,#241c13,#120e09)}
-  canvas{display:block; touch-action:none}
+  canvas{position:absolute; left:0; top:0; width:100%; height:100%;
+         display:block; touch-action:none}
   #tip{display:none !important}
   #zoomers{position:absolute; right:8px; bottom:8px; display:flex;
            flex-direction:column; gap:6px; z-index:6}
@@ -70,19 +73,45 @@
   #sel .sub{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#a4977c}
 
   /* ---------- bottom sheet ---------- */
+  /* The sheet never takes more than half the screen; whatever doesn't fit
+     scrolls inside the open pane, so the action buttons and the map both stay
+     on screen however much a battle adds. */
   #sheet{
-    flex:0 0 auto; display:flex; flex-direction:column; max-height:56%;
+    flex:0 0 auto; display:flex; flex-direction:column; max-height:50%; min-height:0;
     background:linear-gradient(#251e16,#1a150f); border-top:2px solid var(--gold-dim);
     padding-bottom:var(--safeB);
   }
-  .tabs{display:flex; border-bottom:1px solid #3a2f22}
-  .tab{flex:1; text-align:center; padding:9px 2px; font-size:10px; letter-spacing:.1em;
-       text-transform:uppercase; color:#7d6e56; border-bottom:2px solid transparent}
-  .tab.on{color:var(--gold); border-bottom-color:var(--gold)}
-  .pane{display:none; padding:9px 11px; overflow-y:auto; -webkit-overflow-scrolling:touch}
-  .pane.on{display:block}
-  #paneLog{max-height:150px}
-  #panePowers{max-height:200px}
+  /* Tabs and action buttons are pinned to the bottom edge, like an iOS tab
+     bar. The panel's height follows its content, so tabs at the top of it slid
+     up and down every time the content changed — a moving tap target. */
+  .tabs{display:flex; border-top:1px solid #3a2f22; flex:0 0 auto; order:3}
+  #actbar{order:2}
+  .pane{order:1}
+  .tab{flex:1; text-align:center; padding:11px 2px 10px; font-size:10px; letter-spacing:.1em;
+       text-transform:uppercase; color:#7d6e56; font-family:inherit;
+       background:none; border:0; border-top:2px solid transparent; cursor:pointer}
+  .tab.on{color:var(--gold); border-top-color:var(--gold)}
+  .tab.alert{color:#ffd968}
+  .tab .cnt{display:inline-block; min-width:15px; margin-left:3px; padding:0 3px;
+            border-radius:7px; background:#3a2f22; color:#e8ddc6; font-size:9px; letter-spacing:0}
+  .tab.alert .cnt{background:#c9a544; color:#1d160c}
+  .pane{display:none; padding:9px 11px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+        touch-action:pan-y}
+  .pane.on{display:block; flex:1 1 auto; min-height:0}
+  #tradeQuick{display:none; width:100%; margin-top:8px}
+
+  /* ---------- landscape: map on the left, the panel down the right ---------- */
+  @media (orientation: landscape) and (max-height: 540px){
+    #app{display:grid; grid-template-columns:minmax(0,1fr) 290px;
+         grid-template-rows:auto minmax(0,1fr)}
+    header{grid-column:1 / -1;
+           padding-left:calc(env(safe-area-inset-left,0px) + 10px);
+           padding-right:calc(env(safe-area-inset-right,0px) + 10px)}
+    #mapwrap{grid-column:1; grid-row:2; margin-left:env(safe-area-inset-left,0px)}
+    #sheet{grid-column:2; grid-row:2; max-height:none; height:100%;
+           border-top:0; border-left:2px solid var(--gold-dim);
+           padding-right:env(safe-area-inset-right,0px)}
+  }
 
   .phase-row{display:flex; gap:5px; margin-bottom:8px}
   .ph{flex:1; text-align:center; padding:5px 2px; font-size:9.5px; letter-spacing:.05em;
@@ -152,6 +181,13 @@
   .ov{position:fixed; inset:0; background:rgba(10,7,4,.9); z-index:100;
       display:flex; align-items:center; justify-content:center; padding:14px}
   .ov[hidden]{display:none}
+  #ovHelp{cursor:pointer}                 /* lets iOS deliver taps on the backdrop */
+  #ovHelp .sheet{cursor:auto; position:relative}
+  .closeX{
+    position:sticky; top:0; float:right; margin:-8px -8px 0 0; z-index:2;
+    width:36px; height:36px; border-radius:50%; border:1px solid #9b8355;
+    background:#efe3c8; color:#4a3a22; font-size:20px; line-height:1; font-family:inherit;
+  }
   .sheet{
     background:linear-gradient(#efe3c8,#ddcfae); color:#2e2519;
     border:2px double #6b5636; border-radius:4px; max-width:560px; width:100%;
@@ -207,10 +243,10 @@
 
   <div id="sheet">
     <div class="tabs">
-      <div class="tab on" data-pane="panePlay">Turn</div>
-      <div class="tab" data-pane="panePowers">Powers</div>
-      <div class="tab" data-pane="paneCards">Cards</div>
-      <div class="tab" data-pane="paneLog">Log</div>
+      <button class="tab on" data-pane="panePlay">Turn</button>
+      <button class="tab" data-pane="panePowers">Powers</button>
+      <button class="tab" data-pane="paneCards" id="tabCards">Cards<span class="cnt" id="tabCardsCnt">0</span></button>
+      <button class="tab" data-pane="paneLog">Log</button>
     </div>
 
     <div class="pane on" id="panePlay">
@@ -224,6 +260,7 @@
         <div><div class="n" id="poolF">0</div><div class="l">Fleets</div></div>
       </div>
       <div class="hint" id="hint">&mdash;</div>
+      <button class="btn gold" id="tradeQuick">Exchange cards</button>
 
       <div id="battle">
         <h3 id="btTitle">Engagement</h3>
@@ -303,6 +340,7 @@
 <!-- ---------- rules ---------- -->
 <div class="ov" id="ovHelp" hidden>
   <div class="sheet">
+    <button class="closeX" id="btnXHelp" aria-label="Close rules">&times;</button>
     <h2>Articles of War</h2>
     <div class="rule">— how the campaign is fought —</div>
 
@@ -1002,16 +1040,23 @@ const VIEW = {z:1, ox:0, oy:0, w:0, h:0, minZ:1, maxZ:7};
 
 function layout(){
   const wrap = $('#mapwrap');
-  VIEW.w = wrap.clientWidth;
-  VIEW.h = wrap.clientHeight;
-  SX = VIEW.w / MAP_W;
-  SY = Math.min(VIEW.h / MAP_H, SX*1.45);
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (!w || !h) return;                       // mid-rotation: no box yet
+  // remember which part of the board sits in the middle of the view, so a
+  // rotation or the panel growing doesn't throw the player somewhere else
+  const hadView = VIEW.w > 0 && SX > 0;
+  const midC = hadView ? (VIEW.w/2 - VIEW.ox) / (SX*VIEW.z) : MAP_W/2;
+  const midR = hadView ? (VIEW.h/2 - VIEW.oy) / (SY*VIEW.z) : MAP_H/2;
+
+  VIEW.w = w; VIEW.h = h;
+  SX = w / MAP_W;
+  SY = Math.min(h / MAP_H, SX*1.45);
   if (SY < SX) SX = SY;                       // height-limited: keep cells square
   DPR = window.devicePixelRatio || 1;
-  cv.style.width  = VIEW.w+'px';
-  cv.style.height = VIEW.h+'px';
-  cv.width  = Math.round(VIEW.w*DPR);
-  cv.height = Math.round(VIEW.h*DPR);
+  cv.width  = Math.round(w*DPR);              // CSS sizes the element to its box;
+  cv.height = Math.round(h*DPR);              // this only sets the pixel buffer
+  VIEW.ox = w/2 - midC*SX*VIEW.z;
+  VIEW.oy = h/2 - midR*SY*VIEW.z;
   if (typeof clampView === 'function') clampView();
 }
 
@@ -1321,10 +1366,11 @@ function hintText(){
     : 'Choose how many units go — or <em>Cancel</em> to change your mind. Nothing is committed until you confirm.';
   if (G.battle) return 'Press <em>Engage</em> for one exchange, or <em>All Out</em> to press the attack.';
   if (G.phase==='reinforce'){
+    // a required exchange comes first — it adds armies, and it blocks marching
+    if (me().cards.length >= 5 && findSet(me().cards))
+      return 'Five dispatch cards in hand — you <em>must exchange a set</em> before you can march. Tap the gold button below.';
     if (G.pendA>0) return `Place <em>${G.pendA}</em> armies on your territories. <span style="color:#8d7c60">Tap again to add more.</span>`;
     if (G.pendF>0) return `Place <em>${G.pendF}</em> fleets in a sea you hold, or an <em>empty sea</em> touching your coast.`;
-    if (me().cards.length >= 5 && findSet(me().cards))
-      return 'Five dispatches in hand — you <em>must</em> exchange a set before marching.';
     return 'Muster complete — begin the campaign.';
   }
   if (G.phase==='attack'){
@@ -2057,7 +2103,23 @@ syncUI = function(){ saveSync(); saveSoon(); };
 addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'hidden') saveNow(); });
 addEventListener('pagehide', saveNow);
 
-window.addEventListener('resize', ()=>{ layout(); render(); });
+// Re-measure whenever the map's box actually changes size — a rotation, the
+// panel growing when a battle opens, the iOS toolbar appearing. Watching the
+// box itself is what makes this reliable: iOS fires its window 'resize' before
+// a rotation has settled, so measuring then gets the old size, and nothing
+// re-measured afterwards. That is what left the map stuck at landscape size.
+let relayoutQueued = false;
+function relayout(){
+  if (relayoutQueued) return;
+  relayoutQueued = true;
+  requestAnimationFrame(()=>{ relayoutQueued = false; layout(); render(); });
+}
+if (window.ResizeObserver) new ResizeObserver(relayout).observe($('#mapwrap'));
+window.addEventListener('resize', relayout);
+window.addEventListener('orientationchange', ()=>{       // and once more after
+  relayout(); setTimeout(relayout, 350); setTimeout(relayout, 900);   // iOS settles
+});
+if (window.visualViewport) visualViewport.addEventListener('resize', relayout);
 
 // boot: draw an idle map behind the setup sheet
 REGIONS.forEach(r => st[r.id] = {owner:-1, units:0});
@@ -2187,8 +2249,31 @@ syncUI = function(){
   const b = G.battle;
   if (b && b.d !== lastFocus){ lastFocus = b.d; focusOn(b.d); }
   if (!b) lastFocus = null;
+
+  // The army/fleet pools only matter while mustering — fold them away after,
+  // which is what stops a battle pushing the panel up over the map.
+  document.querySelector('.pool').style.display = G.phase === 'reinforce' ? '' : 'none';
+
+  // Card exchanges are surfaced on the Turn tab itself, where the player is
+  // already looking — and flagged on the Cards tab — rather than living only
+  // behind a tab they have no reason to open.
+  const you = G.players[G.you];
+  const set = you && findSet(you.cards);
+  const canTrade = !!set && isYou() && G.phase === 'reinforce' && !G.over;
+  const forced = canTrade && you.cards.length >= 5;
+  const q = $('#tradeQuick');
+  q.style.display = canTrade ? 'block' : 'none';
+  if (canTrade) q.textContent = (forced ? 'Exchange cards — required' : 'Exchange cards') + ` (+${tradeValue()} armies)`;
+  $('#tabCardsCnt').textContent = you ? you.cards.length : 0;
+  $('#tabCards').classList.toggle('alert', canTrade);
 };
 let lastFocus = null;
+$('#tradeQuick').onclick = ()=> $('#btnTrade').click();
+
+// The rules close from anywhere: the × at the top, the button at the bottom,
+// or a tap on the darkened backdrop around them.
+$('#btnXHelp').onclick = ()=>{ $('#ovHelp').hidden = true; };
+$('#ovHelp').addEventListener('click', e=>{ if (e.target === e.currentTarget) $('#ovHelp').hidden = true; });
 
 /* ---------- speed button ---------- */
 const SPEED_LABEL = {1:'1x', 0.45:'2x', 0.12:'8x'};
