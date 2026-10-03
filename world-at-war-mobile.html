@@ -115,8 +115,11 @@
   .tab .cnt{display:inline-block; min-width:15px; margin-left:3px; padding:0 3px;
             border-radius:7px; background:#3a2f22; color:#e8ddc6; font-size:9px; letter-spacing:0}
   .tab.alert .cnt{background:#c9a544; color:#1d160c}
-  .pane{display:none; padding:9px 11px; overflow-y:auto; -webkit-overflow-scrolling:touch;
-        touch-action:pan-y}
+  /* No -webkit-overflow-scrolling:touch — modern iOS scrolls smoothly without
+     it, and it is the property behind iOS's "frozen scroller" bug, where a
+     scrolling panel resized by a rotation keeps a stale touch layer that
+     swallows every tap on the page (seen after Log → landscape → portrait). */
+  .pane{display:none; padding:9px 11px; overflow-y:auto; touch-action:pan-y}
   .pane.on{display:block; flex:1 1 auto; min-height:0}
   #tradeQuick{display:none; width:100%; margin-top:8px}
 
@@ -225,7 +228,7 @@
   .sheet{
     background:linear-gradient(#efe3c8,#ddcfae); color:#2e2519;
     border:2px double #6b5636; border-radius:4px; max-width:560px; width:100%;
-    max-height:86vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    max-height:86vh; overflow-y:auto;
     padding:18px 18px calc(18px + var(--safeB));
   }
   .sheet h2{margin:0 0 4px; font-size:20px; letter-spacing:.12em; text-transform:uppercase;
@@ -2185,7 +2188,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-10-03 · e';
+const BUILD = '2026-10-03 · f';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
@@ -2213,10 +2216,33 @@ function showDiagnostics(){
 applySafeAreas();
 
 let relayoutQueued = false;
+let lastPortrait = innerHeight >= innerWidth;
 function relayout(){
   if (relayoutQueued) return;
   relayoutQueued = true;
-  requestAnimationFrame(()=>{ relayoutQueued = false; applySafeAreas(); layout(); render(); });
+  requestAnimationFrame(()=>{
+    relayoutQueued = false;
+    applySafeAreas(); layout(); render();
+    const portrait = innerHeight >= innerWidth;
+    if (portrait !== lastPortrait){ lastPortrait = portrait; rebuildScrollers(); }
+  });
+}
+
+// After a rotation, take every scrolling panel out of the page and put it
+// straight back. iOS then has to build fresh touch layers for them instead of
+// keeping the stale, landscape-shaped one that can sit on top of the page and
+// swallow every tap. Scroll positions are kept; the player sees nothing.
+function rebuildScrollers(){
+  document.querySelectorAll('.pane').forEach(p=>{
+    const y = p.scrollTop;
+    p.style.display = 'none';
+    void p.offsetHeight;                 // force the layout to drop it
+    p.style.display = '';                // back to whatever the CSS says
+    p.scrollTop = y;
+  });
+  if (document.activeElement && document.activeElement !== document.body)
+    document.activeElement.blur();
+  window.scrollTo(0, 0);                 // the page itself never scrolls
 }
 if (window.ResizeObserver) new ResizeObserver(relayout).observe($('#mapwrap'));
 window.addEventListener('resize', relayout);
