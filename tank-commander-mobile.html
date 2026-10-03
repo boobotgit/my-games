@@ -118,6 +118,13 @@
   #rotate .ph { font-size: 64px; animation: spin 2s ease-in-out infinite; }
   #rotate h2 { color: #f0b040; margin: 14px 0 6px; font-size: 22px; letter-spacing: 0.05em; }
   #rotate p { font-size: 14px; color: #bba; }
+  #rotate .rotHome {
+    margin-top: 26px; padding: 12px 26px; border-radius: 10px;
+    background: rgba(30,32,20,0.9); border: 1.5px solid #f0b040; color: #f0d890;
+    font-size: 16px; font-weight: bold; text-decoration: none; letter-spacing: 0.05em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #rotate .rotHome:active { background: rgba(80,70,30,0.95); }
   @keyframes spin { 0%,40%{transform:rotate(0)} 60%,100%{transform:rotate(90deg)} }
   body.portrait #rotate { display: flex; }
 </style>
@@ -142,6 +149,7 @@
     <div class="ph">📱</div>
     <h2>ROTATE YOUR PHONE</h2>
     <p>Tank Commander plays in landscape.</p>
+    <a class="rotHome" href="index.html">⌂ Back to Home</a>
   </div>
 
 <script>
