@@ -95,10 +95,16 @@
      under the player. Sized for the tallest thing it has to show — a battle,
      kept compact below — and anything longer scrolls inside the pane. */
   #sheet{
-    flex:0 0 auto; display:flex; flex-direction:column; height:clamp(280px, 38%, 340px); min-height:0;
+    flex:0 0 auto; display:flex; flex-direction:column; min-height:0;
+    /* the content area stays clamp(280,38%,340); the home-bar clearance is
+       added on top so raising the tabs never squeezes a battle into scrolling */
+    --padB:max(calc(var(--safeB) - 2px), 10px);
+    height:calc(clamp(280px, 38%, 340px) + var(--padB));
     background:linear-gradient(#251e16,#1a150f); border-top:2px solid var(--gold-dim);
     /* clear the home indicator, without the full inset's extra dead band */
-    padding-bottom:max(calc(var(--safeB) - 20px), 4px);
+    /* nearly the full home-indicator inset: with less, the user kept catching
+       the swipe-up bar when reaching for the tabs */
+    padding-bottom:var(--padB);
   }
   /* Tabs and action buttons are pinned to the bottom edge, like an iOS tab
      bar. The panel's height follows its content, so tabs at the top of it slid
@@ -2188,7 +2194,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-10-03 · f';
+const BUILD = '2026-10-03 · g';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
@@ -2196,9 +2202,18 @@ function statusBarMode(){
   if (!isStandalone()) return 'Safari';
   return SAFE.t > 0 ? 'translucent' : 'opaque';
 }
+// The readout refreshes itself while open, so it can be left up across a
+// rotation and then show whether later taps are reaching the page at all.
+let diagTimer = null;
 function showDiagnostics(){
   const box = $('#diag');
-  if (!box.hidden){ box.hidden = true; return; }
+  if (!box.hidden){ box.hidden = true; clearInterval(diagTimer); return; }
+  fillDiagnostics();
+  box.hidden = false;
+  diagTimer = setInterval(fillDiagnostics, 400);
+}
+function fillDiagnostics(){
+  const box = $('#diag');
   const vv = window.visualViewport;
   const ios = (navigator.userAgent.match(/OS (\d+)_(\d+)/) || []).slice(1).join('.') || '?';
   box.textContent = [
@@ -2209,9 +2224,11 @@ function showDiagnostics(){
     `status bar ${statusBarMode()}  ·  came from ${(document.referrer.split('/').pop() || '(home screen)').slice(0,24)}`,
     `edges  top ${SAFE.t}  bottom ${SAFE.b}  left ${SAFE.l}  right ${SAFE.r}`,
     `header ends at ${Math.round($('header').getBoundingClientRect().bottom)}  ·  tabs end at ${Math.round(document.querySelector('.tabs').getBoundingClientRect().bottom)}`,
-    `(tap the title again to close)`
+    `touches ${TAPS.start}/${TAPS.end}  clicks ${TAPS.click}  rotations ${TAPS.rotations}` +
+      (vv ? `  zoom ${+vv.scale.toFixed(3)}` : ''),
+    `last touch ${TAPS.last}`,
+    `(tap here or the title to close)`
   ].join('\n');
-  box.hidden = false;
 }
 applySafeAreas();
 
@@ -2222,24 +2239,23 @@ function relayout(){
   relayoutQueued = true;
   requestAnimationFrame(()=>{
     relayoutQueued = false;
-    applySafeAreas(); layout(); render();
     const portrait = innerHeight >= innerWidth;
-    if (portrait !== lastPortrait){ lastPortrait = portrait; rebuildScrollers(); }
+    if (portrait !== lastPortrait){ lastPortrait = portrait; TAPS.rotations++; rebuildLayers(); }
+    applySafeAreas(); layout(); render();
   });
 }
 
-// After a rotation, take every scrolling panel out of the page and put it
-// straight back. iOS then has to build fresh touch layers for them instead of
-// keeping the stale, landscape-shaped one that can sit on top of the page and
-// swallow every tap. Scroll positions are kept; the player sees nothing.
-function rebuildScrollers(){
-  document.querySelectorAll('.pane').forEach(p=>{
-    const y = p.scrollTop;
-    p.style.display = 'none';
-    void p.offsetHeight;                 // force the layout to drop it
-    p.style.display = '';                // back to whatever the CSS says
-    p.scrollTop = y;
-  });
+// After a rotation, take the whole game out of the page and put it straight
+// back, so iOS builds fresh layers for everything instead of keeping stale
+// landscape-shaped ones that can sit over the page and swallow taps. Scroll
+// positions are kept; the player sees nothing.
+function rebuildLayers(){
+  const panes = [...document.querySelectorAll('.pane')].map(p => [p, p.scrollTop]);
+  const app = $('#app');
+  app.style.display = 'none';
+  void app.offsetHeight;                 // force the layout to drop it all
+  app.style.display = '';
+  panes.forEach(([p, y]) => p.scrollTop = y);
   if (document.activeElement && document.activeElement !== document.body)
     document.activeElement.blur();
   window.scrollTo(0, 0);                 // the page itself never scrolls
@@ -2263,32 +2279,57 @@ G.players = [{i:0,fac:0,name:'—',color:'#888',ai:false,cards:[],alive:true,con
 // Drag to pan, pinch to zoom, tap to select. A tap is only a tap if the finger
 // barely moved — otherwise it was a pan, and selecting on lift would fight the
 // player every time they scrolled the map.
-(function touchMap(){
-  const TAP_SLOP = 12, TAP_MS = 500;
-  let mode = null;            // 'pan' | 'pinch'
-  let sx0=0, sy0=0, t0=0, moved=false;
+// One page-wide touch handler for everything: map pan/pinch/tap AND every
+// button. On the user's iPhone, after rotating to landscape and back, nothing
+// on the page responded to taps. Whatever iOS gets wrong there — not turning
+// touches into clicks, or delivering them to a stale, landscape-shaped layer —
+// this side-steps it: each touch is routed by what the page's *current* layout
+// has under the finger (elementFromPoint), and a button tap presses the button
+// directly instead of waiting for iOS to synthesise a click.
+const TAPS = {start:0, end:0, click:0, rotations:0, last:'—'};   // diagnostics
+(function touchLayer(){
+  const TAP_SLOP = 12, TAP_MS = 600;
+  let mode = null;            // 'pan' | 'pinch' | 'button'
+  let sx0=0, sy0=0, t0=0, moved=false, startTap=null;
   let pinchD0=1, pinchZ0=1, pinchCx=0, pinchCy=0;
 
   const dist = (a,b) => Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+  // things a finger can press; inputs (the troop slider) keep native handling
+  const tappableAt = (x,y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el || el.closest('input')) return {el, tap:null};
+    const tap = el.closest('button, a[href], .tab, header h1, #diag') ||
+                (el.id === 'ovHelp' ? el : null);           // the rules backdrop
+    return {el, tap};
+  };
+  const describe = el => !el ? 'nothing' : (el.id ? '#'+el.id : el.tagName.toLowerCase() +
+                    (el.className && typeof el.className === 'string' ? '.'+el.className.split(' ')[0] : ''));
 
-  cv.addEventListener('touchstart', e=>{
-    e.preventDefault();
-    if (e.touches.length === 1){
-      mode='pan'; moved=false; t0=Date.now();
-      sx0=e.touches[0].clientX; sy0=e.touches[0].clientY;
-    } else if (e.touches.length === 2){
+  document.addEventListener('touchstart', e=>{
+    TAPS.start++;
+    const t = e.touches[0];
+    if (e.touches.length === 2 && (mode === 'pan' || mode === 'pinch')){
+      e.preventDefault();
       mode='pinch'; moved=true;
       pinchD0 = Math.max(1, dist(e.touches[0], e.touches[1]));
       pinchZ0 = VIEW.z;
       const r = cv.getBoundingClientRect();
       pinchCx = (e.touches[0].clientX + e.touches[1].clientX)/2 - r.left;
       pinchCy = (e.touches[0].clientY + e.touches[1].clientY)/2 - r.top;
+      return;
     }
+    if (e.touches.length !== 1) return;
+    sx0 = t.clientX; sy0 = t.clientY; t0 = Date.now(); moved = false;
+    const {el, tap} = tappableAt(sx0, sy0);
+    TAPS.last = `(${Math.round(sx0)},${Math.round(sy0)}) ${describe(el)}`;
+    if (el === cv){ e.preventDefault(); mode = 'pan'; }
+    else if (tap){ mode = 'button'; startTap = tap; }
+    else mode = null;                        // a scrolling panel: leave it native
   }, {passive:false});
 
-  cv.addEventListener('touchmove', e=>{
-    e.preventDefault();
+  document.addEventListener('touchmove', e=>{
     if (mode === 'pan' && e.touches.length === 1){
+      e.preventDefault();
       const dx = e.touches[0].clientX - sx0, dy = e.touches[0].clientY - sy0;
       if (Math.hypot(dx,dy) > TAP_SLOP) moved = true;
       if (moved){
@@ -2297,22 +2338,40 @@ G.players = [{i:0,fac:0,name:'—',color:'#888',ai:false,cards:[],alive:true,con
         clampView(); render();
       }
     } else if (mode === 'pinch' && e.touches.length === 2){
+      e.preventDefault();
       const z = pinchZ0 * (dist(e.touches[0], e.touches[1]) / pinchD0);
       zoomAt(pinchCx, pinchCy, z);
+    } else if (mode === 'button' && e.touches.length === 1){
+      const dx = e.touches[0].clientX - sx0, dy = e.touches[0].clientY - sy0;
+      if (Math.hypot(dx,dy) > TAP_SLOP) moved = true;   // it became a scroll
     }
   }, {passive:false});
 
-  cv.addEventListener('touchend', e=>{
-    e.preventDefault();
-    if (mode === 'pan' && !moved && Date.now()-t0 < TAP_MS){
-      // replay it as a click so the desktop turn logic handles it unchanged
-      cv.dispatchEvent(new MouseEvent('click', {clientX:sx0, clientY:sy0, bubbles:true}));
-      showSelInfo(sx0, sy0);
+  document.addEventListener('touchend', e=>{
+    TAPS.end++;
+    const quick = !moved && Date.now()-t0 < TAP_MS;
+    if (mode === 'pan'){
+      e.preventDefault();
+      if (quick){
+        // replay it as a click so the desktop turn logic handles it unchanged
+        cv.dispatchEvent(new MouseEvent('click', {clientX:sx0, clientY:sy0, bubbles:true}));
+        showSelInfo(sx0, sy0);
+        TAPS.last += ' → map';
+      }
+    } else if (mode === 'button' && quick){
+      const t = e.changedTouches[0];
+      const {tap} = tappableAt(t.clientX, t.clientY);
+      if (tap && tap === startTap){
+        e.preventDefault();                  // and no second, iOS-made click
+        if (!tap.disabled) tap.click();
+        TAPS.last += ' → pressed';
+      }
     }
-    if (!e.touches.length) mode = null;
+    if (!e.touches.length){ mode = null; startTap = null; }
   }, {passive:false});
 
-  cv.addEventListener('touchcancel', ()=>{ mode=null; }, {passive:false});
+  document.addEventListener('touchcancel', ()=>{ mode=null; startTap=null; }, {passive:false});
+  document.addEventListener('click', ()=>{ TAPS.click++; }, true);
 })();
 
 // The desktop shows a hover tooltip; a finger has no hover, so the last region
@@ -2404,7 +2463,7 @@ let lastFocus = null;
 $('#tradeQuick').onclick = ()=> $('#btnTrade').click();
 
 $('header h1').addEventListener('click', showDiagnostics);
-$('#diag').addEventListener('click', ()=>{ $('#diag').hidden = true; });
+$('#diag').addEventListener('click', ()=>{ $('#diag').hidden = true; clearInterval(diagTimer); });
 
 // put each side's dice on the same line as its name and count
 (function compactBattle(){
