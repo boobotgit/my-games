@@ -9,7 +9,12 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Opaque, not black-translucent. iOS applies the status-bar mode of the
+       page launched from the home screen to the whole session, so this one
+       setting governs every game opened from the arcade. In translucent mode
+       iOS 18 ran pages under the status bar and drew only the top 793 of 852
+       points on an iPhone 16 Pro, leaving an undrawn band at the bottom. -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="BooBot">
   <meta name="theme-color" content="#cc0000">
   <style>
