@@ -84,6 +84,9 @@ aside h3 small,.muted{font-family:'EB Garamond',serif;font-size:13px;color:var(-
 .tabs button.on{background:var(--wood2);color:var(--parch);border-color:var(--wood2)}
 .tabs button .alert{color:#c0392b;font-weight:700}
 .tabBody{min-height:320px}
+.portTop{position:sticky;top:-18px;z-index:3;margin:-18px -22px 0;padding:18px 22px 0;background:#f6ebcf;box-shadow:0 6px 8px -6px rgba(60,40,20,.35)}
+.portTop .tabs{margin-bottom:0}
+.tabBody{padding-top:8px}
 table.mk{width:100%;border-collapse:collapse;font-size:14.5px}
 table.mk th{font-family:'IM Fell English SC',serif;font-weight:400;text-align:left;border-bottom:1px solid var(--wood3);padding:4px;font-size:15px}
 table.mk td{padding:3px 4px;border-bottom:1px solid #00000012;vertical-align:middle}
@@ -156,10 +159,14 @@ aside h3{font-size:16px}
   padding:calc(10px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
 #modal h2{font-size:23px}
 .title h1{font-size:40px}
-.portHead{flex-wrap:wrap;gap:8px 12px}
+.portHead{flex-wrap:nowrap;gap:10px;padding-bottom:6px;align-items:center}
+.portHead .sub{font-size:12px}
+.portHead .sub + .sub{display:none}
+.portTop{top:calc(-10px - env(safe-area-inset-top));margin:calc(-10px - env(safe-area-inset-top)) calc(-1 * max(12px,env(safe-area-inset-right))) 0 calc(-1 * max(12px,env(safe-area-inset-left)));padding:calc(10px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left))}
 .portHead img{width:42px;height:28px}
 .portHead h2{font-size:23px}
-.portHead .right{margin-left:0;width:100%;text-align:left}
+.portHead .right{margin-left:auto;text-align:right;white-space:nowrap;font-size:13px}
+.portHead .right b{font-size:15px}
 .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{flex:0 0 auto;padding:7px 11px;font-size:15.5px}
@@ -1478,8 +1485,8 @@ function renderPort() {
   const m = $('#modal'), keep = m.scrollTop;
   const tabs = [['market', 'Market'], ['shipyard', 'Shipyard'], ['factory', S.warehouses[p.id] ? 'Factory ▣' : 'Factory'], ['governor', nat(p) === 'player' ? 'Your Residence' : "Governor's House"], ['tavern', `Tavern${alarm ? ' <span class="alert">⚠</span>' : ''}`], ['harbour', 'Harbour']];
   const body = { market: tabMarket, shipyard: tabShipyard, factory: tabFactory, governor: tabGovernor, tavern: tabTavern, harbour: tabHarbour }[UI.portTab](p, notes);
-  m.innerHTML = `<div class="portHead">${flagImg(nat(p) === 'player' ? 'own' : p.haven && nat(p) === p.n ? 'pir' : nat(p), '')}<div><h2>${p.name}</h2><div class="sub">${nat(p) === 'player' ? '<b>Your town</b>' : NATIONS[nat(p)].adj + (nat(p) !== p.n ? ' (captured)' : '')} · ${['', 'small', 'middling', 'great'][p.size]} port${p.free ? ' · free port' : ''}${p.haven ? ' · pirate haven' : ''}${p.shelter ? ' · <b>hurricane hole</b>' : ''} · tariff ${Math.round(acc.tariff * 100)}% under ${FLAGS[S.flag].short.toLowerCase()} colours</div><div class="sub"><i>${p.desc}</i></div></div><div class="right">Gold <b>${fmt(S.gold)}</b><br>Hold <b>${holdUsed()} / ${holdCap()}</b></div></div>
-    <div class="tabs">${tabs.map(([k, n]) => `<button class="${UI.portTab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${n}</button>`).join('')}</div>
+  m.innerHTML = `<div class="portTop"><div class="portHead">${flagImg(nat(p) === 'player' ? 'own' : p.haven && nat(p) === p.n ? 'pir' : nat(p), '')}<div><h2>${p.name}</h2><div class="sub">${nat(p) === 'player' ? '<b>Your town</b>' : NATIONS[nat(p)].adj + (nat(p) !== p.n ? ' (captured)' : '')} · ${['', 'small', 'middling', 'great'][p.size]} port${p.free ? ' · free port' : ''}${p.haven ? ' · pirate haven' : ''}${p.shelter ? ' · <b>hurricane hole</b>' : ''} · tariff ${Math.round(acc.tariff * 100)}% under ${FLAGS[S.flag].short.toLowerCase()} colours</div><div class="sub"><i>${p.desc}</i></div></div><div class="right">Gold <b>${fmt(S.gold)}</b><br>Hold <b>${holdUsed()} / ${holdCap()}</b></div></div>
+    <div class="tabs">${tabs.map(([k, n]) => `<button class="${UI.portTab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${n}</button>`).join('')}</div></div>
     <div class="tabBody">${body}</div>
     <div class="btnRow portFoot"><button class="btn primary" data-act="leave">Return to the chart ⟶</button></div>`;
   m.scrollTop = keep;
