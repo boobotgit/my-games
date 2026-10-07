@@ -173,6 +173,9 @@
     display:flex; align-items:center; justify-content:center; padding:24px;
   }
   .ov[hidden]{display:none}
+  #ovPass{background:#0a0704}            /* opaque: the next commander mustn't see the last one's hand */
+  #passTitle .sw{display:inline-block; width:16px; height:16px; border-radius:2px;
+                 border:1px solid rgba(0,0,0,.4); margin-right:8px; vertical-align:-1px}
   #ovHelp{cursor:pointer}
   #ovHelp .sheet{cursor:auto; position:relative}
   .closeX{
@@ -316,14 +319,21 @@
     <div class="rule">— Grand Campaign of 1805 —</div>
     <p style="text-align:center;max-width:480px;margin:0 auto 4px">
       Six empires contend for the globe. Armies hold the land; fleets hold the sea —
-      and no army crosses an ocean its nation does not command.<br><span style="color:#7a6a4a;font-size:12px">Each rival is dealt a doctrine — Conqueror, Sentinel, Admiral, Opportunist or Strategist — and plays to it.</span>
+      and no army crosses an ocean its nation does not command.<br><span style="color:#7a6a4a;font-size:12px">Each rival is dealt a doctrine — Conqueror, Sentinel, Admiral, Opportunist or Strategist — and plays to it.<br>Two commanders can share one phone — it is passed between turns.</span>
     </p>
+
+    <div class="lbl">Commanders</div>
+    <div class="opt-grid" id="optHum"></div>
 
     <div class="lbl">Rival Powers</div>
     <div class="opt-grid" id="optAI"></div>
 
-    <div class="lbl">Your Empire</div>
+    <div class="lbl" id="lblFac1">Your Empire</div>
     <div class="opt-grid" id="optFac"></div>
+    <div id="fac2Wrap" hidden>
+      <div class="lbl">Player 2's Empire</div>
+      <div class="opt-grid" id="optFac2"></div>
+    </div>
 
     <div class="lbl">Difficulty</div>
     <div class="opt-grid" id="optDiff"></div>
@@ -424,6 +434,16 @@
     <div class="rule" id="endSub"></div>
     <p id="endBody" style="margin:0 auto;max-width:380px"></p>
     <button class="btn gold go" id="btnAgain">New Campaign</button>
+  </div>
+</div>
+
+<!-- ---------- hand-over between two commanders ---------- -->
+<div class="ov" id="ovPass" hidden>
+  <div class="sheet" style="max-width:420px;text-align:center">
+    <h2 id="passTitle"></h2>
+    <div class="rule" id="passSub"></div>
+    <p id="passBody" style="margin:0 auto;max-width:340px"></p>
+    <button class="btn gold go" id="btnPass">Take Command</button>
   </div>
 </div>
 
@@ -820,22 +840,33 @@ const st = {};   // id -> {owner, units}
 const owner = id => st[id].owner;
 const units = id => st[id].units;
 const me    = () => G.players[G.cur];
-const isYou = () => G.cur === G.you && !G.players[G.cur].ai;
+const isYou = () => !G.players[G.cur].ai;
+// Up to two humans can share the phone ("hot seat"). G.you is whichever
+// human is in command right now: it moves to each human as their turn starts.
+const humans  = () => G.players.filter(p => !p.ai);
+const hotseat = () => humans().length > 1;
+const seatTag = q => q.ai ? '' : (hotseat() ? 'P' + (humans().indexOf(q) + 1) : 'YOU');
 
 /* ------------------------------------------------------------ new game --- */
-function newGame(nAI, facIdx){
-  const n = nAI+1;
+function newGame(nAI, facs){
+  const n = nAI + facs.length;
   G.players = [];
-  const order = [facIdx];
-  for (let i=0;i<FACTIONS.length && order.length<n;i++) if (i!==facIdx) order.push(i);
+  // a second human sits across the table, so rivals move between the two
+  const humanAt = facs.length > 1 ? [0, Math.ceil(n/2)] : [0];
+  const rest = [];
+  for (let i=0;i<FACTIONS.length;i++) if (!facs.includes(i)) rest.push(i);
   const doctrines = shuffle(PERSONALITIES.slice());
-  order.forEach((fi,i)=>{
+  let h = 0, r = 0;
+  for (let i=0;i<n;i++){
+    const human = humanAt.includes(i);
+    const fi = human ? facs[h++] : rest[r];
     G.players.push({
       i, fac:fi, name:FACTIONS[fi].name, color:FACTIONS[fi].color,
-      ai: i!==0, cards:[], alive:true, conquered:false,
-      pers: i===0 ? null : doctrines[(i-1) % doctrines.length]
+      ai: !human, cards:[], alive:true, conquered:false,
+      pers: human ? null : doctrines[r % doctrines.length]
     });
-  });
+    if (!human) r++;
+  }
   G.gen = (G.gen || 0) + 1; G.busy = false;
   G.lastAggressor = -1;
   G.diff = setupDiff;
@@ -960,7 +991,7 @@ function startTurn(){
   G.fortifyUsed = false;
   G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
   G.pendA = armyIncome(p.i);
-  if (p.i !== G.you) G.pendA = Math.ceil(G.pendA * DIFF().income);
+  if (p.ai) G.pendA = Math.ceil(G.pendA * DIFF().income);
   G.pendF = fleetIncome(p.i);
   if (!fleetDropZones(p.i).length) G.pendF = 0;
 
@@ -970,8 +1001,10 @@ function startTurn(){
 
   if (p.ai){ render(); runAI(); }
   else {
-    if (p.cards.length >= 5) log(`<span class="r">You must exchange a set of dispatch cards.</span>`);
+    G.you = p.i;
+    if (p.cards.length >= 5) log(`<span class="r">${hotseat() ? p.name + ' must' : 'You must'} exchange a set of dispatch cards.</span>`);
     render();
+    if (humans().filter(q => q.alive).length > 1) showPass(p);
   }
 }
 function nextPlayer(){
@@ -1016,8 +1049,9 @@ function checkElimination(){
   }
   const alive = G.players.filter(p=>p.alive);
   const conqueror = alive.find(p => countLand(p.i) === LAND_IDS.length);
-  const you = G.players[G.you];
-  if (alive.length <= 1 || conqueror || (you && !you.alive)){
+  // the war goes on while any human is still in it
+  const humanLeft = G.players.some(q => !q.ai && q.alive);
+  if (alive.length <= 1 || conqueror || !humanLeft){
     G.over = true;
     showEnd(conqueror || alive.sort((a,b)=>countLand(b.i)-countLand(a.i))[0]);
   }
@@ -1248,7 +1282,7 @@ function syncUI(){
   $('#poolF').textContent = G.pendF;
   $('#turnInfo').innerHTML =
     `Year ${1804+G.turn} &nbsp;·&nbsp; <span style="color:${p.color}">${p.name}</span>` +
-    (p.ai ? ' <span style="color:#8d7c60">(rival)</span>' : ' <span class="youtag">YOU</span>');
+    (p.ai ? ' <span style="color:#8d7c60">(rival)</span>' : ` <span class="youtag">${seatTag(p)}</span>`);
 
   // players
   const pl = $('#plist');
@@ -1259,7 +1293,7 @@ function syncUI(){
     row.title = q.pers ? q.pers.name + ' — ' + q.pers.blurb : '';
     row.innerHTML =
       `<span class="swatch" style="background:${q.color}"></span>` +
-      `<span class="nm">${q.name}${q.i===G.you?' <span class="youtag">YOU</span>':''}` +
+      `<span class="nm">${q.name}${q.ai?'':` <span class="youtag">${seatTag(q)}</span>`}` +
         (q.pers ? `<span class="pers">${q.pers.name}</span>` : '') + `</span>` +
       `<span class="st">${countLand(q.i)}🛡 ${countSea(q.i)}⚓</span>`;
     pl.appendChild(row);
@@ -1267,9 +1301,12 @@ function syncUI(){
 
   // cards
   const you = G.players[G.you];
-  $('#cardCount').textContent = `(${you.cards.length})`;
+  // with two commanders, a hand is only shown on its owner's turn
+  const showHand = !hotseat() || isYou();
+  $('#cardCount').textContent = showHand ? `(${you.cards.length})` : '';
   const cbox = $('#cards'); cbox.innerHTML='';
-  for (const c of you.cards){
+  if (!showHand) cbox.innerHTML = '<span style="color:#8d7c60;font-size:12px">Hands stay hidden on a rival\'s turn.</span>';
+  for (const c of (showHand ? you.cards : [])){
     const e = document.createElement('span');
     const k = c.s==='Wild'?'wild':c.s==='Infantry'?'inf':c.s==='Cavalry'?'cav':'art';
     e.className = 'card '+k;
@@ -1641,7 +1678,7 @@ function aiScoreRegion(id, p){
   const total = GROUP_MEMBERS[g].length;
   if (held === total-1) s += 9;
   else if (held > total/2) s += 3;
-  if (p !== G.you && DIFF().guard && held === total &&
+  if (G.players[p].ai && DIFF().guard && held === total &&
       ADJ[id].some(n => st[n].owner !== p)) s += DIFF().guard;   // a bonus worth keeping
   return s;
 }
@@ -1800,7 +1837,7 @@ function settleMove(p){
 function aiBestAttack(p, noFreeClaims, T){
   let best=null;
   const D = DIFF();
-  const leader = (p !== G.you && D.leader) ? currentLeader() : -1;
+  const leader = (G.players[p].ai && D.leader) ? currentLeader() : -1;
   for (const id of regionsOf(p)){
     const s = st[id]; if (s.units < 2) continue;
     const tg = attackTargets(id);
@@ -1860,16 +1897,17 @@ function aiBestFortify(p){
 /* ============================== END SCREEN ============================== */
 function showEnd(w){
   const you = G.players[G.you];
-  const won = !!w && w.i === G.you && w.alive;
+  const won = !!w && !w.ai && w.alive;
+  const hs = hotseat();
   const lastStanding = G.players.filter(p=>p.alive).length <= 1;
   $('#endTitle').textContent = won ? 'Victory' : 'Defeat';
   $('#endSub').textContent = `— ${1804+G.turn} —`;
   $('#endBody').innerHTML =
       !w ? 'The world is spent, and no power remains.'
-    : won ? `<b>${w.name}</b> stands master of the world, holding
+    : won ? `<b>${w.name}</b>${hs ? ' (' + seatTag(w) + ')' : ''} stands master of the world, holding
              <b>${countLand(w.i)}</b> territories and <b>${countSea(w.i)}</b> seas.`
     : lastStanding ? `<b>${w.name}</b> stands alone as master of the world.`
-    : `${you ? you.name : 'Your empire'} is driven from the field. <b>${w.name}</b>
+    : `${hs ? 'Both commanders are' : (you ? you.name + ' is' : 'Your empire is')} driven from the field. <b>${w.name}</b>
        leads what remains, with <b>${countLand(w.i)}</b> territories and
        <b>${countSea(w.i)}</b> seas.`;
   $('#ovEnd').hidden = false;
@@ -1879,22 +1917,35 @@ function showEnd(w){
 
 /* ============================== SETUP UI ================================ */
 let setupAI = 2, setupFac = 0, setupDiff = 'general';
+let setupHum = 1, setupFac2 = 1;
 (function buildSetup(){
-  const a = $('#optAI');
-  for (let i=1;i<=5;i++){
+  const h = $('#optHum');
+  [1,2].forEach(k=>{
     const b = document.createElement('button');
-    b.className = 'opt' + (i===setupAI?' on':''); b.textContent = i;
-    b.onclick = ()=>{
-      setupAI=i;
-      [...a.children].forEach(c=>c.classList.remove('on'));
-      b.classList.add('on');
-      renderFacOpts();
-    };
-    a.appendChild(b);
-  }
-  renderFacOpts();
+    b.className = 'opt';
+    b.textContent = k === 1 ? '1 Player' : '2 Players';
+    b.onclick = ()=>{ setupHum = k; renderSetup(); };
+    h.appendChild(b);
+  });
+  renderSetup();
   renderDiffOpts();
 })();
+function renderSetup(){
+  [...$('#optHum').children].forEach((b,i)=>b.classList.toggle('on', i+1 === setupHum));
+  // six empires in all; two humans may also fight it out alone
+  const lo = setupHum > 1 ? 0 : 1, hi = FACTIONS.length - setupHum;
+  setupAI = Math.max(lo, Math.min(hi, setupAI));
+  const a = $('#optAI'); a.innerHTML = '';
+  for (let i=lo;i<=hi;i++){
+    const b = document.createElement('button');
+    b.className = 'opt' + (i===setupAI?' on':''); b.textContent = i;
+    b.onclick = ()=>{ setupAI = i; renderSetup(); };
+    a.appendChild(b);
+  }
+  $('#lblFac1').textContent = setupHum > 1 ? "Player 1's Empire" : 'Your Empire';
+  $('#fac2Wrap').hidden = setupHum < 2;
+  renderFacOpts();
+}
 function renderDiffOpts(){
   const box = $('#optDiff'); box.innerHTML='';
   DIFFICULTIES.forEach(d=>{
@@ -1907,19 +1958,35 @@ function renderDiffOpts(){
   $('#diffBlurb').textContent = DIFFICULTIES.find(d=>d.id===setupDiff).blurb;
 }
 function renderFacOpts(){
-  const f = $('#optFac'); f.innerHTML='';
-  FACTIONS.forEach((fc,i)=>{
-    const b = document.createElement('button');
-    b.className = 'opt fac' + (i===setupFac?' on':'');
-    b.innerHTML = `<span class="sw" style="background:${fc.color}"></span><span>${fc.name}</span>`;
-    b.onclick = ()=>{ setupFac=i; renderFacOpts(); };
-    f.appendChild(b);
-  });
+  // picking the other player's empire swaps the two
+  const grid = (box, mine, other, set) => {
+    box.innerHTML = '';
+    FACTIONS.forEach((fc,i)=>{
+      const b = document.createElement('button');
+      b.className = 'opt fac' + (i===mine?' on':'');
+      b.innerHTML = `<span class="sw" style="background:${fc.color}"></span><span>${fc.name}</span>`;
+      b.onclick = ()=>{ if (setupHum > 1 && i === other) set(mine, true); set(i); renderFacOpts(); };
+      box.appendChild(b);
+    });
+  };
+  grid($('#optFac'),  setupFac,  setupFac2, (i, swap)=>{ if (swap) setupFac2 = i; else setupFac = i; });
+  grid($('#optFac2'), setupFac2, setupFac,  (i, swap)=>{ if (swap) setupFac  = i; else setupFac2 = i; });
 }
+
+// Hand the phone over: an opaque screen between two human turns, so neither
+// commander sees the other's cards.
+function showPass(p){
+  $('#passTitle').innerHTML = `<span class="sw" style="background:${p.color}"></span>${p.name}`;
+  $('#passSub').textContent = `— ${seatTag(p)} · Year ${1804+G.turn} —`;
+  $('#passBody').textContent = `Pass the phone to the commander of ${p.name}.`;
+  $('#ovPass').hidden = false;
+}
+$('#btnPass').onclick = ()=>{ $('#ovPass').hidden = true; render(); syncUI(); };
 $('#btnBegin').onclick = ()=>{
   $('#ovSetup').hidden = true;
   $('#ovEnd').hidden = true;
-  layout(); newGame(setupAI, setupFac); render(); syncUI();
+  $('#ovPass').hidden = true;
+  layout(); newGame(setupAI, setupHum > 1 ? [setupFac, setupFac2] : [setupFac]); render(); syncUI();
 };
 $('#btnNew').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
 $('#btnAgain').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
@@ -2048,6 +2115,7 @@ function validate(d){
     });
   }
   if (new Set(players.map(p=>p.fac)).size !== n) return null;      // no duplicate empires
+  if (players[d.you].ai || players.filter(p=>!p.ai).length > 2) return null;
 
   const owners = [], units = [];
   for (let k=0;k<REGIONS.length;k++){
@@ -2121,6 +2189,7 @@ if (resumeGame()){
   $('#ovSetup').hidden = true;
   render(); syncUI();
   if (me().ai && !G.busy) runAI();       // we were interrupted on a rival's turn
+  else if (humans().filter(q => q.alive).length > 1) showPass(me());
 } else {
   render();
 }
