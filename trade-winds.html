@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Security: the page may load Google Fonts and nothing else from the network. No external
+     scripts, no fetch/XHR, no outside images, no forms: even injected code could not phone home. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; media-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trade Winds</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -124,7 +127,7 @@ input.txt,select.txt{width:100%;padding:6px 8px;border:1px solid var(--wood3);ba
 <body>
 <div id="app">
   <header>
-    <a class="btn sm" href="index.html" title="Back to BooBot Arcade" style="text-decoration:none" onclick="if(S)saveGame()">⌂ Home</a>
+    <a class="btn sm homeBtn" href="index.html" title="Back to BooBot Arcade" style="text-decoration:none">⌂ Home</a>
     <div class="brand">Trade Winds <span>· the West Indies</span></div>
     <div class="stat" id="hDate"></div>
     <div class="stat" id="hGold"></div>
@@ -606,7 +609,70 @@ function migrate(s) {
   return s;
 }
 // Fill anything missing from older saves and drop anything the game no longer knows.
+// SECURITY: a save may come from an imported file, so treat every value as untrusted.
+// sanitizeSave() rebuilds the save keeping only known fields, each forced to the right
+// type and range, before anything is rendered. Strings that reach the page are also
+// escaped at render time (esc()), but this pass means a crafted file can't smuggle
+// markup into numeric fields, ids or class names in the first place.
+const num = (x, def = 0, lo = -1e12, hi = 1e12) => { x = +x; return Number.isFinite(x) ? clamp(x, lo, hi) : def; };
+const int = (x, def = 0, lo = -1e9, hi = 1e9) => Math.round(num(x, def, lo, hi));
+const isObj = x => !!x && typeof x === 'object' && !Array.isArray(x);
+const own = (table, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(table, k);
+const str = (x, max, def = '') => typeof x === 'string' ? x.slice(0, max) : def;
+const NEWS_TYPES = ['', 'war', 'peace', 'storm', 'market'];
+function sanitizeSave(s) {
+  const d = defaultState(), o = {};
+  if (!isObj(s)) throw new Error('not a save');
+  o.v = int(s.v, 1, 1, 1000); o.seed = int(s.seed, d.seed, 0, 2 ** 31); o.captain = str(s.captain, 24, 'Captain');
+  o.created = num(s.created, Date.now(), 0); o.savedAt = num(s.savedAt, 0, 0); o.start = /^\d{4}-\d{2}-\d{2}$/.test(String(s.start)) ? s.start : d.start;
+  o.day = int(s.day, 0, 0, 1e6); o.gold = num(s.gold, 0, 0, 1e12); o.infamy = num(s.infamy, 0, 0, 200);
+  o.flag = typeof s.flag === 'string' && own(FLAGS, s.flag) ? s.flag : 'neutral';
+  o.flags = (Array.isArray(s.flags) ? s.flags : []).filter(f => typeof f === 'string' && own(FLAGS, f)).slice(0, 10);
+  o.rep = {}; for (const n of NAVY_NATIONS) o.rep[n] = num(isObj(s.rep) ? s.rep[n] : 0, 0, -100, 100);
+  o.wars = {}; for (const k in d.wars) o.wars[k] = !!(isObj(s.wars) && s.wars[k]);
+  o.nextId = int(s.nextId, 1, 1, 1e9);
+  o.fleet = (Array.isArray(s.fleet) ? s.fleet : []).slice(0, MAX_FLEET).filter(x => isObj(x) && own(SHIP_TYPES, x.type)).map(x => ({ id: int(x.id, 0, 0, 1e9), name: str(x.name, 30, 'Unnamed'), type: x.type, spec: own(SPECS, x.spec) ? x.spec : 'balanced', guns: int(x.guns, 0, 0, 100), hull: num(x.hull, 1, 0, 10000) }));
+  const ids = new Set(); for (const sh of o.fleet) { if (!sh.id || ids.has(sh.id)) sh.id = o.nextId++; ids.add(sh.id); if (sh.id >= o.nextId) o.nextId = sh.id + 1; }
+  o.cargo = {}; o.cost = {};
+  if (isObj(s.cargo)) for (const g in s.cargo) if (own(GOOD, g)) { const q = int(s.cargo[g], 0, 0, 1e6); if (q > 0) o.cargo[g] = q; }
+  if (isObj(s.cost)) for (const g in s.cost) if (own(GOOD, g)) o.cost[g] = num(s.cost[g], 0, 0, 1e6);
+  const portId = x => typeof x === 'string' && own(PORT, x) ? x : null;
+  o.port = portId(s.port); o.anchoredOff = portId(s.anchoredOff); o.station = typeof s.station === 'string' && own(GROUND, s.station) ? s.station : null;
+  o.pos = Array.isArray(s.pos) ? [num(s.pos[0], -76.84, LON0, LON1), num(s.pos[1], 17.93, LAT0, LAT1)] : d.pos.slice();
+  o.heading = num(s.heading, 0, -10, 10);
+  o.voyage = null;
+  if (isObj(s.voyage) && typeof s.voyage.to === 'string' && (own(PORT, s.voyage.to) || own(GROUND, s.voyage.to)) && Array.isArray(s.voyage.path)) {
+    const path = s.voyage.path.slice(0, 3000).filter(p => Array.isArray(p) && Number.isFinite(+p[0]) && Number.isFinite(+p[1])).map(p => [num(p[0], 0, LON0 - 2, LON1 + 2), num(p[1], 0, LAT0 - 2, LAT1 + 2)]);
+    if (path.length >= 2) { const v = s.voyage; o.voyage = { to: v.to, from: portId(v.from), path, seg: int(v.seg, 0, 0, path.length - 1), segT: num(v.segT, 0, 0, 100), dayAcc: num(v.dayAcc, 0, 0, 1), days: int(v.days, 0, 0, 1e5), stall: num(v.stall, 0, 0, 5), boost: num(v.boost, 0, 0, 5), attack: !!v.attack, arrived: !!v.arrived }; }
+  }
+  o.markets = {};
+  if (isObj(s.markets)) for (const p in s.markets) if (own(PORT, p) && isObj(s.markets[p])) { o.markets[p] = {}; for (const g in s.markets[p]) if (own(GOOD, g) && isObj(s.markets[p][g])) o.markets[p][g] = { s: num(s.markets[p][g].s, 50, 0, 1e5), m: num(s.markets[p][g].m, 1, 0.05, 10) }; }
+  o.known = {};
+  if (isObj(s.known)) for (const p in s.known) { const e = s.known[p]; if (!own(PORT, p) || !isObj(e) || !isObj(e.p)) continue; const pr = {}; for (const g in e.p) if (own(GOOD, g) && Array.isArray(e.p[g])) pr[g] = [0, 1, 2].map(i => int(e.p[g][i], 0, 0, 1e6)); o.known[p] = { day: int(e.day, 0, 0, 1e6), p: pr }; }
+  // [field, default, min, max] — every hurricane number gets a safe value so a bad file can't break the chart
+  const hNum = [['lon', -60, -110, -40], ['lat', 15, 0, 40], ['plon', null, -110, -40], ['plat', null, 0, 40], ['hd', Math.PI, -7, 7], ['hdMin', 1.1, -7, 7], ['spd', 2.8, 0.5, 6], ['recurve', -75, -110, -40], ['r', 0.85, 0.3, 2], ['R', 2.2, 0.8, 4], ['pow', 1, 0.5, 1.5], ['age', 0, 0, 100], ['life', 16, 1, 40], ['pHit', -99, -99, 1e6], ['pGale', -99, -99, 1e6]];
+  o.hurricanes = (Array.isArray(s.hurricanes) ? s.hurricanes : []).slice(0, 4).filter(h => isObj(h) && Number.isFinite(+h.lon) && Number.isFinite(+h.lat)).map(h => {
+    const c = { id: int(h.id, 0, 0, 1e9), name: HNAMES.includes(h.name) ? h.name : HNAMES[0], known: !!h.known, seaWarned: !!h.seaWarned, rumored: !!h.rumored };
+    for (const [k, def, lo, hi] of hNum) c[k] = num(h[k], def === null ? (k === 'plon' ? c.lon : c.lat) : def, lo, hi);
+    c.hit = (Array.isArray(h.hit) ? h.hit : []).filter(portId); c.gale = (Array.isArray(h.gale) ? h.gale : []).filter(portId);
+    return c;
+  });
+  const entry = (n, max) => ({ d: int(n.d, 0, 0, 1e6), t: str(n.t, max), type: NEWS_TYPES.includes(n.type) ? n.type : '' });
+  o.news = (Array.isArray(s.news) ? s.news : []).filter(n => isObj(n) && typeof n.t === 'string').slice(0, 60).map(n => entry(n, 400));
+  o.log = (Array.isArray(s.log) ? s.log : []).filter(n => isObj(n) && typeof n.t === 'string').slice(0, 250).map(n => entry(n, 400));
+  o.rumors = d.rumors;
+  o.stats = {}; const st = isObj(s.stats) ? s.stats : {};
+  for (const k in d.stats) o.stats[k] = k === 'ports' ? (Array.isArray(st.ports) ? st.ports.filter(portId) : []) : num(st[k], 0, -1e12, 1e12);
+  o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false) };
+  o.stance = s.stance === 'hunting' ? 'hunting' : 'peaceful';
+  // v2 collections are re-validated in detail by normalizeSave below; pass through only plain objects/arrays
+  for (const k of ['warehouses', 'owners', 'holdings', 'sacked']) { o[k] = {}; if (isObj(s[k])) for (const p of Object.keys(s[k])) if (own(PORT, p)) o[k][p] = s[k][p]; }
+  o.commissions = {}; if (isObj(s.commissions)) for (const n of NAVY_NATIONS) if (isObj(s.commissions[n])) o.commissions[n] = s.commissions[n];
+  o.contracts = Array.isArray(s.contracts) ? s.contracts.slice(0, 10) : [];
+  return o;
+}
 function normalizeSave(s) {
+  s = sanitizeSave(s);
   const d = defaultState();
   for (const k in d) if (s[k] === undefined || s[k] === null && d[k] !== null) s[k] = d[k];
   for (const k of ['rep', 'stats', 'settings', 'wars']) for (const kk in d[k]) if (s[k][kk] === undefined) s[k][kk] = d[k][kk];
@@ -2365,24 +2431,48 @@ function afterLoad() {
   if (S.port) openPort('market');
   else if (S.voyage) toast('Voyage paused. Press Resume (or Space) to sail on.');
 }
-function exportSave(obj) {
+// Save files: plain JSON (never executed), wrapped with a SHA-256 fingerprint so a file that was
+// damaged or edited after export is flagged on import. The fingerprint detects accidents and
+// casual edits; the real protection against a crafted file is sanitizeSave(), which every
+// imported or stored save goes through before use.
+const SAVE_FORMAT = 'trade-winds-save', MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+async function sha256(text) {
+  if (!(window.crypto && crypto.subtle)) return null;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+}
+async function exportSave(obj) {
   const s = obj || S; if (!s) return;
-  const blob = new Blob([JSON.stringify(s, null, 1)], { type: 'application/json' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `trade-winds-${String(s.captain || 'captain').replace(/[^\w-]+/g, '_')}-day${s.day || 0}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  const body = JSON.stringify(s), file = { format: SAVE_FORMAT, exported: new Date().toISOString(), sha256: await sha256(body), save: s };
+  const blob = new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `trade-winds-${String(s.captain || 'captain').replace(/[^\w-]+/g, '_').slice(0, 24)}-day${int(s.day, 0, 0, 1e6)}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 let importSlot = 1;
 $('#importFile').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.size > MAX_IMPORT_BYTES) { toast('That file is far too big to be a Trade Winds save, so it was not opened.'); return; }
   const rd = new FileReader();
-  rd.onload = () => {
+  rd.onload = async () => {
     try {
-      const s = JSON.parse(rd.result); if (!s || typeof s !== 'object' || !Array.isArray(s.fleet)) throw new Error('not a save');
-      const fixed = normalizeSave(migrate(s)); lsSet(SLOT_KEY(importSlot), JSON.stringify(fixed)); toast(`Imported into slot ${importSlot}.`); showSaves(!S);
+      let s = JSON.parse(rd.result), note = '';
+      if (isObj(s) && s.format === SAVE_FORMAT) {
+        if (!isObj(s.save)) throw new Error('not a save');
+        const want = typeof s.sha256 === 'string' ? s.sha256 : null, got = want ? await sha256(JSON.stringify(s.save)) : null;
+        if (want && got && want !== got && !confirm('This save file has been changed since it was exported, or it is damaged.\n\nImport it anyway? (The game checks every value before using it.)')) return;
+        if (!want) note = ' (no fingerprint to check)';
+        s = s.save;
+      } else note = ' (an older save file without a fingerprint)';
+      if (!isObj(s) || !Array.isArray(s.fleet)) throw new Error('not a save');
+      const fixed = normalizeSave(migrate(s)); lsSet(SLOT_KEY(importSlot), JSON.stringify(fixed)); toast(`Imported into slot ${importSlot}${note}.`); showSaves(!S);
     } catch (err) { toast('That file is not a Trade Winds save.'); }
   };
   rd.readAsText(f);
 });
-function loadSlot(n) { const s = readSlot(n); if (!s) { toast('That slot is empty.'); return; } S = normalizeSave(migrate(s)); SLOT = n; lsSet(LAST_KEY, String(n)); afterLoad(); }
+function loadSlot(n) {
+  const s = readSlot(n); if (!s) { toast('That slot is empty.'); return; }
+  try { S = normalizeSave(migrate(s)); } catch (err) { S = null; toast('That save is damaged and could not be loaded.'); return; }
+  SLOT = n; lsSet(LAST_KEY, String(n)); afterLoad();
+}
 
 // ---------------------------------------------------------------- ACTIONS (all buttons route through here)
 const ACT = {
@@ -2484,6 +2574,7 @@ $('#mapHud').addEventListener('click', e => {
   renderHud();
 });
 $('#hFlag').addEventListener('click', showFlagPicker);
+document.querySelector('.homeBtn').addEventListener('click', () => { if (S) saveGame(); });
 $('#bLedger').addEventListener('click', () => { if (S && !blocked()) showLedger(); });
 $('#bLog').addEventListener('click', () => { if (S && !blocked()) showLog(); });
 $('#bHelp').addEventListener('click', () => { if (!blocked() || !S) showHelp(); });
