@@ -35,6 +35,7 @@
   .panel li span { position: absolute; left: 0; top: -1px; font-size: 16px; }
   .big { display: block; width: 100%; margin-top: 16px; border: 0; border-radius: 16px; padding: 15px; font-size: 18px; font-weight: 800;
     background: #f08a2c; color: #fff; font-family: inherit; box-shadow: 0 5px 0 #c96a16; }
+  .big:disabled { opacity: 0.75; }
   .big.alt { background: #fff; color: #c96a16; box-shadow: 0 4px 0 #f0c890; border: 2px solid #f0c890; font-size: 16px; padding: 12px; }
   .small { font-size: 12px !important; opacity: 0.8; }
   .stats { display: flex; justify-content: center; gap: 22px; margin-top: 12px; }
@@ -62,6 +63,7 @@
     <li><span>💩</span>Every chicken comes back out the other end. Don't step in it!</li>
   </ul>
   <button class="big" id="startBtn">Let's go!</button>
+  <button class="big alt" id="continueBtn" style="display:none"></button>
   <p class="small" id="startNote">iPhone will ask to use Motion &amp; Orientation.</p>
 </div></div>
 
@@ -664,16 +666,34 @@ function updateHud() {
 function showCard(html, onTap) {
   $('cardBody').innerHTML = html;
   $('card').classList.add('show');
-  $('cardBody').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { initAudio(); onTap(b.dataset.act); }));
+  $('cardBody').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { initAudio(); onTap(b.dataset.act, b); }));
 }
 function hideCard() { $('card').classList.remove('show'); }
+// ---- saved progress: one checkpoint, kept in this browser only
+function loadSave() {
+  try { const v = JSON.parse(localStorage.getItem('boochase.save')); return v && v.level >= 1 ? v : null; } catch (e) { return null; }
+}
+function writeSave() {
+  try { localStorage.setItem('boochase.save', JSON.stringify({ level, score })); return true; } catch (e) { return false; }
+}
 function readyCard() {
   state = 'ready';
-  const c = cfg(level);
+  const c = cfg(level), sv = loadSave();
+  const saved = sv && sv.level === level && sv.score === score;
+  const saveNote = sv && !saved ? `<p class="small">Your current save is at level ${sv.level}. Saving here replaces it.</p>` : '';
   showCard(`<h2>Level ${level}</h2>
     <p>${c.n} chickens in a ${c.S}×${c.S} yard${level > 1 ? ', and they\'re getting jumpy' : ''}.</p>
     <p class="small">Hold the phone the way you want to play, then tap Go. That position becomes "sit still".</p>
-    <button class="big" data-act="go">Go!</button>`, () => { calibrate(); hideCard(); state = 'play'; });
+    <button class="big" data-act="go">Go!</button>
+    <button class="big alt" data-act="save" ${saved ? 'disabled' : ''}>${saved ? '✓ Progress saved at level ' + level : '💾 Save progress here'}</button>
+    <div id="saveNote">${saveNote}</div>`, (a, btn) => {
+      if (a === 'save') {
+        if (writeSave()) { btn.textContent = '✓ Progress saved at level ' + level; btn.disabled = true; $('saveNote').innerHTML = ''; }
+        else btn.textContent = 'Couldn\'t save (private browsing?)';
+        return;
+      }
+      calibrate(); hideCard(); state = 'play';
+    });
 }
 function levelClear() {
   state = 'clear'; sfx.win();
@@ -686,19 +706,21 @@ function levelClear() {
 }
 function gameOver() {
   state = 'dead'; saveBest();
+  const sv = loadSave();
   showCard(`<h2>Oh no, Boo! 💩</h2>
     <p>Boo slipped in the poop and is now wearing it.</p>
     <div class="stats"><div>Score<b>${score}</b></div><div>Level<b>${level}</b></div><div>Best<b>${best}</b></div></div>
-    <button class="big" data-act="retry">Bath, then retry level ${level}</button>
-    <button class="big alt" data-act="over">Start over from level 1</button>`, a => {
-      if (a === 'over') { level = 1; score = 0; } else score = levelStartScore;
+    ${sv ? `<button class="big" data-act="load">Bath, then back to saved level ${sv.level}</button>` : '<p class="small">No saved progress yet. Tap 💾 before a level to save a checkpoint.</p>'}
+    <button class="big ${sv ? 'alt' : ''}" data-act="over">Start over from level 1</button>`, a => {
+      const v = a === 'load' && loadSave();
+      if (v) { level = v.level; score = v.score || 0; } else { level = 1; score = 0; }
       levelStartScore = score; setupLevel(level); readyCard();
     });
 }
 function saveBest() { if (score > best) { best = score; try { localStorage.setItem('boochase.best', best); } catch (e) {} } }
 
 $('recenterBtn').addEventListener('click', () => { calibrate(); });
-$('startBtn').addEventListener('click', () => {
+function beginGame(fromSave) {
   initAudio();
   const needs = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
   if (needs) {
@@ -708,9 +730,13 @@ $('startBtn').addEventListener('click', () => {
     }).catch(err => { $('startNote').innerHTML = '<span id="err">Tilt unavailable: ' + String(err && err.message || err).replace(/</g, '&lt;') + '</span>'; });
   } else addEventListener('deviceorientation', onOrient);
   $('titleCard').classList.remove('show');
-  level = 1; score = 0; levelStartScore = 0;
+  const v = fromSave && loadSave();
+  level = v ? v.level : 1; score = v ? v.score || 0 : 0; levelStartScore = score;
   setupLevel(level); readyCard();
-});
+}
+$('startBtn').addEventListener('click', () => beginGame(false));
+$('continueBtn').addEventListener('click', () => beginGame(true));
+{ const v = loadSave(); if (v) { $('continueBtn').style.display = ''; $('continueBtn').textContent = `Continue from saved level ${v.level}`; } }
 addEventListener('resize', () => { layout(false); if (haveTilt) calibrate(); });
 if (screen.orientation) screen.orientation.addEventListener('change', () => setTimeout(() => { layout(false); calibrate(); }, 200));
 
