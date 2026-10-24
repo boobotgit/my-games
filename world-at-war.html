@@ -365,7 +365,8 @@
     <ul>
       <li><b>Armies</b> = territories ÷ 3 (minimum 3) + continent bonuses. Place on any land you hold.</li>
       <li><b>Fleets</b> = coastal territories ÷ 3 (minimum 3) + seas ÷ 3, rounded down — the same rule as armies. Place them in a sea you
-      already hold, <b>or in any empty unclaimed sea touching your coastline</b> — which claims it outright.</li>
+      already hold, <b>or in any empty unclaimed sea touching your coastline</b> — which claims it outright.
+      If every such sea is in rival hands, your new fleets wait in port and join the next turn's muster.</li>
       <li>Holding an entire continent or naval theatre pays a bonus every turn.</li>
     </ul>
 
@@ -997,8 +998,16 @@ function startTurn(){
   G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
   G.pendA = armyIncome(p.i);
   if (p.ai) G.pendA = Math.ceil(G.pendA * DIFF().income);
-  G.pendF = fleetIncome(p.i);
-  if (!fleetDropZones(p.i).length) G.pendF = 0;
+  // Fleets that found no open water last time are still waiting in port.
+  G.pendF = Math.min(300, fleetIncome(p.i) + (p.reserve || 0));
+  p.reserve = 0;
+  if (G.pendF && !fleetDropZones(p.i).length){
+    // Every sea it could launch into is held by a rival: rather than lose
+    // them (or leave the muster unable to finish), the ships stay in port and
+    // join next turn's muster.
+    p.reserve = G.pendF; G.pendF = 0;
+    log(`<b>${p.name}</b> has no open sea — <span class="g">${p.reserve}</span> ${p.reserve===1?'fleet waits':'fleets wait'} in port.`);
+  }
 
   const count = (n,one,many) => `<span class="g">${n}</span> ${n===1?one:many}`;
   log(`<b>${p.name}</b> musters ${count(G.pendA,'army','armies')}` +
@@ -2049,7 +2058,7 @@ function snapshot(){
     trades: G.trades, lastAggressor: G.lastAggressor,
     players: G.players.map(p => ({
       fac: p.fac, ai: p.ai ? 1 : 0, alive: p.alive ? 1 : 0,
-      conquered: p.conquered ? 1 : 0,
+      conquered: p.conquered ? 1 : 0, reserve: p.reserve || 0,
       pers: p.pers ? p.pers.id : null,
       cards: p.cards.map(c => [c.r === null ? -1 : LAND_IDS.indexOf(c.r), CARD_SYMBOLS.indexOf(c.s)])
     })),
@@ -2112,11 +2121,12 @@ function validate(d){
     if (!Array.isArray(p.cards) || p.cards.length > 20) return null;
     const pers = p.pers === null ? null : PERSONALITIES.find(x => x.id === p.pers);
     if (p.pers !== null && !pers) return null;
+    if (p.reserve !== undefined && !isInt(p.reserve, 0, 300)) return null;
     const cards = [];
     for (const c of p.cards){ const card = parseCard(c, n); if (!card) return null; cards.push(card); }
     players.push({
       i, fac:p.fac, name:FACTIONS[p.fac].name, color:FACTIONS[p.fac].color,   // text from code, never the save
-      ai: !!p.ai, alive: !!p.alive, conquered: !!p.conquered, pers, cards
+      ai: !!p.ai, alive: !!p.alive, conquered: !!p.conquered, pers, cards, reserve: p.reserve || 0
     });
   }
   if (new Set(players.map(p=>p.fac)).size !== n) return null;      // no duplicate empires
