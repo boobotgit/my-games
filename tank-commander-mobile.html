@@ -56,6 +56,7 @@
 
   /* ── Touch controls (only shown during play) ── */
   .ctl { display: none; position: fixed; z-index: 25; -webkit-tap-highlight-color: transparent; touch-action: none; }
+  #screen, .topbtn, .mbtn, .cbtn, #tapStart, #rotate { touch-action: none; }
   body.playing .ctl { display: block; }
 
   #btnFire {
@@ -598,6 +599,41 @@
     link.addEventListener('click', e => { e.preventDefault(); goHome(link); });   // mouse / keyboard / touch-fix path
   }
 
+  // ── No zooming ── Safari on iPhone ignores "user-scalable=no" (an accessibility choice by
+  // Apple), so fast taps — like hammering FIRE — trigger double-tap-to-zoom, and once zoomed the
+  // touches no longer line up with the buttons. Cancel the zoom gestures ourselves:
+  //   • a 2nd finger-lift within 350 ms is "eaten" (that's what Safari reads as a double-tap);
+  //     FIRE / turret / CENTER work on finger-DOWN, so they still respond to every tap
+  //   • pinch gestures (Safari's gesturestart/change) are cancelled
+  // …and if a zoom still slips through, snap back to normal size and release all controls.
+  let lastTouchEndAt = 0;
+  document.addEventListener('touchend', e => {
+    const now = performance.now();
+    const typing = e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT');
+    if (!typing && now - lastTouchEndAt < 350 && e.cancelable) e.preventDefault();
+    lastTouchEndAt = now;
+  }, { passive: false });
+  for (const g of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(g, e => e.preventDefault(), { passive: false });
+  }
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  const viewportMeta = document.querySelector('meta[name="viewport"]');
+  const VIEWPORT = viewportMeta.getAttribute('content');
+  function resetZoom() {
+    releaseAllControls();
+    // Re-applying the viewport setting makes Safari jump back to normal size
+    viewportMeta.setAttribute('content', VIEWPORT.replace('maximum-scale=1.0', 'maximum-scale=1.01'));
+    setTimeout(() => { viewportMeta.setAttribute('content', VIEWPORT); window.scrollTo(0, 0); }, 60);
+  }
+  const zoomVV = window.visualViewport;
+  if (zoomVV) {
+    let zoomTimer = 0;
+    zoomVV.addEventListener('resize', () => {
+      clearTimeout(zoomTimer);
+      zoomTimer = setTimeout(() => { if (Math.abs(zoomVV.scale - 1) > 0.01 && !textFocused()) resetZoom(); }, 250);
+    });
+  }
+
   // Hidden diagnostics readout: tap the STAGE box at the top 3 times within 1.5 s
   let diagOn = false, diagTaps = [];
   document.addEventListener('touchstart', e => {
@@ -619,6 +655,7 @@
   function vvOffset() { return vvp ? [vvp.offsetLeft || 0, vvp.offsetTop || 0] : [0, 0]; }
   const textFocused = () => { const a = document.activeElement; return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); };
   function offsetActive() {
+    if (vvp && Math.abs(vvp.scale - 1) > 0.01) return false;   // zoomed: handled by resetZoom() instead
     if (textFocused() || !ui.panel.hidden) return false;     // keyboard / pairing screen: leave touches alone
     const [ox, oy] = vvOffset(); return Math.abs(ox) >= 1 || Math.abs(oy) >= 1;
   }
@@ -1999,7 +2036,7 @@
         'DIAG  role ' + (net.role || 'solo') + '  state ' + state + '  link ' + (net.open ? 'up' : '-'),
         'tilt ' + (tp === null ? 'off' : 'pitch ' + tp.toFixed(1) + '° bank ' + tb.toFixed(1) + '°') + '  treads ' + player.tL.toFixed(2) + '/' + player.tR.toFixed(2),
         'fire ' + (fireHeld ? 'HELD' : 'up') + '  turret ' + turretIn.toFixed(2) + '  keys ' + held,
-        'screen offset ' + ox.toFixed(0) + ',' + oy.toFixed(0) + '  touch-fix ' + (offsetActive() ? 'ON' : 'off') + '  fingers ' + routed.size,
+        'screen offset ' + ox.toFixed(0) + ',' + oy.toFixed(0) + '  zoom ' + (vvp ? vvp.scale.toFixed(2) : '?') + '  touch-fix ' + (offsetActive() ? 'ON' : 'off') + '  fingers ' + routed.size,
       ];
       ctx.font = 'bold ' + Math.round(8 * S) + 'px "Courier New", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 12, by = H * 0.42;
