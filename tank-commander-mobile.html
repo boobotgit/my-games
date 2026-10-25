@@ -36,21 +36,22 @@
 
   .topbtn {
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
     z-index: 30;
-    background: rgba(18,20,12,0.8);
+    background: rgba(18,20,12,0.85);
     color: #d8d0a8;
     border: 1px solid #5a5a3a;
-    border-radius: 6px;
-    padding: 5px 10px;
+    border-radius: 8px;
+    min-height: 40px; padding: 10px 14px; box-sizing: border-box; line-height: 18px;
     font-family: 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 13px; font-weight: bold;
     text-decoration: none;
     letter-spacing: 0.05em;
     -webkit-tap-highlight-color: transparent;
   }
-  #home { right: calc(env(safe-area-inset-right, 0px) + 8px); }
-  #btnZero { right: calc(env(safe-area-inset-right, 0px) + 84px); display: none; cursor: pointer; }
+  #home { right: calc(env(safe-area-inset-right, 0px) + 10px); }
+  #home.down, .rotHome.down { background: rgba(110,90,30,0.95); color: #fff; }
+  #btnZero { right: calc(env(safe-area-inset-right, 0px) + 116px); display: none; cursor: pointer; }
   body.playing #btnZero { display: block; }
 
   /* ── Touch controls (only shown during play) ── */
@@ -457,12 +458,26 @@
 
   // ── Input: keyboard (desktop / preview fallback) ─────────────────────────
   const keys = {};
+  const typingInBox = e => e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT');
   window.addEventListener('keydown', e => {
+    if (typingInBox(e)) return;            // keys typed into a code box are not game controls
     keys[e.code] = true;
     if (e.code === 'Space') e.preventDefault();
     if ((e.code === 'Enter' || e.code === 'Space') && state !== 'play' && state !== 'clear') { tapAdvance(); keys['Space'] = false; }
   });
   window.addEventListener('keyup', e => { keys[e.code] = false; });
+  // Let go of EVERYTHING (keys, FIRE, turret bar) — used whenever a "finger up" could have been missed
+  function releaseAllControls() {
+    for (const k in keys) keys[k] = false;
+    fireHeld = false; fireQueue = 0; turretIn = 0;
+    if (typeof btnFire !== 'undefined') {
+      btnFire.classList.remove('down'); btnCenter.classList.remove('down');
+      barPointer = null; knob.style.transform = '';
+      routed.clear();
+    }
+  }
+  window.addEventListener('blur', () => releaseAllControls());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllControls(); });
 
   // ── Touch controls ───────────────────────────────────────────────────────
   let fireHeld = false, fireQueue = 0, turretIn = 0;
@@ -516,6 +531,7 @@
   const fireUp = () => { fireHeld = false; btnFire.classList.remove('down'); };
   btnFire.addEventListener('pointerup', fireUp);
   btnFire.addEventListener('pointercancel', fireUp);
+  btnFire.addEventListener('lostpointercapture', fireUp);      // finger-lift went somewhere else
 
   const btnCenter = document.getElementById('btnCenter');
   btnCenter.addEventListener('pointerdown', e => {
@@ -549,10 +565,49 @@
   };
   bar.addEventListener('pointerup', barUp);
   bar.addEventListener('pointercancel', barUp);
+  bar.addEventListener('lostpointercapture', barUp);
+  // No finger on the screen at all? Then nothing can be held — release whatever we think is.
+  const allFingersUp = e => { if (e.touches.length === 0 && (fireHeld || turretIn || routed.size)) releaseAllControls(); };
+  document.addEventListener('touchend', allFingersUp, { passive: true });
+  document.addEventListener('touchcancel', allFingersUp, { passive: true });
 
   document.getElementById('btnZero').addEventListener('click', () => {
     if (tilt.active) { needBaseline = true; zeroFlash = 1.2; }
   });
+
+  // ── Home buttons: go the moment the finger lifts (don't wait for iOS to turn the tap into a
+  // "click"), and show "Leaving…" so it's obvious the tap registered.
+  function goHome(link) {
+    if (goHome.busy) return; goHome.busy = true;
+    link.classList.add('down'); link.textContent = '⌂ Leaving…';
+    netSend({ t: 'bye' });                 // co-op partner hears right away that we left
+    releaseAllControls();
+    location.href = 'index.html';          // fixed address in this arcade — never taken from outside data
+  }
+  for (const link of [document.getElementById('home'), document.querySelector('.rotHome')]) {
+    let start = null;
+    link.addEventListener('touchstart', e => { start = e.changedTouches[0]; link.classList.add('down'); }, { passive: true });
+    link.addEventListener('touchcancel', () => { start = null; link.classList.remove('down'); }, { passive: true });
+    link.addEventListener('touchend', e => {
+      const t = e.changedTouches[0];
+      if (!start || Math.hypot(t.clientX - start.clientX, t.clientY - start.clientY) > 25) { link.classList.remove('down'); return; }
+      start = null;
+      if (e.cancelable) e.preventDefault();   // we navigate ourselves; skip iOS's delayed click
+      goHome(link);
+    }, { passive: false });
+    link.addEventListener('click', e => { e.preventDefault(); goHome(link); });   // mouse / keyboard / touch-fix path
+  }
+
+  // Hidden diagnostics readout: tap the STAGE box at the top 3 times within 1.5 s
+  let diagOn = false, diagTaps = [];
+  document.addEventListener('touchstart', e => {
+    const t = e.changedTouches[0]; if (!t || !document.body.classList.contains('playing')) return;
+    const r = canvas.getBoundingClientRect(), x = (t.clientX - r.left) / r.width, y = (t.clientY - r.top) / r.height;
+    if (Math.abs(x - 0.5) > 0.12 || y > 0.13) return;
+    const now = performance.now();
+    diagTaps = diagTaps.filter(v => now - v < 1500); diagTaps.push(now);
+    if (diagTaps.length >= 3) { diagOn = !diagOn; diagTaps = []; }
+  }, { passive: true, capture: true });
 
   // ── Rotation touch fix ── After landscape→portrait (or back) iOS can leave
   // visualViewport.offsetTop at the status-bar height (~59pt): the page is drawn that much
@@ -562,7 +617,24 @@
   // With no offset it does nothing and the normal pointer/click handlers above run.
   const vvp = window.visualViewport;
   function vvOffset() { return vvp ? [vvp.offsetLeft || 0, vvp.offsetTop || 0] : [0, 0]; }
-  function offsetActive() { const [ox, oy] = vvOffset(); return Math.abs(ox) >= 1 || Math.abs(oy) >= 1; }
+  const textFocused = () => { const a = document.activeElement; return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); };
+  function offsetActive() {
+    if (textFocused() || !ui.panel.hidden) return false;     // keyboard / pairing screen: leave touches alone
+    const [ox, oy] = vvOffset(); return Math.abs(ox) >= 1 || Math.abs(oy) >= 1;
+  }
+  // Undo any scroll the keyboard left behind. A genuine scroll clears; only the rotation
+  // glitch survives this, and that is the case the touch layer is for.
+  function unscroll() {
+    const a = document.activeElement;
+    if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) a.blur();
+    window.scrollTo(0, 0);
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+  }
+  if (vvp) {
+    const settle = () => { if (!textFocused() && ui.panel.hidden && offsetActive()) unscroll(); };
+    vvp.addEventListener('resize', () => setTimeout(settle, 300));
+    vvp.addEventListener('scroll', () => setTimeout(settle, 300));
+  }
   const routed = new Map();   // touch identifier -> what that finger is doing
   function roleAt(x, y) {
     const el = document.elementFromPoint(x, y);
@@ -1835,7 +1907,7 @@
     }
 
     // top right, under the buttons: score, lives, armour
-    const rx = W - inset.r - 10, ry = inset.t + 34 * S;
+    const rx = W - inset.r - 10, ry = inset.t + 46 * S;
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(rx - 130 * S, ry - 3, 134 * S, 44 * S);
     ctx.fillStyle = '#f0e0a0'; ctx.font = f(11);
@@ -1918,10 +1990,26 @@
       }
       ctx.globalAlpha = 1;
     }
+    if (diagOn) {
+      const tp = tilt.active && baseline.set ? pitchFromNeutral() * PITCH_DIR * side : null;
+      const tb = tilt.active && baseline.set ? bankFromNeutral() * BANK_DIR * side : null;
+      const held = Object.keys(keys).filter(k => keys[k]).join(',') || '-';
+      const [ox, oy] = vvOffset();
+      const lines = [
+        'DIAG  role ' + (net.role || 'solo') + '  state ' + state + '  link ' + (net.open ? 'up' : '-'),
+        'tilt ' + (tp === null ? 'off' : 'pitch ' + tp.toFixed(1) + '° bank ' + tb.toFixed(1) + '°') + '  treads ' + player.tL.toFixed(2) + '/' + player.tR.toFixed(2),
+        'fire ' + (fireHeld ? 'HELD' : 'up') + '  turret ' + turretIn.toFixed(2) + '  keys ' + held,
+        'screen offset ' + ox.toFixed(0) + ',' + oy.toFixed(0) + '  touch-fix ' + (offsetActive() ? 'ON' : 'off') + '  fingers ' + routed.size,
+      ];
+      ctx.font = 'bold ' + Math.round(8 * S) + 'px "Courier New", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 12, by = H * 0.42;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(W / 2 - bw / 2, by, bw, lines.length * 11 * S + 8);
+      ctx.fillStyle = '#9ef0f0'; lines.forEach((l, i) => ctx.fillText(l, W / 2 - bw / 2 + 6, by + 4 + i * 11 * S));
+    }
     if (zeroFlash > 0) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - 90 * S, H * 0.34, 180 * S, 22 * S);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - 130 * S, H * 0.34, 260 * S, 22 * S);
       ctx.fillStyle = '#9ef08a'; ctx.font = f(10); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('Tilt re-zeroed', W / 2, H * 0.34 + 11 * S);
+      ctx.fillText('Tilt set — this angle is "stopped"', W / 2, H * 0.34 + 11 * S);
     }
   }
 
@@ -2038,7 +2126,7 @@
     ui.go.textContent = step === 'join-paste' ? 'Make reply code' : 'Connect';
     ui.go.disabled = false;
   }
-  function coopHide() { ui.panel.hidden = true; }
+  function coopHide() { ui.panel.hidden = true; unscroll(); releaseAllControls(); }
 
   // ── invite / reply codes ──
   // "TC1." + base64url(deflate(JSON {v:1, k:'o'|'a', s:<connection description>}))
@@ -2242,8 +2330,10 @@
     if (!net.okPeer) { coopShow('wait', 'Waiting for your partner to confirm the symbols…'); return; }
     startCoopGame();
   }
+  function calibrateNow() { if (tilt.active) { needBaseline = true; zeroFlash = 1.6; } }
   function startCoopGame() {
     coopHide();
+    calibrateNow();          // the host may have waited a while for the partner; re-zero now
     lives = 3; lives2 = 3; score = 0; player.star = 0;
     ally = makeAlly();
     net.playing = true;
@@ -2371,6 +2461,7 @@
     if (!net.okSelf) return;
     if (!snapshotValid(m)) return strike();
     if (!ui.panel.hidden) coopHide();
+    if (!net.playing || (m.st === 'play' && state !== 'play' && state !== 'clear')) calibrateNow();   // battle (re)starts: re-zero tilt
     net.playing = true;
     const prevState = state;
     if (m.lv !== level || prevState === 'title' || prevState === 'over' || prevState === 'win') {
@@ -2496,7 +2587,9 @@
     netTick(dt);
     updateAudio(dt);
     render();
-    document.body.classList.toggle('playing', state === 'play' || state === 'clear');
+    const playingNow = state === 'play' || state === 'clear';
+    if (!playingNow && document.body.classList.contains('playing')) releaseAllControls();
+    document.body.classList.toggle('playing', playingNow);
     const onTitle = state === 'title' && ui.panel.hidden;
     if (onTitle && !document.body.classList.contains('title')) {
       const st = savedStage();
