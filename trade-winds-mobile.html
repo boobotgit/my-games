@@ -613,7 +613,7 @@ function defaultState() {
   const wars = {}; for (let i = 0; i < NAVY_NATIONS.length; i++) for (let j = i + 1; j < NAVY_NATIONS.length; j++) wars[warKey(NAVY_NATIONS[i], NAVY_NATIONS[j])] = false;
   return {
     v: SAVE_VERSION, seed: (Math.random() * 1e9) | 0, captain: 'Captain', created: Date.now(), savedAt: 0, start: '1680-03-01',
-    infamy: 0, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
+    infamy: 0, won: 0, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
     day: 0, gold: 1200, flag: 'neutral', flags: ['neutral'],
     rep: { eng: 0, fra: 0, spa: 0, ned: 0 }, wars,
     fleet: [], nextId: 1, cargo: {}, cost: {},
@@ -637,7 +637,11 @@ function statusText() {
   const c = Object.keys(S.commissions); if (c.length) return `Privateer (${c.map(n => NATIONS[n].adj).join(', ')})`;
   return 'Merchant';
 }
-function canAssault(pid) { const p = PORT[pid], o = nat(p); if (p.free || !NAVY_NATIONS.includes(o)) return false; return isPirate() || legalAgainst(o); }
+// Who mans the fort: pirate havens are held by the Brethren, St. Thomas by the Danes.
+function defenderOf(p) { const o = nat(p); return p.haven && o === p.n ? 'pir' : o; }
+// Any town but your own can be attacked with an armed fleet. Whether it is lawful war or piracy
+// is decided by legalAgainst(): pirate havens are always fair game, the neutral Danes never are.
+function canAssault(pid) { const p = PORT[pid]; return defenderOf(p) !== 'player' && totalGuns() > 0; }
 function gainInfamy(n, why) {
   const was = isPirate(); S.infamy = clamp(S.infamy + n, 0, 200);
   if (!was && isPirate()) {
@@ -680,7 +684,8 @@ function fleetUpkeep() { return S.fleet.reduce((a, s) => a + shipStats(s).upkeep
 function fleetSize() { return S.fleet.reduce((a, s) => a + shipStats(s).hold0 + s.guns * 4, 0); }
 function shipValue(sh) { const st = shipStats(sh); return Math.round(st.T.price * 0.55 * (0.3 + 0.7 * sh.hull / st.maxHull) + sh.guns * GUN_SELL); }
 function cargoValue() { let v = 0; for (const g in S.cargo) v += S.cargo[g] * (GOOD[g] ? GOOD[g].base : 0); return v; }
-function netWorth() { return S.gold + cargoValue() + S.fleet.reduce((a, s) => a + shipValue(s), 0); }
+function dockedShips() { const out = []; for (const pid in S.holdings) for (const sh of S.holdings[pid].ships || []) out.push(sh); return out; }
+function netWorth() { return S.gold + cargoValue() + S.fleet.reduce((a, s) => a + shipValue(s), 0) + dockedShips().reduce((a, s) => a + shipValue(s), 0); }
 function rankOf(w) { let r = RANKS[0][1]; for (const [t, n] of RANKS) if (w >= t) r = n; return r; }
 function newShip(type, name) { const sh = { id: S.nextId++, name, type, spec: 'balanced', guns: 0, hull: 0 }; sh.hull = shipStats(sh).maxHull; return sh; }
 function addCargo(g, q) { if (q <= 0) return; S.cargo[g] = (S.cargo[g] || 0) + q; }
@@ -742,8 +747,8 @@ function sanitizeSave(s) {
   o.rep = {}; for (const n of NAVY_NATIONS) o.rep[n] = num(isObj(s.rep) ? s.rep[n] : 0, 0, -100, 100);
   o.wars = {}; for (const k in d.wars) o.wars[k] = !!(isObj(s.wars) && s.wars[k]);
   o.nextId = int(s.nextId, 1, 1, 1e9);
-  o.fleet = (Array.isArray(s.fleet) ? s.fleet : []).slice(0, MAX_FLEET).filter(x => isObj(x) && own(SHIP_TYPES, x.type)).map(x => ({ id: int(x.id, 0, 0, 1e9), name: str(x.name, 30, 'Unnamed'), type: x.type, spec: own(SPECS, x.spec) ? x.spec : 'balanced', guns: int(x.guns, 0, 0, 100), hull: num(x.hull, 1, 0, 10000) }));
-  const ids = new Set(); for (const sh of o.fleet) { if (!sh.id || ids.has(sh.id)) sh.id = o.nextId++; ids.add(sh.id); if (sh.id >= o.nextId) o.nextId = sh.id + 1; }
+  const cleanShips = (arr, max) => (Array.isArray(arr) ? arr : []).slice(0, max).filter(x => isObj(x) && own(SHIP_TYPES, x.type)).map(x => ({ id: int(x.id, 0, 0, 1e9), name: str(x.name, 30, 'Unnamed'), type: x.type, spec: own(SPECS, x.spec) ? x.spec : 'balanced', guns: int(x.guns, 0, 0, 100), hull: num(x.hull, 1, 0, 10000) }));
+  o.fleet = cleanShips(s.fleet, MAX_FLEET);
   o.cargo = {}; o.cost = {};
   if (isObj(s.cargo)) for (const g in s.cargo) if (own(GOOD, g)) { const q = int(s.cargo[g], 0, 0, 1e6); if (q > 0) o.cargo[g] = q; }
   if (isObj(s.cost)) for (const g in s.cost) if (own(GOOD, g)) o.cost[g] = num(s.cost[g], 0, 0, 1e6);
@@ -776,8 +781,13 @@ function sanitizeSave(s) {
   for (const k in d.stats) o.stats[k] = k === 'ports' ? (Array.isArray(st.ports) ? st.ports.filter(portId) : []) : num(st[k], 0, -1e12, 1e12);
   o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false) };
   o.stance = s.stance === 'hunting' ? 'hunting' : 'peaceful';
+  o.won = int(s.won, 0, 0, 1e6);
   // v2 collections are re-validated in detail by normalizeSave below; pass through only plain objects/arrays
   for (const k of ['warehouses', 'owners', 'holdings', 'sacked']) { o[k] = {}; if (isObj(s[k])) for (const p of Object.keys(s[k])) if (own(PORT, p)) o[k][p] = s[k][p]; }
+  // ships docked in your towns get the same checks, and every ship id must be unique
+  const ids = new Set(); const fixIds = list => { for (const sh of list) { if (!sh.id || ids.has(sh.id)) sh.id = o.nextId++; ids.add(sh.id); if (sh.id >= o.nextId) o.nextId = sh.id + 1; } };
+  fixIds(o.fleet);
+  for (const p of Object.keys(o.holdings)) if (isObj(o.holdings[p])) { const h = { ...o.holdings[p] }; h.ships = cleanShips(h.ships, 9); fixIds(h.ships); o.holdings[p] = h; }
   o.commissions = {}; if (isObj(s.commissions)) for (const n of NAVY_NATIONS) if (isObj(s.commissions[n])) o.commissions[n] = s.commissions[n];
   o.contracts = Array.isArray(s.contracts) ? s.contracts.slice(0, 10) : [];
   return o;
@@ -787,7 +797,7 @@ function normalizeSave(s) {
   const d = defaultState();
   for (const k in d) if (s[k] === undefined || s[k] === null && d[k] !== null) s[k] = d[k];
   for (const k of ['rep', 'stats', 'settings', 'wars']) for (const kk in d[k]) if (s[k][kk] === undefined) s[k][kk] = d[k][kk];
-  s.fleet = (Array.isArray(s.fleet) ? s.fleet : []).filter(sh => sh && SHIP_TYPES[sh.type]).map(sh => {
+  const fixShip = sh => {
     if (!SPECS[sh.spec]) sh.spec = 'balanced';
     if (!sh.id) sh.id = s.nextId++;
     sh.name = String(sh.name || 'Unnamed').slice(0, 30);
@@ -795,7 +805,8 @@ function normalizeSave(s) {
     sh.guns = clamp(Math.round(sh.guns || 0), 0, Math.floor(T.guns * P.guns));
     sh.hull = clamp(Math.round(sh.hull || st.maxHull), 1, Math.round(T.hull * P.hull));
     return sh;
-  });
+  };
+  s.fleet = (Array.isArray(s.fleet) ? s.fleet : []).filter(sh => sh && SHIP_TYPES[sh.type]).map(fixShip);
   if (!s.fleet.length) s.fleet.push({ id: s.nextId++, name: 'Second Chance', type: 'shallop', spec: 'balanced', guns: 0, hull: SHIP_TYPES.shallop.hull });
   for (const g of Object.keys(s.cargo)) if (!GOOD[g] || !(s.cargo[g] > 0)) delete s.cargo[g]; else s.cargo[g] = Math.floor(s.cargo[g]);
   if (!Array.isArray(s.flags)) s.flags = ['neutral'];
@@ -822,10 +833,10 @@ function normalizeSave(s) {
   if (!obj(s.owners)) s.owners = {};
   for (const k of Object.keys(s.owners)) if (!PORT[k] || !(NAVY_NATIONS.includes(s.owners[k]) || s.owners[k] === 'player')) delete s.owners[k];
   if (!obj(s.holdings)) s.holdings = {};
-  for (const k of Object.keys(s.holdings)) { const h = s.holdings[k]; if (!PORT[k] || s.owners[k] !== 'player' || !obj(h)) { delete s.holdings[k]; continue; } s.holdings[k] = { day: +h.day || 0, fort: clamp(+h.fort || 1, 1, 3), prev: NAVY_NATIONS.includes(h.prev) ? h.prev : PORT[k].n }; }
-  for (const k of Object.keys(s.owners)) if (s.owners[k] === 'player' && !s.holdings[k]) s.holdings[k] = { day: 0, fort: 1, prev: PORT[k].n };
+  for (const k of Object.keys(s.holdings)) { const h = s.holdings[k]; if (!PORT[k] || s.owners[k] !== 'player' || !obj(h)) { delete s.holdings[k]; continue; } s.holdings[k] = { day: +h.day || 0, fort: clamp(+h.fort || 1, 1, 3), prev: [...NAVY_NATIONS, 'pir', 'den'].includes(h.prev) ? h.prev : PORT[k].n, ships: (Array.isArray(h.ships) ? h.ships : []).filter(sh => sh && SHIP_TYPES[sh.type]).map(fixShip) }; }
+  for (const k of Object.keys(s.owners)) if (s.owners[k] === 'player' && !s.holdings[k]) s.holdings[k] = { day: 0, fort: 1, prev: PORT[k].n, ships: [] };
   if (!obj(s.warehouses)) s.warehouses = {};
-  for (const k of Object.keys(s.warehouses)) { const w = s.warehouses[k]; if (!PORT[k] || !obj(w)) { delete s.warehouses[k]; continue; } const store = {}; if (obj(w.store)) for (const g of Object.keys(w.store)) if (GOOD[g] && w.store[g] > 0) store[g] = Math.floor(w.store[g]); s.warehouses[k] = { lvl: clamp(Math.round(+w.lvl || 1), 1, 3), store, acc: +w.acc || 0 }; }
+  for (const k of Object.keys(s.warehouses)) { const w = s.warehouses[k]; if (!PORT[k] || !obj(w)) { delete s.warehouses[k]; continue; } const store = {}; if (obj(w.store)) for (const g of Object.keys(w.store)) if (GOOD[g] && w.store[g] > 0) store[g] = Math.floor(w.store[g]); s.warehouses[k] = { lvl: clamp(Math.round(+w.lvl || 1), 1, 3), store, acc: +w.acc || 0, good: typeof w.good === 'string' && Object.prototype.hasOwnProperty.call(GOOD, w.good) ? w.good : null }; }
   if (!obj(s.sacked)) s.sacked = {};
   for (const k of Object.keys(s.sacked)) if (!PORT[k]) delete s.sacked[k]; else s.sacked[k] = +s.sacked[k] || 0;
   if (!GROUND[s.station]) s.station = null;
@@ -913,31 +924,48 @@ function checkFlagRevocation() {
 }
 // ---------------------------------------------------------------- FACTORIES, TOWNS, LAW (daily)
 function storeUsed(w) { let n = 0; for (const g in w.store) n += w.store[g]; return n; }
+// What a factory can produce: the goods that are relatively cheap at this port (its own produce,
+// then the cheapest other goods there), so e.g. the Dutch ports can make tools and wine.
+function factoryOptions(pid) {
+  const p = PORT[pid], opts = [...p.prod];
+  const ranked = GOODS.map(g => g.id).filter(g => g !== 'silver' && !opts.includes(g)).sort((a, b) => MKT[pid][a].f - MKT[pid][b].f);
+  for (const g of ranked) { if (opts.length >= 3) break; if (MKT[pid][g].f < 1.0 || opts.length < 2) opts.push(g); }
+  return opts;
+}
+function factoryGood(pid) { const w = S.warehouses[pid], o = factoryOptions(pid); return w && o.includes(w.good) ? w.good : o[0]; }
 function updateFactories() {
   for (const pid of Object.keys(S.warehouses)) {
     const w = S.warehouses[pid], p = PORT[pid], up = FACTORY.upkeep[w.lvl];
     if (S.gold < up) continue; // the factor goes unpaid and production stops
     S.gold -= up;
-    const g = p.prod[0]; if (!g) continue;
+    const g = factoryGood(pid); if (!g) continue;
     w.acc += FACTORY.output[w.lvl] / GOOD[g].base;
     const n = Math.floor(w.acc); if (n <= 0) continue; w.acc -= n;
     const add = Math.min(n, FACTORY.store[w.lvl] - storeUsed(w)); if (add > 0) w.store[g] = (w.store[g] || 0) + add;
   }
 }
 function townIncome(pid) { const p = PORT[pid], h = S.holdings[pid]; return p.size * 45 - p.size * 10 * h.fort; }
-function holdChance(pid) { return 0.3 + 0.2 * S.holdings[pid].fort; }
+function dockGuns(pid) { return (S.holdings[pid].ships || []).reduce((a, s) => a + s.guns, 0); }
+function dockCap(pid) { return PORT[pid].size * 2 + 1; }
+function holdChance(pid) { return Math.min(0.97, 0.3 + 0.2 * S.holdings[pid].fort + Math.min(0.3, dockGuns(pid) / 150)); }
 function updateHoldings() {
   for (const pid of Object.keys(S.holdings)) {
     const h = S.holdings[pid], p = PORT[pid];
     S.gold = Math.max(0, S.gold + townIncome(pid));
-    if (S.day - h.day < 30 || !chance(1 / 160)) continue;
+    if (S.day - h.day < 30 || h.prev === 'den' || !chance(1 / 160)) continue; // the Danes have no fleet out here to retake it
     const prev = h.prev;
     if (S.port === pid) { queueEvent({ show: () => showCounterattack(pid) }); continue; }
     if (chance(holdChance(pid))) { news(`A ${NATIONS[prev].adj} expedition against your town of ${p.name} has been beaten off by your garrison!`, 'war'); toast(`Your garrison at ${p.name} beat off a ${NATIONS[prev].adj} attack.`); }
-    else loseTown(pid, `A ${NATIONS[prev].adj} expedition has stormed ${p.name} and retaken it. Your garrison is lost.`);
+    else loseTown(pid, `A ${NATIONS[prev].adj} expedition has stormed ${p.name} and retaken it. Your garrison${(h.ships || []).length ? ' and the ships in its harbour are' : ' is'} lost.`);
   }
 }
-function loseTown(pid, msg) { const h = S.holdings[pid]; S.owners[pid] = h.prev; if (S.owners[pid] === PORT[pid].n) delete S.owners[pid]; delete S.holdings[pid]; news(msg, 'war'); toast(msg); log(msg); }
+function loseTown(pid, msg) { const h = S.holdings[pid]; if (NAVY_NATIONS.includes(h.prev) && h.prev !== PORT[pid].n) S.owners[pid] = h.prev; else delete S.owners[pid]; delete S.holdings[pid]; news(msg, 'war'); toast(msg); log(msg); }
+// Victory: every port in the Indies under your banner.
+function checkConquest() {
+  if (S.won || !PORTS.every(p => nat(p) === 'player')) return;
+  S.won = S.day || 1; news(`Captain ${S.captain} is master of every port in the West Indies!`, 'war'); log('Conquered the whole Caribbean.');
+  queueEvent({ show: () => showMsg('Lord of the Caribbean!', `<p>Every port from Veracruz to Barbados flies your banner. No captain in the history of the Indies has done what you have done.</p><p class="kv">${S.day} days · worth <b>${fmt(netWorth())}</b> · ${S.stats.townsTaken} towns taken · ${S.stats.prizes} prizes · ${S.stats.voyages} voyages</p><p class="hint">The game carries on: hold what you have taken, or keep trading.</p>`, 'Rule on') });
+}
 function updateLaw() { if (S.infamy > 0 && S.flag !== 'pir') S.infamy = Math.max(0, S.infamy - 0.04); }
 
 // ---------------------------------------------------------------- HURRICANES
@@ -1451,7 +1479,8 @@ function renderSide() {
   const towns = Object.keys(S.holdings), facs = Object.keys(S.warehouses);
   if (towns.length || facs.length) {
     h += `<section><h3>Holdings</h3>`;
-    for (const pid of towns) h += `<div class="muted">${flagImg('own')} <b>${PORT[pid].name}</b> — your town · ${townIncome(pid) >= 0 ? '+' : ''}${townIncome(pid)}/day · defences ${S.holdings[pid].fort}/3</div>`;
+    if (towns.length) h += `<div class="muted"><b>${towns.length} of ${PORTS.length}</b> ports under your banner${S.won ? ' — <b>the whole Caribbean is yours!</b>' : ''}</div>`;
+    for (const pid of towns) h += `<div class="muted">${flagImg('own')} <b>${PORT[pid].name}</b> — your town · ${townIncome(pid) >= 0 ? '+' : ''}${townIncome(pid)}/day · defences ${S.holdings[pid].fort}/3${(S.holdings[pid].ships || []).length ? ` · ${S.holdings[pid].ships.length} ship${S.holdings[pid].ships.length > 1 ? 's' : ''} docked` : ''}</div>`;
     for (const pid of facs) { const w = S.warehouses[pid]; h += `<div class="muted">▣ Factory at <b>${PORT[pid].name}</b> (level ${w.lvl}) · stock ${storeUsed(w)}/${FACTORY.store[w.lvl]}</div>`; }
     h += `</section>`;
   }
@@ -1577,7 +1606,15 @@ function tabResidence(p) {
   return `<div class="card"><h4>${flagImg('own')} Your town of ${p.name}</h4><p class="kv">Taken from the ${NATIONS[h.prev].adj} on ${dateStr(h.day)}. Its plantations now work for you: <b>${p.prod.map(g => GOOD[g].name).join(', ')}</b> cost you half price here, and ${GOOD[p.prod[0]].name.toLowerCase()} — its speciality — less than half. No tariffs, ever.</p>
     <p class="kv">Taxes less garrison pay: <b>${inc >= 0 ? '+' : ''}${inc}</b> gold a day. Defences: <b>${h.fort}/3</b> — the ${NATIONS[h.prev].adj} will try to take it back, and your garrison holds about <b>${Math.round(holdChance(p.id) * 100)}%</b> of attacks while you are away. If your fleet is in port when they come, you fight them yourself.</p>
     <div class="btnRow">${next <= 3 ? `<button class="btn primary sm" data-act="fortify" ${S.gold >= HOLD_FORT_COST[next] ? '' : 'disabled'}>Strengthen the defences (${fmt(HOLD_FORT_COST[next])})</button>` : '<span class="hint">The defences are as strong as they can be.</span>'}
-    <button class="btn danger sm" data-act="abandon">Abandon the town</button></div></div>`;
+    <button class="btn danger sm" data-act="abandon">Abandon the town</button></div></div>${tabDocks(p)}`;
+}
+function tabDocks(p) {
+  const h = S.holdings[p.id], docked = h.ships || [], cap = dockCap(p.id), roomFleet = S.fleet.length < MAX_FLEET;
+  let x = `<div class="card" style="margin-top:10px"><h4>The docks — ${docked.length}/${cap} ships</h4><p class="kv">Ships laid up here strengthen the town's defence (their guns add to your garrison's chances, and they fight beside you if you are in port when the enemy comes). Bring one out to replace a ship you have lost, or leave one here to free up your fleet. Docked ships cost no wages and keep any damage until you repair them at the shipyard.</p>`;
+  for (const sh of docked) { const st = shipStats(sh); x += `<div class="odds" style="margin-top:4px">${esc(sh.name)} — ${st.T.name}, ${sh.guns} guns, hull ${Math.round(sh.hull)}/${st.maxHull} <button class="btn xs" data-act="undock" data-s="${sh.id}" ${roomFleet ? '' : 'disabled title="Your fleet is full"'}>Join the fleet</button></div>`; }
+  if (!docked.length) x += '<p class="hint">No ships docked here.</p>';
+  if (S.fleet.length > 1) { x += '<div class="btnRow">'; for (const sh of S.fleet) { const ok = docked.length < cap && holdUsed() <= holdCap() - shipStats(sh).hold; x += `<button class="btn xs" data-act="dock" data-s="${sh.id}" ${ok ? '' : 'disabled title="The docks are full, or unload her cargo first"'}>Dock the ${esc(sh.name)}</button>`; } x += '</div>'; }
+  return x + '</div>';
 }
 function tabGovernor(p) {
   if (nat(p) === 'player') return tabResidence(p);
@@ -1630,17 +1667,18 @@ function tabGovernor(p) {
   return h;
 }
 function tabFactory(p) {
-  const w = S.warehouses[p.id], acc = portAccess(p.id), g = p.prod[0];
+  const w = S.warehouses[p.id], acc = portAccess(p.id), g = factoryGood(p.id), opts = factoryOptions(p.id);
   const allowed = p.free || nat(p) === 'player' || S.flags.includes(nat(p));
   let h = `<p>Like the great trading companies' "factories" in Asia, a factory here is a warehouse with a resident agent who buys up local produce for you, stores your goods, and gets you better prices.</p>`;
   if (!w) {
-    h += `<div class="card"><h4>Establish a factory at ${p.name}</h4><p class="kv">${g ? `Your agent produces about <b>${(FACTORY.output[1] / GOOD[g].base).toFixed(1)} ${GOOD[g].name.toLowerCase()}</b> a day (the local speciality), up to the warehouse's capacity of ${FACTORY.store[1]}.` : 'There is no local speciality to produce, but you can store goods here.'} You buy everything here ${Math.round(FACTORY.disc[1] * 100)}% cheaper. Agent's pay: ${FACTORY.upkeep[1]} gold a day. Exposed ports may lose stock to hurricanes.</p>
+    h += `<div class="card"><h4>Establish a factory at ${p.name}</h4><p class="kv">Your agent can produce any of the goods that come cheap here — <b>${opts.map(x => GOOD[x].name).join(', ')}</b> — for example about <b>${(FACTORY.output[1] / GOOD[opts[0]].base).toFixed(1)} ${GOOD[opts[0]].name.toLowerCase()}</b> a day, up to the warehouse's capacity of ${FACTORY.store[1]}. You buy everything here ${Math.round(FACTORY.disc[1] * 100)}% cheaper. Agent's pay: ${FACTORY.upkeep[1]} gold a day. Exposed ports may lose stock to hurricanes.</p>
       ${allowed ? '' : `<p class="kv" style="color:#a02a1c">The ${NATIONS[nat(p)].adj} only let their own subjects keep a factory here. You need ${NATIONS[nat(p)].adj} papers.</p>`}
       <button class="btn primary sm" data-act="buildfac" ${allowed && S.gold >= FACTORY.cost[1] ? '' : 'disabled'}>Build (${fmt(FACTORY.cost[1])})</button></div>`;
     return h;
   }
   const used = storeUsed(w), cap = FACTORY.store[w.lvl], next = w.lvl + 1;
   h += `<div class="card"><h4>Your factory — level ${w.lvl}</h4><p class="kv">${g ? `Produces <b>${(FACTORY.output[w.lvl] / GOOD[g].base).toFixed(1)} ${GOOD[g].name.toLowerCase()}</b> a day. ` : ''}Buying discount here: <b>${Math.round(FACTORY.disc[w.lvl] * 100)}%</b>. Agent's pay: ${FACTORY.upkeep[w.lvl]}/day (production stops if you can't pay). Warehouse: <b>${used}/${cap}</b>.</p>
+    <div class="btnRow" style="margin:6px 0"><span class="kv" style="align-self:center">Produce:</span>${opts.map(x => `<button class="btn xs ${x === g ? 'on' : ''}" data-act="facgood" data-g="${x}" title="${(FACTORY.output[w.lvl] / GOOD[x].base).toFixed(1)} a day">${GOOD[x].name} (${(FACTORY.output[w.lvl] / GOOD[x].base).toFixed(1)}/day)</button>`).join('')}</div>
     ${next <= 3 ? `<button class="btn sm" data-act="upfac" ${S.gold >= FACTORY.cost[next] ? '' : 'disabled'}>Expand to level ${next} (${fmt(FACTORY.cost[next])}): ${(g ? (FACTORY.output[next] / GOOD[g].base).toFixed(1) + '/day, ' : '')}${FACTORY.store[next]} storage, ${Math.round(FACTORY.disc[next] * 100)}% discount</button>` : '<span class="hint">Fully expanded.</span>'}</div>`;
   h += `<table class="mk factory" style="margin-top:10px"><tr><th>Goods</th><th class="num">In warehouse</th><th class="num">In hold</th><th class="num">Sells here</th><th>Load into hold</th><th>Store from hold</th><th>Sell from warehouse</th></tr>`;
   const t = acc.tariff || 0;
@@ -1769,11 +1807,11 @@ function arrive() {
   enterPort(pid);
 }
 function showAssaultPrompt(pid) {
-  const p = PORT[pid], f = fortStats(pid), o = nat(p), legal = legalAgainst(o);
+  const p = PORT[pid], f = fortStats(pid), o = defenderOf(p), legal = legalAgainst(o);
   const crew = S.fleet.reduce((a, s) => a + shipStats(s).crew, 0);
   showMsg(`Before ${p.name}`, `<canvas class="scene" id="scn" width="560" height="170"></canvas>
     <p>The ${NATIONS[o].adj} fort guarding ${p.name} mounts about <b>${f.guns}</b> guns, and the garrison numbers some <b>${f.garrison}</b> men. Your fleet carries <b>${totalGuns()}</b> guns and <b>${crew}</b> men.</p>
-    <p>Bombard the fort to silence its guns, or land your crews to storm the town — easier once the fort has been knocked about. ${legal ? `Under your ${NATIONS[S.flag].adj} letter of marque this is lawful war.` : '<b>This is piracy</b>: it will make you infamous, and the whole of the Indies will hear of it.'}</p>`,
+    <p>Bombard the fort to silence its guns, or land your crews to storm the town — easier once the fort has been knocked about. ${o === 'pir' ? 'Rooting out a nest of pirates is lawful, and every crown will thank you for it.' : legal ? `Under your ${NATIONS[S.flag].adj} letter of marque this is lawful war.` : `<b>This is piracy</b>${o === 'den' ? ' — the Danes are neutral' : ''}: it will make you infamous, and the whole of the Indies will hear of it.`}</p>`,
     'Stand off', 'close', `<button class="btn danger" data-act="assault">Attack ${p.name}!</button>`);
   scene = sceneSail($('#scn'));
 }
@@ -2064,7 +2102,7 @@ function rescue() {
 // ---------------------------------------------------------------- BATTLE
 let battle = null;
 function startBattle(enc, enemyFirst) {
-  const B = battle = { enc, kind: enc.kind === 'pirate' ? 'pirate' : 'navy', nation: enc.nation, enemies: enc.enemies, pShips: S.fleet.slice(), shots: [], parts: [], timers: [], time: 0, busy: false, over: false, slow: 0, target: 0, log: [], result: null, prizes: [], fleeing: false, round: 0, siege: enc.kind === 'siege' ? enc.pid : null, legal: {} };
+  const B = battle = { enc, kind: enc.kind === 'pirate' ? 'pirate' : 'navy', nation: enc.nation, enemies: enc.enemies, pShips: S.fleet.concat(enc.extraShips || []), shots: [], parts: [], timers: [], time: 0, busy: false, over: false, slow: 0, target: 0, log: [], result: null, prizes: [], fleeing: false, round: 0, siege: enc.kind === 'siege' ? enc.pid : null, legal: {} };
   for (const e of B.enemies) B.legal[e.nation] = legalAgainst(e.nation);
   B.pv = B.pShips.map(sh => ({ disp: sh.hull, dx: 0, tdx: 0, sink: 0 }));
   B.enemies.forEach(e => { e.disp = e.hull; e.dx = 0; e.tdx = 0; e.sink = 0; e.fled = e.struck = e.captured = false; e.showCap = false; if (!e.role) e.role = B.kind; });
@@ -2106,8 +2144,8 @@ function renderBattleUI() {
     <div class="bact"><button class="btn danger" data-act="bat" data-c="broadside" ${dis} ${gunsNow ? '' : 'disabled'}>Broadside</button><button class="btn" data-act="bat" data-c="chain" ${dis} ${gunsNow ? '' : 'disabled'}>Chain shot</button>
     <button class="btn" data-act="bat" data-c="board" ${dis} ${tgt ? '' : 'disabled'}>Board (${tgt ? Math.round(boardChance(tgt) * 100) : 0}%)</button><button class="btn" data-act="bat" data-c="flee" ${dis}>Break away (${Math.round(fleeChance(activeEnemies().length ? activeEnemies() : B.enemies, B.slow) * 100)}%)</button></div>`;
 }
-const BPX = [125, 250, 60, 190, 315], BPY = [205, 228, 256, 286, 318];
-function bPos(side, i) { const x = BPX[i % 5], y = BPY[i % 5]; return side === 'p' ? [x, y] : [900 - x, y]; }
+const BPX = [125, 250, 60, 190, 315, 140, 270, 30], BPY = [205, 228, 256, 286, 318, 332, 345, 352];
+function bPos(side, i) { const x = BPX[i % 8], y = BPY[i % 8]; return side === 'p' ? [x, y] : [900 - x, y]; }
 function bScale(sh, i) { return sh.role === 'fort' ? 1 : 0.78 * SHIP_TYPES[sh.type].size * (0.9 + i * 0.05); }
 function shipScreen(side, i) {
   const B = battle, sh = side === 'p' ? B.pShips[i] : B.enemies[i];
@@ -2285,8 +2323,8 @@ function finishRound() {
 }
 function endBattle(res) {
   const B = battle, enc = B.enc; B.over = true; B.result = res;
-  B.pShips.filter(s => s.hull <= 0).forEach(s => removeShip(s, 'sunk in battle'));
-  S.fleet.forEach(s => s.hull = Math.max(1, Math.round(s.hull)));
+  B.pShips.filter(s => s.hull <= 0).forEach(s => { if (S.fleet.includes(s)) removeShip(s, 'sunk in battle'); else removeDocked(s); });
+  S.fleet.forEach(s => s.hull = Math.max(1, Math.round(s.hull))); (B.enc.extraShips || []).forEach(s => { if (s.hull > 0) s.hull = Math.max(1, Math.round(s.hull)); });
   if (B.siege) { endSiege(res); saveGame(); renderUI(); renderBattleUI(); return; }
   if (res === 'victory') {
     const caps = B.enemies.filter(e => e.captured || e.struck); let gold = 0; const got = [];
@@ -2331,14 +2369,21 @@ function battleResultHTML() {
   let h = `<div class="odds" style="margin-top:8px"><b>Victory!</b> ${verdict}<br>Plunder: <b>${fmt(L.gold)}</b> gold${L.crown ? ` (after the crown's tenth, ${fmt(L.crown)})` : ''}${L.got.length ? ', ' + L.got.join(', ') : ''}.</div>`;
   if (B.prizes.length) {
     h += `<div style="margin-top:8px;font-size:14px"><b>Prizes</b> — keep them, or sell them to the prize court for a quarter of their worth:</div>`;
-    B.prizes.forEach((p, i) => { const e = p.e, T = SHIP_TYPES[e.type]; h += `<div class="odds" style="margin-top:4px">${esc(e.name)} — ${T.name}, ${e.guns} guns, ${Math.max(1, Math.round(e.hull))}/${e.maxHull} hull ${p.taken ? '<b>(joined your fleet)</b>' : `<button class="btn xs" data-act="prize" data-i="${i}" ${full ? 'disabled title="Your fleet is full"' : ''}>Keep her</button>`}</div>`; });
+    B.prizes.forEach((p, i) => { const e = p.e, T = SHIP_TYPES[e.type]; h += `<div class="odds" style="margin-top:4px">${esc(e.name)} — ${T.name}, ${e.guns} guns, ${Math.max(1, Math.round(e.hull))}/${e.maxHull} hull ${p.taken ? `<b>(${p.taken === 'docked' ? 'sent to your town' : 'joined your fleet'})</b>` : `<button class="btn xs" data-act="prize" data-i="${i}" ${full ? 'disabled title="Your fleet is full"' : ''}>Keep her</button>${(t => t ? ` <button class="btn xs" data-act="sendprize" data-i="${i}" data-p="${t}" title="A prize crew sails her to your nearest town with room in its docks">Send to ${PORT[t].name}</button>` : '')(nearestTownWithRoom())}`}</div>`; });
   }
   return h + `<div class="btnRow"><button class="btn primary" data-act="batdone">Carry on</button></div>`;
 }
+function removeDocked(sh) { for (const pid in S.holdings) { const l = S.holdings[pid].ships || [], k = l.indexOf(sh); if (k >= 0) { l.splice(k, 1); log(`The ${sh.name} was lost defending ${PORT[pid].name}.`); } } }
+function nearestTownWithRoom() { let best = null, bd = 1e9; for (const pid of townsWithRoom()) { const d = dist(S.pos[0], S.pos[1], PORT[pid].lon, PORT[pid].lat); if (d < bd) { bd = d; best = pid; } } return best; }
+function townsWithRoom() { return Object.keys(S.holdings).filter(pid => (S.holdings[pid].ships || []).length < dockCap(pid)); }
+function prizeShip(e) { const sh = { id: S.nextId++, name: e.name, type: e.type, spec: e.spec, guns: 0, hull: 1 }, st = shipStats(sh); sh.guns = Math.min(e.guns, st.maxGuns); sh.hull = clamp(Math.round(Math.max(e.hull, st.maxHull * 0.15)), 1, st.maxHull); return sh; }
+function sendPrize(i, pid) {
+  const B = battle, p = B.prizes[i], h = S.holdings[pid]; if (!p || p.taken || !h || (h.ships || []).length >= dockCap(pid)) return;
+  (h.ships = h.ships || []).push(prizeShip(p.e)); p.taken = 'docked'; S.stats.prizes++; log(`Sent the prize ${p.e.name} to ${PORT[pid].name} under a prize crew.`); renderBattleUI(); renderUI();
+}
 function takePrize(i) {
   const B = battle, p = B.prizes[i]; if (!p || p.taken || S.fleet.length >= MAX_FLEET) return;
-  const e = p.e, sh = { id: S.nextId++, name: e.name, type: e.type, spec: e.spec, guns: 0, hull: 1 }, st = shipStats(sh);
-  sh.guns = Math.min(e.guns, st.maxGuns); sh.hull = clamp(Math.round(Math.max(e.hull, st.maxHull * 0.15)), 1, st.maxHull);
+  const e = p.e, sh = prizeShip(e);
   S.fleet.push(sh); p.taken = true; S.stats.prizes++; log(`Took the ${e.name} as a prize.`); renderBattleUI(); renderUI();
 }
 function battleDone() {
@@ -2353,15 +2398,15 @@ function battleDone() {
 }
 
 // ---------------------------------------------------------------- TOWN ASSAULTS
-function fortStats(pid) { const p = PORT[pid], m = FORT_MULT[pid] || 1, guns = Math.round(p.size * 18 * m); return { guns, hp: guns * 11, garrison: Math.round(p.size * 100 * m) }; }
+function fortStats(pid) { const p = PORT[pid], m = (FORT_MULT[pid] || 1) * (p.haven ? 1.3 : 1), guns = Math.round(p.size * 18 * m); return { guns, hp: guns * 11, garrison: Math.round(p.size * 100 * m) }; }
 function startSiege(pid) {
-  const p = PORT[pid], o = nat(p), f = fortStats(pid), legal = legalAgainst(o);
+  const p = PORT[pid], o = defenderOf(p), f = fortStats(pid), legal = legalAgainst(o);
   const fort = { type: 'fort', role: 'fort', name: `Fort of ${p.name}`, spec: 'balanced', guns: f.guns, hull: f.hp, maxHull: f.hp, crew: f.garrison, speed: 0, nation: o, flag: o, gold: 0, cargo: {} };
   repChange(o, -25);
   if (!legal) gainInfamy(30, `the attack on ${p.name}`);
-  news(`${legal ? `${NATIONS[S.flag].adj} privateers under` : 'The pirate'} Captain ${S.captain} ${legal ? 'are' : 'is'} attacking ${p.name}!`, 'war');
+  news(o === 'pir' ? `Captain ${S.captain} is attacking the pirate nest at ${p.name}!` : legal ? `${NATIONS[S.flag].adj} privateers under Captain ${S.captain} are attacking ${p.name}!` : `The pirate Captain ${S.captain} is attacking ${p.name}!`, 'war');
   startBattle({ kind: 'siege', nation: o, enemies: [fort], pid, playerAttacked: true }, false);
-  battle.capFlag = legal ? S.flag : 'own';
+  battle.capFlag = legal && S.flag !== 'pir' ? S.flag : 'own';
 }
 function sackValue(pid) { const p = PORT[pid]; return Math.round(p.size * 2500 * (FORT_MULT[pid] || 1) * rand(0.8, 1.25) / 10) * 10; }
 function endSiege(res) {
@@ -2371,36 +2416,36 @@ function endSiege(res) {
   else log(`Beaten off at ${p.name}.`);
 }
 function siegeResultHTML() {
-  const B = battle, pid = B.siege, p = PORT[pid], o = B.enemies[0].nation, legal = B.legal[o];
+  const B = battle, pid = B.siege, p = PORT[pid], o = B.enemies[0].nation, legal = B.legal[o] && !!S.commissions[S.flag];
   if (B.result === 'fled') return `<div class="odds" style="margin-top:8px"><b>You withdraw.</b> The ${NATIONS[o].adj} will be on their guard now.</div><div class="btnRow"><button class="btn primary" data-act="batdone">Stand off</button></div>`;
   if (B.result === 'defeat') return `<div class="odds" style="margin-top:8px"><b>Your fleet is destroyed beneath the walls.</b></div><div class="btnRow"><button class="btn primary" data-act="rescue">Abandon ship…</button></div>`;
   if (B.decided) return `<div class="odds" style="margin-top:8px">${B.decided}</div><div class="btnRow"><button class="btn primary" data-act="siegedone">Continue</button></div>`;
   const gc = 2000 * p.size, crown = legal ? Math.round(B.siegeLoot * 0.1) : 0;
   return `<div class="odds" style="margin-top:8px"><b>${p.name} has fallen!</b> What will you do with it?</div>
     <div class="btnRow" style="flex-direction:column;align-items:stretch">
-      <button class="btn danger" data-act="siegeopt" data-o="sack">Sack the town — about ${fmt(B.siegeLoot - crown)} gold${crown ? ' after the crown\'s tenth' : ''}, plus whatever goods fit in your hold. The town stays ${NATIONS[o].adj}.</button>
+      <button class="btn danger" data-act="siegeopt" data-o="sack">Sack the town — about ${fmt(B.siegeLoot - crown)} gold${crown ? ' after the crown\'s tenth' : ''}, plus whatever goods fit in your hold. The town stays ${o === 'pir' ? 'a pirate haven' : NATIONS[o].adj}.</button>
       <button class="btn primary" data-act="siegeopt" data-o="hold" ${S.gold >= gc ? '' : 'disabled'}>Hold it as your own — leave a garrison (${fmt(gc)}). Its plantations will sell to you for half price or less.</button>
       ${legal ? `<button class="btn" data-act="siegeopt" data-o="cede">Hand it to ${NATIONS[S.flag].name} — a reward of ${fmt(p.size * 5000)} and great favour with the crown.</button>` : ''}
     </div>`;
 }
 function siegeOption(opt) {
-  const B = battle, pid = B.siege, p = PORT[pid], o = B.enemies[0].nation, legal = B.legal[o];
+  const B = battle, pid = B.siege, p = PORT[pid], o = B.enemies[0].nation, lawful = B.legal[o], legal = lawful && !!S.commissions[S.flag];
   if (opt === 'sack') {
     let gold = B.siegeLoot; const crown = legal ? Math.round(gold * 0.1) : 0; gold -= crown; S.gold += gold;
     const got = [];
     for (const g of p.prod) { const m = S.markets[pid][g], q = Math.min(Math.floor(m.s * 0.6), freeHold()); if (q > 0) { m.s -= q; const had = S.cargo[g] || 0; addCargo(g, q); S.cost[g] = ((S.cost[g] || 0) * had) / (had + q); got.push(`${q} ${GOOD[g].name.toLowerCase()}`); } }
     for (const g of GOODS) { S.markets[pid][g.id].m = 0.4; S.markets[pid][g.id].s *= 0.4; }
     S.sacked[pid] = S.day; S.stats.townsSacked++;
-    repChange(o, -20); if (legal) repChange(S.flag, 10); else gainInfamy(15, `the sack of ${p.name}`);
+    repChange(o, -20); if (legal) repChange(S.flag, 10); if (o === 'pir') NAVY_NATIONS.forEach(n => repChange(n, 8)); else if (!lawful) gainInfamy(15, `the sack of ${p.name}`);
     news(`${p.name} has been sacked by Captain ${S.captain}! The town is in ruins and prices there have soared.`, 'war');
     B.decided = `You sack ${p.name}: <b>${fmt(gold)}</b> gold${crown ? ` (the crown takes ${fmt(crown)})` : ''}${got.length ? ' and ' + got.join(', ') : ''}. You sail away before help arrives.`;
   } else if (opt === 'hold') {
     const gc = 2000 * p.size; if (S.gold < gc) return; S.gold -= gc;
-    S.owners[pid] = 'player'; S.holdings[pid] = { day: S.day, fort: 1, prev: o };
-    repChange(o, -20); if (!legal) gainInfamy(10, `seizing ${p.name}`);
-    news(`Captain ${S.captain} has seized ${p.name} from the ${NATIONS[o].adj} and holds it under ${S.captain}'s own banner!`, 'war');
-    B.decided = `Your banner flies over ${p.name}. Its plantations now sell to you at half price, the port is always open to you, and its taxes are yours. Strengthen its defences at the Residence: the ${NATIONS[o].adj} will try to take it back.`;
-    B.enterAfter = pid;
+    S.owners[pid] = 'player'; S.holdings[pid] = { day: S.day, fort: 1, prev: o, ships: [] };
+    repChange(o, -20); if (o === 'pir') NAVY_NATIONS.forEach(n => repChange(n, 5)); else if (!lawful) gainInfamy(10, `seizing ${p.name}`);
+    news(`Captain ${S.captain} has seized ${p.name} from the ${o === 'pir' ? 'pirates' : NATIONS[o].adj} and holds it under ${S.captain}'s own banner!`, 'war');
+    B.decided = `Your banner flies over ${p.name}. Its plantations now sell to you at half price, the port is always open to you, and its taxes are yours. Strengthen its defences at the Residence${o === 'den' ? '' : `: the ${o === 'pir' ? 'pirates' : NATIONS[o].adj} will try to take it back`}. You can also dock spare ships there.`;
+    B.enterAfter = pid; checkConquest();
   } else if (opt === 'cede') {
     if (!legal) return; const reward = p.size * 5000; S.gold += reward;
     if (S.flag === PORT[pid].n) delete S.owners[pid]; else S.owners[pid] = S.flag;
@@ -2412,15 +2457,17 @@ function siegeOption(opt) {
   saveGame(); renderUI(); renderBattleUI();
 }
 function siegeDone() {
-  const pid = battle && battle.enterAfter; battle = null; closeModal();
-  if (pid && portAccess(pid).open) enterPort(pid); else saveGame();
+  const pid = battle && battle.enterAfter; battle = null; closeModal(); checkConquest();
+  if (pid && portAccess(pid).open) { enterPort(pid); if (EVQ.length) { closeModal(); pumpEvents(); } } // the victory message goes first
+  else saveGame();
 }
 function showCounterattack(pid) {
   const p = PORT[pid], h = S.holdings[pid]; if (!h) return;
-  const en = genFleet('navy', h.prev); en.forEach(e => { e.hull = Math.round(e.hull * 0.75); }); // your shore batteries soften them up
-  showMsg(`${NATIONS[h.prev].adj} expedition!`, `<canvas class="scene" id="scn" width="560" height="170"></canvas><p>A ${NATIONS[h.prev].adj} squadron — ${describeFleet(en)} — has come to retake ${p.name}. Your fleet is in harbour: you can sail out and fight them under the guns of your own batteries, or abandon the town.</p>`,
+  const pir = h.prev === 'pir', en = genFleet(pir ? 'pirate' : 'navy', h.prev); en.forEach(e => { e.hull = Math.round(e.hull * 0.75); }); // your shore batteries soften them up
+  const docked = (h.ships || []).filter(s => s.guns > 0);
+  showMsg(`${NATIONS[h.prev].adj} expedition!`, `<canvas class="scene" id="scn" width="560" height="170"></canvas><p>A ${NATIONS[h.prev].adj} squadron — ${describeFleet(en)} — has come to retake ${p.name}. Your fleet is in harbour: you can sail out and fight them under the guns of your own batteries${docked.length ? `, with the ${docked.length} armed ship${docked.length > 1 ? 's' : ''} docked here at your side` : ''}, or abandon the town.</p>`,
     'Abandon the town', 'abandonnow', `<button class="btn danger" data-act="defend">Sail out and fight!</button>`);
-  ENC = { kind: 'navyHostile', nation: h.prev, enemies: en, defend: pid };
+  ENC = { kind: pir ? 'pirate' : 'navyHostile', nation: h.prev, enemies: en, defend: pid, extraShips: docked.slice(0, 8 - S.fleet.length) };
   scene = sceneSail($('#scn'), { enemies: en });
 }
 
@@ -2468,7 +2515,7 @@ function showHelp() {
     <p><b>Privateering.</b> A governor whose nation is at war will sell you a <b>letter of marque</b>. Fly that nation's colours and you may lawfully take enemy ships — and even towns. Governors also offer bounty contracts. The crown takes a tenth.</p>
     <p><b>Piracy.</b> Attack anyone else and you are a pirate. Set your stance to <b>⚔ Hunting</b> to be offered merchant ships you meet, tap passing ships on the chart to chase them, or sail to a <b>hunting ground</b> (the ✕ marks in the passages) and lie in wait. Infamy closes honest ports and sets navies on you; pirate havens still welcome you, and a governor's pardon clears your name.</p>
     <p><b>Factories.</b> Build a warehouse with a resident agent in a port (you need that nation's papers). It produces the local speciality, stores your goods, and gets you cheaper prices there.</p>
-    <p><b>Taking towns.</b> Pirates and privateers can assault a town: bombard the fort, then land troops. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less), or — as a privateer — hand it to your crown for a reward.</p>
+    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Take every port in the Indies to win the game.</p>
     <p><b>Saving.</b> The game saves itself constantly into one of three slots in this browser. Use Menu → Export to keep a backup file; you can import it again later, even after the game has been updated.</p>
     <p><b>On the iPhone.</b> Tap a port, hunting ground or passing ship to see what it is; tap again to act. Drag the chart to pan and pinch to zoom. Turn the phone sideways for a bigger chart. Saves live on this phone; use Menu → Export / Import to move a career between your computer and your phone.</p></div><div class="btnRow"><button class="btn" data-act="close">Close</button></div>`, { kind: 'help' });
 }
@@ -2667,6 +2714,10 @@ const ACT = {
   encback: () => showEncounter(ENC),
   siegeopt: d => siegeOption(d.o),
   siegedone: () => siegeDone(),
+  facgood: d => { const w = S.warehouses[S.port]; if (!w || !factoryOptions(S.port).includes(d.g)) return; if (w.good !== d.g) { w.good = d.g; w.acc = 0; log(`The factor at ${PORT[S.port].name} switches to ${GOOD[d.g].name.toLowerCase()}.`); } saveGame(); renderPort(); },
+  sendprize: d => sendPrize(+d.i, d.p),
+  dock: d => { const pid = S.port, h = S.holdings[pid], sh = shipById(d.s); if (!h || !sh || S.fleet.length < 2 || (h.ships || []).length >= dockCap(pid) || holdUsed() > holdCap() - shipStats(sh).hold) return; S.fleet.splice(S.fleet.indexOf(sh), 1); (h.ships = h.ships || []).push(sh); log(`Laid up the ${sh.name} at ${PORT[pid].name}.`); saveGame(); renderPort(); renderUI(); },
+  undock: d => { const pid = S.port, h = S.holdings[pid]; if (!h || S.fleet.length >= MAX_FLEET) return; const k = (h.ships || []).findIndex(x => x.id === +d.s); if (k < 0) return; const sh = h.ships.splice(k, 1)[0]; S.fleet.push(sh); log(`The ${sh.name} rejoins the fleet at ${PORT[pid].name}.`); saveGame(); renderPort(); renderUI(); },
 };
 $('#modal').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; const f = ACT[b.dataset.act]; if (f) f(b.dataset, b); });
 $('#mapHud').addEventListener('click', e => {
@@ -2835,24 +2886,37 @@ function init() {
     lastTap = { target, t: performance.now() };
     mouse('mousedown', x, y); mouse('mouseup', x, y);
   }
+  // Two fingers anywhere: block iOS's whole-page zoom. If either finger is on the chart
+  // (or a chart gesture is already running) it becomes a chart pinch.
+  function beginPinch(e) {
+    const a = pt(e.touches[0]), b = pt(e.touches[1]);
+    pinch = { prev: Math.max(24, Math.hypot(a[0] - b[0], a[1] - b[1])), cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 };
+    if (!start) start = { x: a[0], y: a[1], t: performance.now(), el: cvs, moved: true };
+    start.moved = true; mode = 'map'; followHold = T + 4; $('#tip').style.display = 'none';
+  }
   document.addEventListener('touchstart', e => {
-    if (e.touches.length === 2 && mode === 'map') {
-      const a = pt(e.touches[0]), b = pt(e.touches[1]);
-      pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, z: cam.z, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 };
-      start.moved = true; e.preventDefault(); return;
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      const onMap = mode === 'map' || [...e.touches].some(t => { const [x, y] = pt(t); return document.elementFromPoint(x, y) === cvs; });
+      if (onMap) beginPinch(e); else { mode = 'none'; start = null; pinch = null; }
+      return;
     }
-    if (e.touches.length > 1) return;
     const [x, y] = pt(e.touches[0]), el = document.elementFromPoint(x, y);
-    start = { x, y, t: performance.now(), el, moved: false }; last = { x, y };
+    start = { x, y, t: performance.now(), el, moved: false }; last = { x, y }; pinch = null;
     if (el === cvs) { mode = 'map'; e.preventDefault(); followHold = T + 4; $('#tip').style.display = 'none'; return; }
     mode = 'ui';
   }, { passive: false });
   document.addEventListener('touchmove', e => {
+    if (e.touches.length >= 2) e.preventDefault(); // never a page zoom
     if (mode !== 'map' || !start) return; e.preventDefault();
-    if (e.touches.length === 2 && pinch) {
-      const a = pt(e.touches[0]), b = pt(e.touches[1]), d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      const r = cvs.getBoundingClientRect(), mx = pinch.cx - r.left, my = pinch.cy - r.top, [wx, wy] = s2w(mx, my);
-      cam.z = pinch.z * d / pinch.d; clampCam(); const [sx, sy] = w2s(wx, wy); cam.x += (sx - mx) / cam.z; cam.y += (sy - my) / cam.z; clampCam();
+    if (e.touches.length >= 2) {
+      if (!pinch) beginPinch(e);
+      const a = pt(e.touches[0]), b = pt(e.touches[1]), d = Math.max(24, Math.hypot(a[0] - b[0], a[1] - b[1]));
+      const k = clamp(d / pinch.prev, 0.8, 1.25); pinch.prev = d;   // step by step, so one bad reading can't jump the zoom
+      const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2, r = cvs.getBoundingClientRect();
+      cam.x -= (cx - pinch.cx) / cam.z; cam.y -= (cy - pinch.cy) / cam.z; pinch.cx = cx; pinch.cy = cy; // two-finger pan
+      const mx = cx - r.left, my = cy - r.top, [wx, wy] = s2w(mx, my);
+      cam.z *= k; clampCam(); const [sx, sy] = w2s(wx, wy); cam.x += (sx - mx) / cam.z; cam.y += (sy - my) / cam.z; clampCam();
       followHold = T + 4; return;
     }
     const [x, y] = pt(e.touches[0]), dx = x - last.x, dy = y - last.y; last = { x, y };
@@ -2860,6 +2924,7 @@ function init() {
     if (start.moved) { cam.x -= dx / cam.z; cam.y -= dy / cam.z; clampCam(); followHold = T + 4; }
   }, { passive: false });
   document.addEventListener('touchend', e => {
+    if (mode === 'none') { if (e.touches.length === 0) mode = null; e.preventDefault(); return; }
     if (!start) return;
     const [x, y] = pt(e.changedTouches[0]);
     const quick = !start.moved && performance.now() - start.t < 650 && Math.hypot(x - start.x, y - start.y) < 12;
@@ -2877,7 +2942,14 @@ function init() {
     mode = null; start = null;
   }, { passive: false });
   document.addEventListener('touchcancel', () => { mode = null; start = null; pinch = null; });
-  document.addEventListener('gesturestart', e => e.preventDefault()); // no Safari page zoom
+  // Safari's own pinch gestures: never zoom the page.
+  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, e => e.preventDefault(), { passive: false });
+  // If iOS zooms the page anyway (it ignores user-scalable=no for accessibility), snap it back to 1x.
+  if (vv) vv.addEventListener('resize', () => {
+    if (Math.abs(vv.scale - 1) < 0.01) return;
+    const m = document.querySelector('meta[name=viewport]'), c = m.content;
+    m.content = c.replace('initial-scale=1,', 'initial-scale=1.0001,'); setTimeout(() => { m.content = c; window.scrollTo(0, 0); resize(); }, 60);
+  });
 })();
 init();
 </script>
