@@ -133,7 +133,7 @@ input.txt,select.txt{width:100%;padding:6px 8px;border:1px solid var(--wood3);ba
 .two{columns:2;column-gap:24px}
 
 /* ================= iPhone layout ================= */
-:root{--safeTop:max(env(safe-area-inset-top,0px),var(--ipadTop,0px))}
+:root{--safeTop:env(safe-area-inset-top,0px)} /* fallback; applySafeTop() writes the real pixel value */
 html{-webkit-text-size-adjust:100%}
 html,body{overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 input,select{-webkit-user-select:text;user-select:text;font-size:16px}
@@ -2554,6 +2554,7 @@ function showMenu() {
   if (!S || blocked()) return;
   showModal(`<h2>Menu</h2><p class="kv">Captain ${esc(S.captain)} · slot ${SLOT}</p>
     <div class="btnRow"><button class="btn" data-act="savenow">Save now</button><button class="btn" data-act="export">Export save file</button><button class="btn" data-act="saves">Saved careers…</button><button class="btn" data-act="help">How to play</button></div>
+    <details style="margin-top:12px"><summary>Device check (build ${BUILD})</summary>${deviceCheckHTML()}</details>
     <h3 style="margin-top:16px">Settings</h3><label style="display:block;margin-top:6px"><input type="checkbox" id="optFollow" ${S.settings.follow ? 'checked' : ''}> Chart follows the fleet while sailing</label>
     <details style="margin-top:16px"><summary>Testing tools (for trying out mechanics)</summary><div class="btnRow">
       <button class="btn xs" data-act="dev" data-k="gold">+10,000 gold</button><button class="btn xs" data-act="dev" data-k="rep">+20 reputation with all</button>
@@ -2884,7 +2885,29 @@ function frame(now) {
 const IPAD_STATUS_BAR = 24;
 function isIPad() { return /iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
 function isStandalone() { return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
-if (isIPad() && isStandalone()) document.documentElement.style.setProperty('--ipadTop', IPAD_STATUS_BAR + 'px');
+// Same method as World at War (confirmed working on the user's iPad): MEASURE the reported top inset
+// with a probe element, then write plain pixel values. (A CSS-only max(env(), var()) inside a custom
+// property did not take effect on the iPad.)
+const BUILD = '2026-11-07 · iPad fix 2';
+let SAFE_TOP = { env: 0, top: 0, ipad: false, standalone: false };
+function applySafeTop() {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+  document.body.appendChild(probe); const env = parseFloat(getComputedStyle(probe).paddingTop) || 0; probe.remove();
+  const ipad = isIPad(), standalone = isStandalone(), top = ipad && standalone ? Math.max(env, IPAD_STATUS_BAR) : env;
+  const st = document.documentElement.style;
+  st.setProperty('--safeTop', top + 'px');                                     // iPhone/iPad build
+  st.setProperty('--ipadTop', (ipad && standalone ? Math.max(IPAD_STATUS_BAR, env) : 0) + 'px'); // desktop build (no viewport-fit, env reads 0)
+  SAFE_TOP = { env, top, ipad, standalone };
+}
+applySafeTop();
+window.addEventListener('resize', () => applySafeTop());
+window.addEventListener('orientationchange', () => [100, 400, 900].forEach(ms => setTimeout(applySafeTop, ms)));
+// Device check readout (Menu) — lets us see what an iPad/iPhone actually reports instead of guessing.
+function deviceCheckHTML() {
+  const hb = $('header').getBoundingClientRect(), vv = window.visualViewport;
+  return `<div class="odds" style="font-size:13px;line-height:1.5">Build: <b>${BUILD}</b><br>iPad: <b>${SAFE_TOP.ipad ? 'yes' : 'no'}</b> · home-screen app: <b>${SAFE_TOP.standalone ? 'yes' : 'no'}</b><br>Top inset reported: <b>${SAFE_TOP.env}</b> · used: <b>${SAFE_TOP.top}</b> · header content starts at <b>${Math.round(hb.top + parseFloat(getComputedStyle($('header')).paddingTop))}</b><br>Screen ${screen.width}×${screen.height} · window ${innerWidth}×${innerHeight}${vv ? ` · zoom ${vv.scale.toFixed(2)}` : ''}<br><span class="hint">${esc(navigator.userAgent).slice(0, 160)}</span></div>`;
+}
 function init() {
   buildNav(); resize(); buildBaseMap(); initAmbient();
   cam.z = zFit(); clampCam();
