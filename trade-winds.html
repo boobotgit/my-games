@@ -1023,6 +1023,9 @@ function buildBaseMap() {
 }
 function zFit() { return Math.min(viewW / WORLD_W, viewH / WORLD_H); }
 function clampCam() {
+  // Safety net: if any input ever produces a non-number, recentre on the fleet instead of drawing nothing.
+  if (!Number.isFinite(cam.z) || cam.z <= 0) cam.z = Math.max(zFit() * 1.35, 1.1);
+  if (!Number.isFinite(cam.x) || !Number.isFinite(cam.y)) { const p = S && Number.isFinite(S.pos[0]) && Number.isFinite(S.pos[1]) ? proj(S.pos[0], S.pos[1]) : [WORLD_W / 2, WORLD_H / 2]; cam.x = p[0]; cam.y = p[1]; }
   const zmin = zFit(); cam.z = clamp(cam.z, zmin, 3.6);
   const hw = viewW / 2 / cam.z, hh = viewH / 2 / cam.z;
   cam.x = WORLD_W * cam.z <= viewW ? WORLD_W / 2 : clamp(cam.x, hw, WORLD_W - hw);
@@ -1104,6 +1107,7 @@ function drawMap(dt) {
   const g = ctx; g.setTransform(DPR, 0, 0, DPR, 0, 0);
   g.fillStyle = '#1b5574'; g.fillRect(0, 0, viewW, viewH);
   if (!BASE) return;
+  if (!(Number.isFinite(cam.x) && Number.isFinite(cam.y) && Number.isFinite(cam.z))) clampCam(); // never draw a blank chart
   const [ox, oy] = w2s(0, 0);
   g.imageSmoothingEnabled = true; g.drawImage(BASE, ox, oy, WORLD_W * cam.z, WORLD_H * cam.z);
   const z = cam.z;
