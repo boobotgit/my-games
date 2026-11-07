@@ -70,9 +70,15 @@
   canvas{position:absolute; left:0; top:0; width:100%; height:100%;
          display:block; touch-action:none}
   #tip{display:none !important}
-  #zoomers{position:absolute; right:8px; bottom:8px; display:flex;
-           flex-direction:column; gap:6px; z-index:6}
-  #zoomers .btn{width:40px; height:40px; padding:0; font-size:17px; opacity:.92}
+  /* + above −, and Fit beside − rather than stacked higher, so the buttons
+     cover as little of Australia and the seas around it as possible */
+  #zoomers{position:absolute; right:8px; bottom:8px; display:grid; z-index:6;
+           grid-template-columns:auto 40px; grid-template-rows:40px 40px; gap:6px;
+           pointer-events:none}              /* the empty corner passes taps to the map */
+  #zoomers .btn{width:40px; height:40px; padding:0; font-size:17px; opacity:.92; pointer-events:auto}
+  #zIn{grid-column:2; grid-row:1}
+  #zOut{grid-column:2; grid-row:2}
+  #zoomers #zFit{grid-column:1; grid-row:2; width:auto; padding:0 9px; font-size:11px; letter-spacing:.1em}
   #banner{
     position:absolute; top:8px; left:50%; transform:translateX(-50%);
     background:rgba(20,15,10,.94); border:1px solid var(--gold-dim); color:var(--gold);
@@ -313,6 +319,7 @@
     <div id="zoomers">
       <button class="btn" id="zIn">+</button>
       <button class="btn" id="zOut">&#8722;</button>
+      <button class="btn" id="zFit">FIT</button>
     </div>
   </div>
 
@@ -2723,7 +2730,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-07 · n';
+const BUILD = '2026-11-07 · o';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
@@ -2975,6 +2982,7 @@ function zoomBy(f){ zoomAt(VIEW.w/2, VIEW.h/2, VIEW.z*f); }
 
 $('#zIn').onclick  = ()=> zoomBy(1.5);
 $('#zOut').onclick = ()=> zoomBy(1/1.5);
+$('#zFit').onclick = ()=>{ VIEW.z = VIEW.minZ; clampView(); render(); };   // the whole world
 
 // Zoom to whatever the game wants the player looking at, so a fresh turn or a
 // battle never leaves the relevant coast off screen.
