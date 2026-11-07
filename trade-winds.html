@@ -856,10 +856,20 @@ function updateHoldings() {
 }
 function loseTown(pid, msg) { const h = S.holdings[pid]; if (NAVY_NATIONS.includes(h.prev) && h.prev !== PORT[pid].n) S.owners[pid] = h.prev; else delete S.owners[pid]; delete S.holdings[pid]; news(msg, 'war'); toast(msg); log(msg); }
 // Victory: every port in the Indies under your banner.
+// Victory: every port in the Indies under your banner ends the game.
 function checkConquest() {
-  if (S.won || !PORTS.every(p => nat(p) === 'player')) return;
-  S.won = S.day || 1; news(`Captain ${S.captain} is master of every port in the West Indies!`, 'war'); log('Conquered the whole Caribbean.');
-  queueEvent({ show: () => showMsg('Lord of the Caribbean!', `<p>Every port from Veracruz to Barbados flies your banner. No captain in the history of the Indies has done what you have done.</p><p class="kv">${S.day} days · worth <b>${fmt(netWorth())}</b> · ${S.stats.townsTaken} towns taken · ${S.stats.prizes} prizes · ${S.stats.voyages} voyages</p><p class="hint">The game carries on: hold what you have taken, or keep trading.</p>`, 'Rule on') });
+  if (S.won || !PORTS.every(p => nat(p) === 'player')) return false;
+  S.won = S.day || 1; news(`Captain ${S.captain} is master of every port in the West Indies!`, 'war'); log('Conquered the whole Caribbean. The career is complete.');
+  saveGame(); return true;
+}
+// The final screen of a finished career. It can't be dismissed back into play.
+function showVictory() {
+  const st = S.stats, w = netWorth();
+  showModal(`<div class="title"><h1>Lord of the Caribbean</h1><div class="subt">Captain ${esc(S.captain)} · ${dateStr(S.won)}</div></div><canvas class="scene" id="scn" width="760" height="200"></canvas>
+    <p>Every port from Veracruz to Barbados flies your banner. No captain in the history of the Indies has done what you have done. Your career is complete.</p>
+    <div class="odds">${fmt(S.won)} days in the Indies · worth <b>${fmt(w)}</b> · ${st.townsTaken} towns taken (${st.townsSacked} sacked) · ${st.prizes} prizes · ${st.merchantsTaken} merchantmen taken · ${st.piratesBeaten} pirates and ${st.naviesBeaten} warships beaten · trading profit ${fmt(st.profit)} · ${st.voyages} voyages · ${st.hurricanes} hurricanes weathered · ${st.wrecks} shipwrecks</div>
+    <div class="btnRow" style="justify-content:center"><button class="btn primary" data-act="newcareer">Start a new career</button><button class="btn" data-act="export">Save a keepsake copy</button><button class="btn" data-act="savesend">Saved careers</button></div>`, { cls: 'mid', kind: 'victory' });
+  scene = sceneSail($('#scn'), { title: true });
 }
 function updateLaw() { if (S.infamy > 0 && S.flag !== 'pir') S.infamy = Math.max(0, S.infamy - 0.04); }
 
@@ -1317,7 +1327,7 @@ function showModal(html, opts = {}) {
   const m = $('#modal'); m.className = opts.cls || ''; m.innerHTML = html; m.scrollTop = 0;
   $('#modalBg').classList.add('on'); modalOpen = true; modalKind = opts.kind || ''; scene = null;
 }
-function closeModal() { $('#modalBg').classList.remove('on'); $('#modal').innerHTML = ''; modalOpen = false; modalKind = ''; scene = null; if (S) renderUI(); }
+function closeModal() { $('#modalBg').classList.remove('on'); $('#modal').innerHTML = ''; modalOpen = false; modalKind = ''; scene = null; if (S) renderUI(); if (S && S.won && !battle) showVictory(); } // a finished career can't be played on
 function showMsg(title, body, btn = 'Continue', act = 'close', extra = '') {
   showModal(`<h2>${title}</h2>${body}<div class="btnRow">${extra}<button class="btn primary" data-act="${act}">${btn}</button></div>`, { cls: 'narrow', kind: 'msg' });
 }
@@ -2340,7 +2350,7 @@ function siegeOption(opt) {
     repChange(o, -20); if (o === 'pir') NAVY_NATIONS.forEach(n => repChange(n, 5)); else if (!lawful) gainInfamy(10, `seizing ${p.name}`);
     news(`Captain ${S.captain} has seized ${p.name} from the ${o === 'pir' ? 'pirates' : NATIONS[o].adj} and holds it under ${S.captain}'s own banner!`, 'war');
     B.decided = `Your banner flies over ${p.name}. Its plantations now sell to you at half price, the port is always open to you, and its taxes are yours. Strengthen its defences at the Residence${o === 'den' ? '' : `: the ${o === 'pir' ? 'pirates' : NATIONS[o].adj} will try to take it back`}. You can also dock spare ships there.`;
-    B.enterAfter = pid; checkConquest();
+    B.enterAfter = pid; if (checkConquest()) B.decided = `Your banner flies over ${p.name} — <b>the last port in the Indies</b>. The whole Caribbean is yours.`;
   } else if (opt === 'cede') {
     if (!legal) return; const reward = p.size * 5000; S.gold += reward;
     if (S.flag === PORT[pid].n) delete S.owners[pid]; else S.owners[pid] = S.flag;
@@ -2352,9 +2362,9 @@ function siegeOption(opt) {
   saveGame(); renderUI(); renderBattleUI();
 }
 function siegeDone() {
-  const pid = battle && battle.enterAfter; battle = null; closeModal(); checkConquest();
-  if (pid && portAccess(pid).open) { enterPort(pid); if (EVQ.length) { closeModal(); pumpEvents(); } } // the victory message goes first
-  else saveGame();
+  const pid = battle && battle.enterAfter; battle = null; closeModal();
+  if (S.won) { showVictory(); return; } // the career is over
+  if (pid && portAccess(pid).open) enterPort(pid); else saveGame();
 }
 function showCounterattack(pid) {
   const p = PORT[pid], h = S.holdings[pid]; if (!h) return;
@@ -2414,7 +2424,7 @@ function showHelp() {
     <p><b>Saving.</b> The game saves itself constantly into one of three slots in this browser. Use Menu → Export to keep a backup file; you can import it again later, even after the game has been updated.</p>
     <p><b>Keys.</b> Space pauses or resumes a voyage. Esc closes a window.</p></div><div class="btnRow"><button class="btn" data-act="close">Close</button></div>`, { kind: 'help' });
 }
-function slotSummary(n) { const s = readSlot(n); if (!s) return null; return `Captain <b>${esc(s.captain || '?')}</b> · ${dateStr(s.day || 0)} · ${fmt(s.gold || 0)} gold · ${(s.fleet || []).length} ship(s)${s.savedAt ? ` · saved ${new Date(s.savedAt).toLocaleString()}` : ''}`; }
+function slotSummary(n) { const s = readSlot(n); if (!s) return null; return `${s.won ? '<b>👑 Completed</b> · ' : ''}Captain <b>${esc(s.captain || '?')}</b> · ${dateStr(s.day || 0)} · ${fmt(s.gold || 0)} gold · ${(s.fleet || []).length} ship(s)${s.savedAt ? ` · saved ${new Date(s.savedAt).toLocaleString()}` : ''}`; }
 function showSaves(fromTitle) {
   let h = `<h2>Saved careers</h2><p class="hint">Saves live in this browser. Export a file to back one up or move it to another computer.</p>`;
   for (let n = 1; n <= 3; n++) {
@@ -2481,6 +2491,7 @@ function afterLoad() {
   syncWars(false); // older saves pick up the historical wars
   centerOn(S.pos[0], S.pos[1]); cam.z = Math.max(zFit() * 1.35, 1.1); centerOn(S.pos[0], S.pos[1]);
   closeModal(); renderUI();
+  if (S.won) { showVictory(); return; }
   if (S.port) openPort('market');
   else if (S.voyage) toast('Voyage paused. Press Resume (or Space) to sail on.');
 }
@@ -2530,7 +2541,8 @@ function loadSlot(n) {
 // ---------------------------------------------------------------- ACTIONS (all buttons route through here)
 const ACT = {
   close: () => closeModal(),
-  title: () => { if (S) closeModal(); else showTitle(); },
+  title: () => { if (S && !S.won) closeModal(); else showTitle(); },
+  savesend: () => showSaves(true),
   tab: d => { UI.portTab = d.t; $('#modal').scrollTop = 0; renderPort(); },
   leave: () => closeModal(),
   buy: d => doBuy(d.g, +d.q), sell: d => doSell(d.g, +d.q),
