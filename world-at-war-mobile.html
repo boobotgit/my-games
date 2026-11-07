@@ -2709,13 +2709,17 @@ function applySafeAreas(){
   // iPadOS ignores the opaque status-bar request: a home-screen app on an iPad
   // runs underneath the clock and battery, which blurred the header on the
   // user's iPad mini. Keep at least the status bar's height clear there.
-  const top = isIPad() && isStandalone() ? Math.max(t, IPAD_STATUS_BAR) : t;
+  const ipad = isIPad() && isStandalone();
+  const top = ipad ? Math.max(t, IPAD_STATUS_BAR) : t;
+  // and lift the tabs as far off the iPad's home bar as they sit on the
+  // iPhone, where the user stopped catching it by accident
+  const bot = ipad ? Math.max(b, IPAD_HOME_BAR) : b;
   const s = document.documentElement.style;
-  s.setProperty('--safeT', top+'px'); s.setProperty('--safeB', b+'px');
+  s.setProperty('--safeT', top+'px'); s.setProperty('--safeB', bot+'px');
   s.setProperty('--safeL', l+'px'); s.setProperty('--safeR', r+'px');
-  SAFE = {t:top, env:t, b, l, r};
+  SAFE = {t:top, env:t, b:bot, envB:b, l, r};
 }
-const IPAD_STATUS_BAR = 24;
+const IPAD_STATUS_BAR = 24, IPAD_HOME_BAR = 34;
 // iPads since iPadOS 13 report themselves as a Mac; a touchscreen gives them away
 function isIPad(){
   return /iPad/.test(navigator.userAgent) ||
@@ -2730,7 +2734,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-07 · o';
+const BUILD = '2026-11-07 · p';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
