@@ -15,8 +15,9 @@
 html,body{margin:0;height:100%;background:#140d07;color:var(--ink);font-family:'EB Garamond',Georgia,serif;font-size:15px;overflow:hidden}
 h1,h2,h3,h4{font-family:'IM Fell English SC',Georgia,serif;font-weight:400;margin:0}
 button,input,select{font-family:inherit}
-#app{display:grid;grid-template-rows:50px 1fr;height:100vh}
-header{background:linear-gradient(#4a3322,#2b1d12);color:var(--parch);display:flex;align-items:center;gap:16px;padding:0 14px;border-bottom:2px solid var(--gold);white-space:nowrap;overflow:hidden}
+/* --ipadTop: room for the iPad status bar when running as a home-screen app (set by JS, else 0) */
+#app{display:grid;grid-template-rows:calc(50px + var(--ipadTop,0px)) 1fr;height:100vh}
+header{background:linear-gradient(#4a3322,#2b1d12);color:var(--parch);display:flex;align-items:center;gap:16px;padding:var(--ipadTop,0px) 14px 0;border-bottom:2px solid var(--gold);white-space:nowrap;overflow:hidden}
 .brand{font-family:'IM Fell English SC',serif;font-size:23px;color:var(--gold2);letter-spacing:.5px}
 .brand span{font-size:14px;color:var(--parch3);opacity:.85}
 .stat{font-size:15px}.stat b{color:var(--gold2);font-weight:600}
@@ -60,7 +61,7 @@ aside h3 small,.muted{font-family:'EB Garamond',serif;font-size:13px;color:var(-
 .btn.danger{background:linear-gradient(#9b2d20,#6e1d14)}
 .btn.on{background:linear-gradient(#b8862a,#8a6118)}
 .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-#modalBg{position:fixed;inset:0;background:rgba(12,7,3,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+#modalBg{position:fixed;inset:0;background:rgba(12,7,3,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px;padding-top:calc(16px + var(--ipadTop,0px))}
 #modalBg.on{display:flex}
 #modal{background:radial-gradient(ellipse at top,#faf1dc,#e8d6ab);border:3px solid var(--wood2);outline:1px solid var(--gold);outline-offset:-8px;border-radius:4px;box-shadow:0 12px 40px #000a;width:min(1000px,100%);max-height:94vh;overflow:auto;padding:18px 22px}
 #modal.narrow{width:min(620px,100%)}
@@ -106,7 +107,7 @@ details summary{cursor:pointer;color:var(--ink2);font-size:14px;margin-top:4px}
 #tip h4{font-size:16px}
 #zoomCtl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px}
 #zoomCtl button{width:32px;height:32px;font-size:18px;padding:0}
-#toasts{position:fixed;left:14px;top:62px;display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
+#toasts{position:fixed;left:14px;top:calc(62px + var(--ipadTop,0px));display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
 .toast{background:rgba(244,232,203,.97);border:1px solid var(--wood2);border-left:5px solid var(--gold);padding:7px 11px;border-radius:3px;box-shadow:0 3px 10px #0006;max-width:380px;font-size:14.5px;animation:tin .3s ease-out}
 @keyframes tin{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
 .title h1{font-size:52px;color:var(--wood2);text-align:center;line-height:1}
@@ -2766,6 +2767,13 @@ function frame(now) {
   } catch (err) { console.error(err); }
   requestAnimationFrame(frame);
 }
+// iPadOS ignores the opaque status-bar style the BooBot Arcade asks for, so a home-screen app on an
+// iPad is drawn underneath the clock and battery (blurring the top bar). Keep that strip clear.
+// Same fix as World at War. iPhones and computers are unaffected.
+const IPAD_STATUS_BAR = 24;
+function isIPad() { return /iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
+function isStandalone() { return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
+if (isIPad() && isStandalone()) document.documentElement.style.setProperty('--ipadTop', IPAD_STATUS_BAR + 'px');
 function init() {
   buildNav(); resize(); buildBaseMap(); initAmbient();
   cam.z = zFit(); clampCam();
