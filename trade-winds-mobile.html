@@ -932,6 +932,9 @@ function factoryOptions(pid) {
   for (const g of ranked) { if (opts.length >= 3) break; if (MKT[pid][g].f < 1.0 || opts.length < 2) opts.push(g); }
   return opts;
 }
+// A factory in a town you hold gets its supplies straight from your own plantations: double output.
+const TOWN_FACTORY_BONUS = 2;
+function facOut(pid, lvl) { return FACTORY.output[lvl] * (nat(PORT[pid]) === 'player' ? TOWN_FACTORY_BONUS : 1); }
 function factoryGood(pid) { const w = S.warehouses[pid], o = factoryOptions(pid); return w && o.includes(w.good) ? w.good : o[0]; }
 function updateFactories() {
   for (const pid of Object.keys(S.warehouses)) {
@@ -939,7 +942,7 @@ function updateFactories() {
     if (S.gold < up) continue; // the factor goes unpaid and production stops
     S.gold -= up;
     const g = factoryGood(pid); if (!g) continue;
-    w.acc += FACTORY.output[w.lvl] / GOOD[g].base;
+    w.acc += facOut(pid, w.lvl) / GOOD[g].base;
     const n = Math.floor(w.acc); if (n <= 0) continue; w.acc -= n;
     const add = Math.min(n, FACTORY.store[w.lvl] - storeUsed(w)); if (add > 0) w.store[g] = (w.store[g] || 0) + add;
   }
@@ -1671,15 +1674,15 @@ function tabFactory(p) {
   const allowed = p.free || nat(p) === 'player' || S.flags.includes(nat(p));
   let h = `<p>Like the great trading companies' "factories" in Asia, a factory here is a warehouse with a resident agent who buys up local produce for you, stores your goods, and gets you better prices.</p>`;
   if (!w) {
-    h += `<div class="card"><h4>Establish a factory at ${p.name}</h4><p class="kv">Your agent can produce any of the goods that come cheap here — <b>${opts.map(x => GOOD[x].name).join(', ')}</b> — for example about <b>${(FACTORY.output[1] / GOOD[opts[0]].base).toFixed(1)} ${GOOD[opts[0]].name.toLowerCase()}</b> a day, up to the warehouse's capacity of ${FACTORY.store[1]}. You buy everything here ${Math.round(FACTORY.disc[1] * 100)}% cheaper. Agent's pay: ${FACTORY.upkeep[1]} gold a day. Exposed ports may lose stock to hurricanes.</p>
+    h += `<div class="card"><h4>Establish a factory at ${p.name}</h4><p class="kv">Your agent can produce any of the goods that come cheap here — <b>${opts.map(x => GOOD[x].name).join(', ')}</b> — for example about <b>${(facOut(p.id, 1) / GOOD[opts[0]].base).toFixed(1)} ${GOOD[opts[0]].name.toLowerCase()}</b> a day, up to the warehouse's capacity of ${FACTORY.store[1]}. You buy everything here ${Math.round(FACTORY.disc[1] * 100)}% cheaper. Agent's pay: ${FACTORY.upkeep[1]} gold a day. Exposed ports may lose stock to hurricanes.</p>
       ${allowed ? '' : `<p class="kv" style="color:#a02a1c">The ${NATIONS[nat(p)].adj} only let their own subjects keep a factory here. You need ${NATIONS[nat(p)].adj} papers.</p>`}
       <button class="btn primary sm" data-act="buildfac" ${allowed && S.gold >= FACTORY.cost[1] ? '' : 'disabled'}>Build (${fmt(FACTORY.cost[1])})</button></div>`;
     return h;
   }
   const used = storeUsed(w), cap = FACTORY.store[w.lvl], next = w.lvl + 1;
-  h += `<div class="card"><h4>Your factory — level ${w.lvl}</h4><p class="kv">${g ? `Produces <b>${(FACTORY.output[w.lvl] / GOOD[g].base).toFixed(1)} ${GOOD[g].name.toLowerCase()}</b> a day. ` : ''}Buying discount here: <b>${Math.round(FACTORY.disc[w.lvl] * 100)}%</b>. Agent's pay: ${FACTORY.upkeep[w.lvl]}/day (production stops if you can't pay). Warehouse: <b>${used}/${cap}</b>.</p>
-    <div class="btnRow" style="margin:6px 0"><span class="kv" style="align-self:center">Produce:</span>${opts.map(x => `<button class="btn xs ${x === g ? 'on' : ''}" data-act="facgood" data-g="${x}" title="${(FACTORY.output[w.lvl] / GOOD[x].base).toFixed(1)} a day">${GOOD[x].name} (${(FACTORY.output[w.lvl] / GOOD[x].base).toFixed(1)}/day)</button>`).join('')}</div>
-    ${next <= 3 ? `<button class="btn sm" data-act="upfac" ${S.gold >= FACTORY.cost[next] ? '' : 'disabled'}>Expand to level ${next} (${fmt(FACTORY.cost[next])}): ${(g ? (FACTORY.output[next] / GOOD[g].base).toFixed(1) + '/day, ' : '')}${FACTORY.store[next]} storage, ${Math.round(FACTORY.disc[next] * 100)}% discount</button>` : '<span class="hint">Fully expanded.</span>'}</div>`;
+  h += `<div class="card"><h4>Your factory — level ${w.lvl}</h4><p class="kv">${g ? `Produces <b>${(facOut(p.id, w.lvl) / GOOD[g].base).toFixed(1)} ${GOOD[g].name.toLowerCase()}</b> a day. ` : ''}Buying discount here: <b>${Math.round(FACTORY.disc[w.lvl] * 100)}%</b>. Agent's pay: ${FACTORY.upkeep[w.lvl]}/day (production stops if you can't pay). Warehouse: <b>${used}/${cap}</b>.${nat(p) === 'player' ? ` <b style="color:#2c6a1a">×${TOWN_FACTORY_BONUS} production: this is your own town, and its plantations supply your factor directly.</b>` : ''}</p>
+    <div class="btnRow" style="margin:6px 0"><span class="kv" style="align-self:center">Produce:</span>${opts.map(x => `<button class="btn xs ${x === g ? 'on' : ''}" data-act="facgood" data-g="${x}" title="${(facOut(p.id, w.lvl) / GOOD[x].base).toFixed(1)} a day">${GOOD[x].name} (${(facOut(p.id, w.lvl) / GOOD[x].base).toFixed(1)}/day)</button>`).join('')}</div>
+    ${next <= 3 ? `<button class="btn sm" data-act="upfac" ${S.gold >= FACTORY.cost[next] ? '' : 'disabled'}>Expand to level ${next} (${fmt(FACTORY.cost[next])}): ${(g ? (facOut(p.id, next) / GOOD[g].base).toFixed(1) + '/day, ' : '')}${FACTORY.store[next]} storage, ${Math.round(FACTORY.disc[next] * 100)}% discount</button>` : '<span class="hint">Fully expanded.</span>'}</div>`;
   h += `<table class="mk factory" style="margin-top:10px"><tr><th>Goods</th><th class="num">In warehouse</th><th class="num">In hold</th><th class="num">Sells here</th><th>Load into hold</th><th>Store from hold</th><th>Sell from warehouse</th></tr>`;
   const t = acc.tariff || 0;
   for (const gd of GOODS) {
