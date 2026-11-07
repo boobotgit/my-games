@@ -270,6 +270,28 @@
     text-decoration:none; line-height:1;
   }
 </style>
+<style>
+  /* ---------- diplomacy (Emperor) ---------- */
+  .prow .rel{display:block; font-size:9.5px; letter-spacing:.05em; margin-top:1px; text-decoration:none}
+  .rel.ok{color:#93c47d} .rel.bad{color:#e08a6e} .rel.dim{color:#a4977c}
+  .dipBtn{font-family:inherit; font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:5px 8px;
+          border:1px solid var(--gold-dim); background:transparent; color:var(--gold); border-radius:3px;
+          cursor:pointer; margin-left:4px; flex:none}
+  .dipBtn:hover{background:#332818}
+  .tlist{margin-top:8px; padding:6px 6px 0; border-top:1px solid #3a2f22; font-size:11px; line-height:1.55; color:#c3b491}
+  .tlist .h{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#8d7c60}
+  .tlist .bad{color:#e08a6e}
+  #ovDip{cursor:pointer}
+  #ovDip .sheet, #ovOffer .sheet{cursor:auto; max-width:440px}
+  #dipStatus{font-size:13px; line-height:1.5; text-align:center; margin:4px 0 0}
+  #dipStatus .bad{color:#9a3b22} #dipStatus .ok{color:#3f6b2a}
+  #dipActs{display:flex; flex-direction:column; gap:7px; margin-top:12px}
+  #dipActs .btn{width:100%; padding:11px 8px; font-size:13px}
+  #dipMsg{min-height:1.2em; font-style:italic; text-align:center; font-size:13px; margin:10px 0 0; color:#4a3a22}
+  .dipNote{text-align:center; font-size:12.5px; color:#6b5636; margin:6px 0 0}
+  .dipRow{display:flex; gap:8px; margin-top:16px}
+  .dipRow .btn{flex:1; padding:12px 8px}
+</style>
 </head>
 <body>
 <div id="diag" hidden></div>
@@ -470,8 +492,23 @@
       <li><b>General</b> — rivals muster 20% more armies, reinforce the borders of any continent they hold,
       and once any power holds 30% of the land they turn on it together.</li>
       <li><b>Marshal</b> — rivals muster 40% more and close ranks hard against the leader.</li>
+      <li><b>Emperor</b> — Marshal-strength rivals, and diplomacy (below).</li>
     </ul>
     <p>The bonus is only ever the rivals'. Your own muster follows the normal rules at every level.</p>
+
+    <h4>Diplomacy (Emperor)</h4>
+    <ul>
+      <li>Powers sign treaties in pairs, for 6 years. A <b>Non-Aggression Pact</b> forbids attacking, bombarding or
+      landing on each other. A <b>Military Alliance</b> adds more: each ally's seas carry the other's amphibious
+      landings, and whoever attacks one ally finds the other at war with them for two years.</li>
+      <li>Use <b>Envoys</b> under Powers on your turn to propose a treaty, or to ask a rival to
+      <b>abandon its partner and ally with you</b> — it does so only if it calculates the betrayal pays.
+      Proposals to you are waiting when your turn opens.</li>
+      <li>Any treaty can be torn up early — but the betrayed power <b>hunts the betrayer for three years</b>,
+      throwing everything at it, and every court remembers who broke their word.</li>
+      <li>Rivals never sign with whoever leads the world, hold at most two treaties each, and break them when
+      it pays. With only two powers left, every treaty lapses.</li>
+    </ul>
 
     <h4>Ruin</h4>
     <p>A power is finished the moment its <b>last land territory</b> falls. Ships take no ground,
@@ -493,6 +530,29 @@
     <div class="rule" id="endSub"></div>
     <p id="endBody" style="margin:0 auto;max-width:380px"></p>
     <button class="btn gold go" id="btnAgain">New Campaign</button>
+  </div>
+</div>
+
+<!-- ---------- diplomacy (Emperor) ---------- -->
+<div class="ov" id="ovDip" hidden>
+  <div class="sheet" style="text-align:center">
+    <h2 id="dipTitle"></h2>
+    <div class="rule" id="dipSub"></div>
+    <div id="dipStatus"></div>
+    <div id="dipActs"></div>
+    <p id="dipMsg"></p>
+    <div class="dipRow"><button class="btn" id="dipClose">Close</button></div>
+  </div>
+</div>
+<div class="ov" id="ovOffer" hidden>
+  <div class="sheet" style="text-align:center">
+    <h2 id="offTitle"></h2>
+    <div class="rule" id="offSub"></div>
+    <p id="offBody" style="margin:0 auto;max-width:360px"></p>
+    <div class="dipRow">
+      <button class="btn" id="offNo">Decline</button>
+      <button class="btn gold" id="offYes">Accept</button>
+    </div>
   </div>
 </div>
 
@@ -693,7 +753,9 @@ const DIFFICULTIES = [
   {id:'general', name:'General', income:1.20, leader:8,  guard:6,
    blurb:'Rivals muster 20% more, guard their continents, and turn on whoever leads.'},
   {id:'marshal', name:'Marshal', income:1.40, leader:14, guard:10,
-   blurb:'Rivals muster 40% more and close ranks hard against the leader.'}
+   blurb:'Rivals muster 40% more and close ranks hard against the leader.'},
+  {id:'emperor', name:'Emperor', income:1.40, leader:14, guard:10, diplomacy:true,
+   blurb:'Marshal-strength rivals who make and break treaties — and hunt down anyone who betrays one.'}
 ];
 const DIFF = () => DIFFICULTIES.find(d => d.id === G.diff) || DIFFICULTIES[0];
 
@@ -892,7 +954,8 @@ const G = {
   sel:null, targets:null, bombards:null,
   battle:null, pendingMove:null, fortSel:null,
   deck:[], discard:[], trades:0,
-  speed:1, you:0
+  speed:1, you:0,
+  treaties:[], vendettas:[], calls:[], offers:[], offeredBy:new Set(), dipWith:-1
 };
 const st = {};   // id -> {owner, units}
 
@@ -928,6 +991,7 @@ function newGame(nAI, facs){
   }
   G.gen = (G.gen || 0) + 1; G.busy = false;
   G.lastAggressor = -1;
+  G.treaties = []; G.vendettas = []; G.calls = []; G.offers = []; G.offeredBy = new Set();
   G.diff = setupDiff;
   G.you = 0; G.cur = 0; G.turn = 1; G.over=false; G.trades=0;
   G.deck = buildDeck(); G.discard = [];
@@ -998,15 +1062,16 @@ function attackTargets(id){
   const s = st[id]; if (s.units < 2) return out;
   const src = R[id];
   for (const n of ADJ[id]){
-    if (st[n].owner === s.owner) continue;
+    if (st[n].owner === s.owner || atPeace(s.owner, st[n].owner)) continue;
     if (src.t==='S' && R[n].t==='L') continue;   // fleets bombard, never invade
     out.set(n, null);
   }
   if (src.t === 'L'){
     for (const sea of ADJ[id]){
-      if (R[sea].t!=='S' || st[sea].owner !== s.owner) continue;
+      // an ally's sea carries your landings as well as your own
+      if (R[sea].t!=='S' || (st[sea].owner !== s.owner && !allied(s.owner, st[sea].owner))) continue;
       for (const n of ADJ[sea]){
-        if (R[n].t!=='L' || n===id || st[n].owner===s.owner) continue;
+        if (R[n].t!=='L' || n===id || st[n].owner===s.owner || atPeace(s.owner, st[n].owner)) continue;
         if (!out.has(n)) out.set(n, sea);
       }
     }
@@ -1016,7 +1081,7 @@ function attackTargets(id){
 function bombardTargets(id){
   const s = st[id];
   if (R[id].t!=='S' || s.units < 2) return [];
-  return ADJ[id].filter(n => R[n].t==='L' && st[n].owner !== s.owner && st[n].units > 1);
+  return ADJ[id].filter(n => R[n].t==='L' && st[n].owner !== s.owner && !atPeace(s.owner, st[n].owner) && st[n].units > 1);
 }
 function fortifyTargets(id){
   const p = st[id].owner, seen = new Set([id]), q=[id], out=[];
@@ -1046,6 +1111,7 @@ function startTurn(){
   const p = me();
   if (!p.alive){ nextPlayer(); return; }
   p.conquered = false;
+  diploTick();
   G.phase = 'reinforce';
   G.fortifyUsed = false;
   G.sel=null; G.targets=null; G.bombards=null; G.battle=null; G.pendingMove=null; G.fortSel=null;
@@ -1064,6 +1130,7 @@ function startTurn(){
     if (p.cards.length >= 5) log(`<span class="r">${hotseat() ? p.name + ' must' : 'You must'} exchange a set of dispatch cards.</span>`);
     render();
     if (humans().filter(q => q.alive).length > 1) showPass(p);
+    else processOffers();
   }
 }
 function nextPlayer(){
@@ -1366,10 +1433,13 @@ function syncUI(){
     row.innerHTML =
       `<span class="swatch" style="background:${q.color}"></span>` +
       `<span class="nm">${q.name}${q.ai?'':` <span class="youtag">${seatTag(q)}</span>`}` +
-        (q.pers ? `<span class="pers">${q.pers.name}</span>` : '') + `</span>` +
-      `<span class="st">${countLand(q.i)}🛡 ${countSea(q.i)}⚓</span>`;
+        (q.pers ? `<span class="pers">${q.pers.name}</span>` : '') +
+        (diplomacyOn() && q.alive && q.i !== G.you ? relationTag(q.i) : '') + `</span>` +
+      `<span class="st">${countLand(q.i)}🛡 ${countSea(q.i)}⚓</span>` +
+      (diplomacyOn() && q.alive && q.i !== G.you && isYou() && !G.over ? `<button class="dipBtn" data-i="${q.i}">Envoys</button>` : '');
     pl.appendChild(row);
   }
+  if (diplomacyOn()) pl.insertAdjacentHTML('beforeend', treatyList());
 
   // cards
   const you = G.players[G.you];
@@ -1557,6 +1627,8 @@ cv.addEventListener('click', e=>{
     if (G.sel === id){ clearSel(); render(); syncUI(); return; }
     if (G.targets && G.targets.has(id)) return beginBattle(G.sel, id, G.targets.get(id), false);
     if (G.bombards && G.bombards.includes(id)) return beginBattle(G.sel, id, null, true);
+    if (G.sel && atPeace(p.i, st[id].owner))
+      return banner(`You are at peace with ${G.players[st[id].owner].name} — break the treaty under Powers first.`, 2600);
     if (st[id].owner !== p.i) return;
     if (st[id].units < 2) return banner(R[id].t==='S'
       ? 'A lone fleet holds its sea but needs 2+ to attack — add fleets here at muster.'
@@ -1617,6 +1689,7 @@ function doRound(){
 
   if (D.units <= 0){
     const atk = A.owner, def = D.owner;
+    noteAggression(atk, def);
     const defName = def<0 ? 'no one' : G.players[def].name;
     G.lastAggressor = atk;
     D.owner = atk;
@@ -1722,7 +1795,9 @@ function aiScoreRegion(id, p){
   let s = 0;
   for (const n of ADJ[id]){
     if (st[n].owner === p) continue;
-    s += 2 + Math.min(6, st[n].units);
+    const w = 2 + Math.min(6, st[n].units);
+    s += atPeace(p, st[n].owner) ? w * 0.25 : w;      // a treaty border needs little guarding
+    if (hunts(p, st[n].owner)) s += 4;                // stage for the reckoning
   }
   if (R[id].t==='S') s += 1;
   const g = R[id].g;
@@ -1757,6 +1832,8 @@ async function aiTurn(gen){
     if (p.cards.length < 3) break;
   }
 
+  aiDiplomacy(p.i);
+  render(); syncUI();
   await pause(220);
 
   // --- reinforce armies
@@ -1764,7 +1841,7 @@ async function aiTurn(gen){
   if (myLand.length){
     const scored = myLand.map(id=>({id, s:aiScoreRegion(id,p.i) + Math.random()*2}))
                          .sort((a,b)=>b.s-a.s);
-    const front = scored.filter(x=>ADJ[x.id].some(n=>st[n].owner!==p.i && R[n].t==='L'));
+    const front = scored.filter(x=>ADJ[x.id].some(n=>st[n].owner!==p.i && R[n].t==='L' && !atPeace(p.i, st[n].owner)));
     const pool = (front.length?front:scored).slice(0, Math.max(2, Math.ceil(scored.length*T.massing)));
     let i = 0;
     while (G.pendA > 0){
@@ -1903,9 +1980,11 @@ function aiBestAttack(p, noFreeClaims, T){
       else {
         const ratio = s.units / (d.units + 0.5);
         const onLeader = leader >= 0 && d.owner === leader && leader !== p;
-        if (ratio < (onLeader ? T.odds * 0.85 : T.odds)) continue;
+        const hunt = huntLevel(p, d.owner);           // a betrayer (2), or an ally's attacker (1)
+        if (ratio < (onLeader ? T.odds * 0.85 : T.odds) * [1, 0.92, 0.8][hunt]) continue;
         score = ratio * 8 - d.units * 0.6 + T.weakBias / (d.units + 1);
         if (onLeader) score += D.leader;
+        score += [0, 7, 18][hunt];
         // finishing a continent / theatre is worth a lot
         const g = R[t].g;
         const held = GROUP_MEMBERS[g].filter(x=>st[x].owner===p).length;
@@ -1923,7 +2002,7 @@ function aiBestAttack(p, noFreeClaims, T){
 
 function aiBestFortify(p){
   const mine = regionsOf(p);
-  const front = new Set(mine.filter(id=>ADJ[id].some(n=>st[n].owner!==p)));
+  const front = new Set(mine.filter(id=>ADJ[id].some(n=>st[n].owner!==p && !atPeace(p, st[n].owner))));
   let best=null;
   for (const id of mine){
     if (front.has(id) || st[id].units < 2) continue;
@@ -1944,6 +2023,341 @@ function aiBestFortify(p){
     }
   }
   return best;
+}
+
+/* ============================== DIPLOMACY ===============================
+   Emperor difficulty only. Powers sign treaties in pairs:
+     pact      (kind 0)  neither side may attack, bombard or land on the other
+     alliance  (kind 1)  a pact, plus each ally's seas carry the other's
+                         landings, and an attack on one calls the other to arms
+   A treaty runs TREATY_YEARS and then lapses quietly. Tearing one up early is
+   always possible, but the wronged power hunts the betrayer for
+   VENDETTA_YEARS — and every court remembers who broke their word.
+   Everything here is stored as small integers (player slots and years), so
+   it saves and validates like the rest of the board. */
+const TREATY_YEARS = 6, VENDETTA_YEARS = 3, CALL_YEARS = 2;
+const TREATY_NAME = ['Non-Aggression Pact', 'Military Alliance'];
+const TREATY_SHORT = ['Pact', 'Allied'];
+// how readily each doctrine signs, and how readily it tears a treaty up
+const DIPLOMACY = {
+  conqueror:   {sign:-3, treachery:1.3},
+  sentinel:    {sign: 5, treachery:0.5},
+  admiral:     {sign: 1, treachery:0.9},
+  opportunist: {sign: 0, treachery:1.5},
+  strategist:  {sign: 2, treachery:1.0}
+};
+const diplomacyOn = () => !!DIFF().diplomacy;
+const dipOf = i => DIPLOMACY[(G.players[i].pers || PERSONALITIES[0]).id] || {sign:0, treachery:1};
+const yearOf = turn => 1804 + turn;
+const aliveCount = () => G.players.filter(p => p.alive).length;
+const nameOf = i => G.players[i].name;
+
+function treatyOf(a, b){
+  return G.treaties.find(t => (t.a === a && t.b === b) || (t.a === b && t.b === a)) || null;
+}
+function atPeace(a, b){ return a >= 0 && b >= 0 && a !== b && !!treatyOf(a, b); }
+function allied(a, b){ const t = a >= 0 && b >= 0 && a !== b && treatyOf(a, b); return !!t && t.kind === 1; }
+function treatiesOf(i){ return G.treaties.filter(t => t.a === i || t.b === i); }
+const partnerIn = (t, i) => t.a === i ? t.b : t.a;
+// How hard `by` is out for `target`: 2 = avenging a betrayal, 1 = answering
+// an ally's call to arms, 0 = not at all.
+function huntLevel(by, target){
+  if (target < 0) return 0;
+  if (G.vendettas.some(v => v.by === by && v.target === target)) return 2;
+  return G.calls.some(c => c.by === by && c.target === target) ? 1 : 0;
+}
+const hunts = (by, target) => huntLevel(by, target) > 0;
+// no treaty between two powers while a betrayal between them is unavenged
+function feuding(a, b){
+  return G.vendettas.some(v => (v.by === a && v.target === b) || (v.by === b && v.target === a));
+}
+
+function signTreaty(a, b, kind){
+  const old = treatyOf(a, b);
+  G.treaties = G.treaties.filter(t => t !== old);
+  G.treaties.push({a:Math.min(a, b), b:Math.max(a, b), kind, since:G.turn, until:G.turn + TREATY_YEARS});
+  G.offers = G.offers.filter(o => !(o.kind < 2 && ((o.from === a && o.to === b) || (o.from === b && o.to === a))));
+  log(`<b>${nameOf(a)}</b> and <b>${nameOf(b)}</b> sign a <span class="g">${TREATY_NAME[kind]}</span>, to run until ${yearOf(G.turn + TREATY_YEARS)}.`);
+}
+function breakTreaty(breaker, other){
+  const t = treatyOf(breaker, other); if (!t) return;
+  G.treaties = G.treaties.filter(x => x !== t);
+  G.vendettas = G.vendettas.filter(v => !(v.by === other && v.target === breaker));
+  G.vendettas.push({by:other, target:breaker, until:G.turn + VENDETTA_YEARS});
+  G.players[breaker].betrayed = G.turn;
+  G.offers = G.offers.filter(o => !(o.kind < 2 && ((o.from === breaker && o.to === other) || (o.from === other && o.to === breaker))));
+  log(`<span class="r"><b>${nameOf(breaker)}</b> tears up its ${TREATY_NAME[t.kind]} with <b>${nameOf(other)}</b> — who will hunt it until ${yearOf(G.turn + VENDETTA_YEARS)}.</span>`);
+  if (!G.players[other].ai) G.offers.push({from:breaker, to:other, kind:2 + t.kind});   // tell them on their turn
+}
+
+// Taking ground from a power brings its allies into the war against the taker.
+function noteAggression(att, def){
+  if (att < 0 || def < 0 || att === def || !G.treaties.length) return;
+  for (const t of treatiesOf(def)){
+    if (t.kind !== 1) continue;
+    const ally = partnerIn(t, def);
+    if (ally === att || atPeace(ally, att) || !G.players[ally].alive) continue;
+    const c = G.calls.find(c => c.by === ally && c.target === att);
+    if (c){ c.until = G.turn + CALL_YEARS; continue; }
+    G.calls.push({by:ally, target:att, until:G.turn + CALL_YEARS});
+    log(`<b>${nameOf(ally)}</b> answers <b>${nameOf(def)}</b>'s call to arms against <b>${nameOf(att)}</b>.`);
+  }
+}
+
+// Run at the start of every turn: lapse old treaties, end old feuds, drop the dead.
+function diploTick(){
+  G.offeredBy = new Set();
+  if (!G.treaties.length && !G.vendettas.length && !G.calls.length && !G.offers.length) return;
+  const n = aliveCount();
+  for (const t of G.treaties.slice()){
+    const dead = !G.players[t.a].alive || !G.players[t.b].alive;
+    if (!dead && G.turn < t.until && n > 2) continue;
+    G.treaties.splice(G.treaties.indexOf(t), 1);
+    if (!dead) log(`The ${TREATY_NAME[t.kind]} between <b>${nameOf(t.a)}</b> and <b>${nameOf(t.b)}</b> lapses` +
+                   (n <= 2 ? ` — with two powers left, the war is to the end.` : `.`));
+  }
+  const live = x => G.turn < x.until && G.players[x.by].alive && G.players[x.target].alive;
+  G.vendettas = G.vendettas.filter(live);
+  G.calls = G.calls.filter(live);
+  G.offers = G.offers.filter(o => G.players[o.from].alive && G.players[o.to].alive);
+}
+
+/* ---- how a rival weighs it up ---- */
+// how hard q presses on p's borders (threat), and how much of q lies open to p (prey)
+function borderStats(p, q){
+  let threat = 0, prey = 0, touch = 0;
+  for (const id of regionsOf(p)) for (const n of ADJ[id]){
+    if (st[n].owner !== q) continue;
+    touch++; threat += st[n].units;
+    prey += Math.max(0, st[id].units - st[n].units - 1);
+  }
+  return {threat, prey, touch};
+}
+// a third power pressing hard on both, that neither is at peace with
+function sharesFoe(p, q){
+  for (const r of G.players){
+    if (!r.alive || r.i === p || r.i === q || atPeace(p, r.i) || atPeace(q, r.i)) continue;
+    if (borderStats(p, r.i).threat >= 8 && borderStats(q, r.i).threat >= 8) return true;
+  }
+  return false;
+}
+// What rival p makes of a treaty of `kind` with q. Above zero, it signs.
+// `freeing` is a partner p would be dropping to make room.
+function treatyWorth(p, q, kind, freeing = -1){
+  if (p === q || !G.players[q].alive || feuding(p, q) || aliveCount() <= 2) return -99;
+  const held = treatiesOf(p).filter(t => partnerIn(t, p) !== q && partnerIn(t, p) !== freeing).length;
+  if (held >= 2) return -99;                          // a court can only juggle so many
+  const b = borderStats(p, q);
+  let v = b.touch ? b.threat * 0.5 - b.prey * 0.45 : -2;
+  const lead = currentLeader();
+  if (q === lead) v -= 30;                            // never tie its hands against the runaway power
+  else if (countLand(q) / LAND_IDS.length > 0.26) v -= 10;
+  if (lead >= 0 && lead !== p && lead !== q) v += 6;  // stand together against whoever leads
+  v -= held * 4;
+  const bt = G.players[q].betrayed;
+  if (bt && G.turn - bt < 8) v -= 14;                 // its word is worth little
+  if (kind === 1) v += sharesFoe(p, q) ? 3 : -7;
+  return v + dipOf(p).sign;
+}
+// What rival p gains by tearing up its treaty with q right now.
+function breakWorth(p, q, ignoreAge){
+  const t = treatyOf(p, q); if (!t) return -99;
+  if (!ignoreAge && G.turn - t.since < 3) return -99;  // the ink is barely dry
+  const b = borderStats(p, q);
+  let v = b.prey * 0.6 - b.threat * 0.5 - 8;           // 8: the vendetta that follows
+  if (q === currentLeader()) v += 20;
+  if (t.kind === 1) v -= 5;
+  return v * dipOf(p).treachery;
+}
+function refusalReason(q, from, kind){
+  const Q = nameOf(q);
+  if (aliveCount() <= 2) return `With two powers left, ${Q} will fight to the end.`;
+  if (feuding(q, from)) return `${Q} has not forgiven the last broken treaty.`;
+  if (currentLeader() === from) return `${Q} will not tie its hands while you lead the world.`;
+  const bt = G.players[from].betrayed;
+  if (bt && G.turn - bt < 8) return `${Q} remembers how you kept your last treaty.`;
+  if (treatiesOf(q).filter(t => partnerIn(t, q) !== from).length >= 2) return `${Q}'s diplomats are bound elsewhere.`;
+  if (kind === 1 && !sharesFoe(q, from)) return `${Q} sees no common enemy to march against.`;
+  return `${Q} sees more to gain from war with you than from peace.`;
+}
+
+// A rival's diplomacy, at the start of its turn.
+function aiDiplomacy(p){
+  if (!diplomacyOn() || aliveCount() <= 2) return;
+  // treachery — at most one treaty torn up a year
+  let worst = null;
+  for (const t of treatiesOf(p)){
+    const q = partnerIn(t, p), v = breakWorth(p, q, false);
+    if (v > 10 + Math.random() * 6 && (!worst || v > worst.v)) worst = {q, v};
+  }
+  if (worst) breakTreaty(p, worst.q);
+  // courtship
+  if (Math.random() < 0.5) return;
+  let best = null;
+  for (const q of G.players){
+    if (!q.alive || q.i === p) continue;
+    const t = treatyOf(p, q.i);
+    if (t && t.kind === 1) continue;
+    if (G.offers.some(o => o.from === p && o.to === q.i && o.kind < 2)) continue;
+    for (const kind of (t ? [1] : [1, 0])){
+      const v = treatyWorth(p, q.i, kind);
+      if (v > 3 && (!best || v > best.v)) best = {q:q.i, kind, v};
+    }
+  }
+  if (!best) return;
+  if (G.players[best.q].ai){
+    if (treatyWorth(best.q, p, best.kind) > Math.random() * 3) signTreaty(p, best.q, best.kind);
+  } else {
+    G.offers.push({from:p, to:best.q, kind:best.kind});
+    log(`<b>${nameOf(p)}</b> sends envoys to <b>${nameOf(best.q)}</b> proposing a ${TREATY_NAME[best.kind]}.`);
+  }
+}
+
+// A human's proposal. Rivals answer at once; another human answers on their turn.
+// `against`: a partner of q that q is asked to abandon for this alliance.
+function propose(from, q, kind, against = -1){
+  const Q = nameOf(q);
+  G.offeredBy.add(q);
+  if (!G.players[q].ai){
+    G.offers.push({from, to:q, kind});
+    log(`<b>${nameOf(from)}</b> sends envoys to <b>${Q}</b> proposing a ${TREATY_NAME[kind]}.`);
+    return `Your envoys ride for ${Q}. Its commander will answer at the start of their turn.`;
+  }
+  const luck = Math.random() * 4 - 2;
+  if (against >= 0){
+    const join = treatyWorth(q, from, 1, against);
+    if (join > -12 && breakWorth(q, against, true) + join + 6 + luck > 4){
+      const A = nameOf(against);
+      breakTreaty(q, against);
+      signTreaty(from, q, 1);
+      G.calls.push({by:q, target:against, until:G.turn + CALL_YEARS});
+      return `${Q} accepts! It renounces its treaty with ${A} and marches with you against them.`;
+    }
+    return `${Q} will not betray ${nameOf(against)} — not for what you offer.`;
+  }
+  if (treatyWorth(q, from, kind) + luck > 0){
+    signTreaty(from, q, kind);
+    return `${Q} accepts. The ${TREATY_NAME[kind]} runs until ${yearOf(G.turn + TREATY_YEARS)}.`;
+  }
+  return refusalReason(q, from, kind);
+}
+
+/* ---- the diplomacy dialog ---- */
+const canAct = () => isYou() && !G.busy && !G.battle && !G.pendingMove && !G.over;
+function openDip(q){ G.dipWith = q; G.dipConfirm = false; $('#dipMsg').textContent = ''; renderDip(); $('#ovDip').hidden = false; }
+function closeDip(){ $('#ovDip').hidden = true; G.dipWith = -1; render(); syncUI(); }
+function renderDip(){
+  const q = G.dipWith, you = G.you, Q = G.players[q];
+  if (q < 0 || !Q) return;
+  $('#dipTitle').textContent = Q.name;
+  $('#dipSub').textContent = Q.ai ? `— ${Q.pers ? Q.pers.name : 'Rival'} —` : `— ${seatTag(Q)} —`;
+  const t = treatyOf(you, q), lines = [];
+  if (t) lines.push(`<span class="ok">You hold a ${TREATY_NAME[t.kind]} with them until ${yearOf(t.until)}.</span>`);
+  else lines.push('No treaty between you.');
+  const v = G.vendettas.find(v => v.by === q && v.target === you);
+  if (v) lines.push(`<span class="bad">They are hunting you for a broken treaty until ${yearOf(v.until)}.</span>`);
+  const mine = G.vendettas.find(v => v.by === you && v.target === q);
+  if (mine) lines.push(`They broke faith with you — no treaty until ${yearOf(mine.until)}.`);
+  const c = G.calls.find(c => c.by === q && c.target === you);
+  if (c) lines.push(`<span class="bad">At war with you beside an ally until ${yearOf(c.until)}.</span>`);
+  for (const o of treatiesOf(q)){
+    const x = partnerIn(o, q); if (x === you) continue;
+    lines.push(`${TREATY_SHORT[o.kind] === 'Allied' ? 'Allied with' : 'Pact with'} ${nameOf(x)} until ${yearOf(o.until)}.`);
+  }
+  if (G.players[q].betrayed && G.turn - G.players[q].betrayed < 8) lines.push(`Broke a treaty in ${yearOf(G.players[q].betrayed)}.`);
+  $('#dipStatus').innerHTML = lines.join('<br>');
+
+  const acts = [];
+  const btn = (act, label, extra = '', cls = 'btn') => acts.push(`<button class="${cls}" data-act="${act}" ${extra}>${label}</button>`);
+  if (!canAct()) acts.push('<p class="dipNote">Envoys can only be sent on your own turn, between battles.</p>');
+  else if (aliveCount() <= 2) acts.push('<p class="dipNote">With two powers left, no treaty can be made.</p>');
+  else {
+    if (t){
+      if (G.dipConfirm) btn('confirmBreak', `Yes — tear it up (they hunt you until ${yearOf(G.turn + VENDETTA_YEARS)})`, '', 'btn gold');
+      else btn('break', `Break the ${TREATY_NAME[t.kind]}`);
+    }
+    if (G.offeredBy.has(q)) acts.push('<p class="dipNote">They have heard your envoys this year.</p>');
+    else if (G.offers.some(o => o.from === you && o.to === q && o.kind < 2)) acts.push('<p class="dipNote">Your proposal awaits their answer.</p>');
+    else if (!feuding(you, q)){
+      if (!t) btn('offer', `Propose a ${TREATY_NAME[0]}`, 'data-kind="0"');
+      if (!t || t.kind === 0) btn('offer', `Propose a ${TREATY_NAME[1]}`, 'data-kind="1"');
+      if (Q.ai && !t) for (const o of treatiesOf(q)){
+        const x = partnerIn(o, q);
+        if (x !== you) btn('against', `Ally with them against ${nameOf(x)}`, `data-x="${x}"`);
+      }
+    }
+  }
+  $('#dipActs').innerHTML = acts.join('');
+}
+$('#dipActs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !canAct()) return;
+  const q = G.dipWith, act = b.dataset.act;
+  if (act === 'break'){ G.dipConfirm = true; $('#dipMsg').textContent = `${nameOf(q)} will hunt you for ${VENDETTA_YEARS} years, and every court will remember.`; }
+  else if (act === 'confirmBreak'){ breakTreaty(G.you, q); G.dipConfirm = false; $('#dipMsg').textContent = 'The treaty is torn up. Their armies are yours to strike.'; }
+  else if (act === 'offer') $('#dipMsg').textContent = propose(G.you, q, +b.dataset.kind);
+  else if (act === 'against') $('#dipMsg').textContent = propose(G.you, q, 1, +b.dataset.x);
+  renderDip(); render(); syncUI();
+});
+$('#dipClose').onclick = closeDip;
+$('#ovDip').addEventListener('click', e => { if (e.target === e.currentTarget) closeDip(); });
+$('#plist').addEventListener('click', e => {
+  const b = e.target.closest('.dipBtn'); if (b) openDip(+b.dataset.i);
+});
+
+/* ---- proposals and news waiting for a human, shown when their turn opens ---- */
+function processOffers(){
+  if (G.over || !isYou()) return;
+  const k = G.offers.findIndex(o => o.to === G.you);
+  if (k < 0){ $('#ovOffer').hidden = true; return; }
+  const o = G.offers[k], F = nameOf(o.from);
+  if (o.kind < 2){
+    const t = treatyOf(o.from, o.to);
+    const valid = G.players[o.from].alive && !feuding(o.from, o.to) && aliveCount() > 2 && (!t || t.kind < o.kind);
+    if (!valid){ G.offers.splice(k, 1); return processOffers(); }
+    $('#offTitle').textContent = TREATY_NAME[o.kind];
+    $('#offSub').textContent = `— proposed by ${F} —`;
+    $('#offBody').textContent = o.kind === 1
+      ? `${F} proposes a Military Alliance until ${yearOf(G.turn + TREATY_YEARS)}: neither may attack the other, each may land troops from the other's seas, and an attack on one brings the other into the war.`
+      : `${F} proposes a Non-Aggression Pact until ${yearOf(G.turn + TREATY_YEARS)}: neither may attack, bombard or land on the other.`;
+    $('#offNo').hidden = false; $('#offYes').textContent = 'Accept';
+  } else {
+    $('#offTitle').textContent = 'Betrayal';
+    $('#offSub').textContent = `— ${F} —`;
+    $('#offBody').textContent = `${F} has torn up its ${TREATY_NAME[o.kind - 2]} with you. For the next ${VENDETTA_YEARS} years no treaty binds you, and every court in the world knows who broke faith.`;
+    $('#offNo').hidden = true; $('#offYes').textContent = 'Understood';
+  }
+  G.offerAt = o;
+  $('#ovOffer').hidden = false;
+}
+function answerOffer(yes){
+  const o = G.offerAt; G.offerAt = null;
+  G.offers = G.offers.filter(x => x !== o);
+  if (o && o.kind < 2){
+    if (yes) signTreaty(o.from, o.to, o.kind);
+    else log(`<b>${nameOf(o.to)}</b> turns away <b>${nameOf(o.from)}</b>'s envoys.`);
+  }
+  $('#ovOffer').hidden = true;
+  render(); syncUI();
+  processOffers();
+}
+$('#offYes').onclick = () => answerOffer(true);
+$('#offNo').onclick  = () => answerOffer(false);
+
+/* ---- treaty and feud lines for the Powers panel ---- */
+function relationTag(q){
+  const you = G.you, t = treatyOf(you, q);
+  if (t) return `<span class="rel ok">${TREATY_SHORT[t.kind]} to ${yearOf(t.until)}</span>`;
+  const v = G.vendettas.find(v => v.by === q && v.target === you) || G.calls.find(c => c.by === q && c.target === you);
+  if (v) return `<span class="rel bad">Hunting you to ${yearOf(v.until)}</span>`;
+  const w = G.vendettas.find(v => v.by === you && v.target === q);
+  if (w) return `<span class="rel dim">Betrayed you · ${yearOf(w.until)}</span>`;
+  return '';
+}
+function treatyList(){
+  if (!G.treaties.length && !G.vendettas.length) return '';
+  const rows = G.treaties.map(t => `${TREATY_SHORT[t.kind] === 'Allied' ? '⚑' : '☮'} ${nameOf(t.a)} — ${nameOf(t.b)} · ${TREATY_SHORT[t.kind] === 'Allied' ? 'Alliance' : 'Pact'} to ${yearOf(t.until)}`);
+  for (const v of G.vendettas) rows.push(`<span class="bad">⚔ ${nameOf(v.by)} hunts ${nameOf(v.target)} to ${yearOf(v.until)}</span>`);
+  return `<div class="tlist"><div class="h">Treaties &amp; feuds</div>${rows.join('<br>')}</div>`;
 }
 
 /* ============================== END SCREEN ============================== */
@@ -2033,11 +2447,11 @@ function showPass(p){
   $('#passBody').textContent = `Pass the phone to the commander of ${p.name}.`;
   $('#ovPass').hidden = false;
 }
-$('#btnPass').onclick = ()=>{ $('#ovPass').hidden = true; render(); syncUI(); };
+$('#btnPass').onclick = ()=>{ $('#ovPass').hidden = true; render(); syncUI(); processOffers(); };
 $('#btnBegin').onclick = ()=>{
   $('#ovSetup').hidden = true;
   $('#ovEnd').hidden = true;
-  $('#ovPass').hidden = true;
+  $('#ovPass').hidden = true; $('#ovOffer').hidden = true; $('#ovDip').hidden = true;
   layout(); newGame(setupAI, setupHum > 1 ? [setupFac, setupFac2] : [setupFac]); render(); syncUI();
 };
 $('#btnNew').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
@@ -2091,9 +2505,13 @@ function snapshot(){
     v: 1, diff: G.diff, turn: G.turn, cur: G.cur, you: G.you, phase: G.phase,
     pendA: G.pendA, pendF: G.pendF, fortifyUsed: G.fortifyUsed,
     trades: G.trades, lastAggressor: G.lastAggressor,
+    dip: [G.treaties.map(t => [t.a, t.b, t.kind, t.since, t.until]),
+          G.vendettas.map(v => [v.by, v.target, v.until]),
+          G.calls.map(c => [c.by, c.target, c.until]),
+          G.offers.map(o => [o.from, o.to, o.kind])],
     players: G.players.map(p => ({
       fac: p.fac, ai: p.ai ? 1 : 0, alive: p.alive ? 1 : 0,
-      conquered: p.conquered ? 1 : 0,
+      conquered: p.conquered ? 1 : 0, betrayed: p.betrayed || 0,
       pers: p.pers ? p.pers.id : null,
       cards: p.cards.map(c => [c.r === null ? -1 : LAND_IDS.indexOf(c.r), CARD_SYMBOLS.indexOf(c.s)])
     })),
@@ -2137,6 +2555,30 @@ function parseCard(pair, nPlayers){
   return {r:LAND_IDS[ri], s:CARD_SYMBOLS[si]};
 }
 
+// treaties, feuds, calls to arms and pending proposals: tuples of player slots and years
+function parseDip(x, n){
+  if (x === undefined) return {treaties:[], vendettas:[], calls:[], offers:[]};   // older saves
+  if (!Array.isArray(x) || x.length !== 4 || !x.every(a => Array.isArray(a) && a.length <= 64)) return null;
+  const rows = (arr, len, f) => {
+    const out = [];
+    for (const r of arr){
+      if (!Array.isArray(r) || r.length !== len || !r.every(v => Number.isInteger(v))) return null;
+      const o = f(r); if (!o) return null; out.push(o);
+    }
+    return out;
+  };
+  const pl = v => isInt(v, 0, n-1), yr = v => isInt(v, 0, 9999);
+  const treaties = rows(x[0], 5, ([a, b, kind, since, until]) =>
+    pl(a) && pl(b) && a < b && isInt(kind, 0, 1) && yr(since) && yr(until) ? {a, b, kind, since, until} : null);
+  const feud = ([by, target, until]) => pl(by) && pl(target) && by !== target && yr(until) ? {by, target, until} : null;
+  const vendettas = rows(x[1], 3, feud), calls = rows(x[2], 3, feud);
+  const offers = rows(x[3], 3, ([from, to, kind]) =>
+    pl(from) && pl(to) && from !== to && isInt(kind, 0, 3) ? {from, to, kind} : null);
+  if (!treaties || !vendettas || !calls || !offers) return null;
+  if (new Set(treaties.map(t => t.a + '-' + t.b)).size !== treaties.length) return null;
+  return {treaties, vendettas, calls, offers};
+}
+
 function validate(d){
   if (!d || d.v !== 1) return null;
   if (!Array.isArray(d.players) || d.players.length < 2 || d.players.length > FACTIONS.length) return null;
@@ -2146,6 +2588,7 @@ function validate(d){
   if (d.diff !== undefined && !DIFFICULTIES.some(x => x.id === d.diff)) return null;
   if (!isInt(d.pendA, 0, 999) || !isInt(d.pendF, 0, 999) || !isInt(d.trades, 0, 9999)) return null;
   if (!isInt(d.lastAggressor, -1, n-1)) return null;
+  const dip = parseDip(d.dip, n); if (!dip) return null;
   if (!Array.isArray(d.owners) || d.owners.length !== REGIONS.length) return null;
   if (!Array.isArray(d.units)  || d.units.length  !== REGIONS.length) return null;
 
@@ -2156,11 +2599,12 @@ function validate(d){
     if (!Array.isArray(p.cards) || p.cards.length > 20) return null;
     const pers = p.pers === null ? null : PERSONALITIES.find(x => x.id === p.pers);
     if (p.pers !== null && !pers) return null;
+    if (p.betrayed !== undefined && !isInt(p.betrayed, 0, 9999)) return null;
     const cards = [];
     for (const c of p.cards){ const card = parseCard(c, n); if (!card) return null; cards.push(card); }
     players.push({
       i, fac:p.fac, name:FACTIONS[p.fac].name, color:FACTIONS[p.fac].color,   // text from code, never the save
-      ai: !!p.ai, alive: !!p.alive, conquered: !!p.conquered, pers, cards
+      ai: !!p.ai, alive: !!p.alive, conquered: !!p.conquered, pers, cards, betrayed: p.betrayed || 0
     });
   }
   if (new Set(players.map(p=>p.fac)).size !== n) return null;      // no duplicate empires
@@ -2186,7 +2630,7 @@ function validate(d){
   for (const c of d.deck){ const card = parseCard(c, n); if (!card) return null; deck.push(card); }
   for (const c of d.discard){ const card = parseCard(c, n); if (!card) return null; discard.push(card); }
 
-  return {d, players, owners, units, deck, discard};
+  return {d, players, owners, units, deck, discard, dip};
 }
 
 function resumeGame(){
@@ -2202,7 +2646,7 @@ function resumeGame(){
   } catch (e){ ok = null; }
   if (!ok){ clearSave(); return false; }
 
-  const {d, players, owners, units, deck, discard} = ok;
+  const {d, players, owners, units, deck, discard, dip} = ok;
   G.gen = (G.gen || 0) + 1;
   G.players = players;
   G.turn = d.turn; G.cur = d.cur; G.you = d.you; G.phase = d.phase;
@@ -2211,6 +2655,8 @@ function resumeGame(){
   // saves from before difficulty existed resume as Officer — how they were being played
   G.diff = d.diff === undefined ? 'officer' : d.diff;
   G.deck = deck; G.discard = discard;
+  G.treaties = dip.treaties; G.vendettas = dip.vendettas; G.calls = dip.calls; G.offers = dip.offers;
+  G.offeredBy = new Set(); G.dipWith = -1;
   G.over = false; G.busy = false;
   G.sel = null; G.targets = null; G.bombards = null;
   G.battle = null; G.pendingMove = null; G.fortSel = null; G.fortTargets = null;
@@ -2267,7 +2713,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-10-06 · j';
+const BUILD = '2026-11-07 · l';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
@@ -2402,7 +2848,7 @@ const TAPS = {start:0, end:0, click:0, rotations:0, last:'—'};   // diagnostic
     const el = document.elementFromPoint(x, y);
     if (!el || el.closest('input')) return {el, tap:null};
     const tap = el.closest('button, a[href], .tab, header h1, #diag') ||
-                (el.id === 'ovHelp' ? el : null);           // the rules backdrop
+                (el.id === 'ovHelp' || el.id === 'ovDip' ? el : null);   // tappable backdrops
     return {el, tap};
   };
   const describe = el => !el ? 'nothing' : (el.id ? '#'+el.id : el.tagName.toLowerCase() +
@@ -2606,6 +3052,7 @@ if (resumeGame()){
   render(); syncUI();
   if (me().ai && !G.busy) runAI();       // we were interrupted on a rival's turn
   else if (humans().filter(q => q.alive).length > 1) showPass(me());
+  else processOffers();
 } else {
   render();
 }
