@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>World at War — 1805</title>
 <style>
   :root{
@@ -29,7 +29,9 @@
   /* ---------- header ---------- */
   header{
     display:flex; align-items:center; gap:18px;
-    padding:8px 16px; background:linear-gradient(#2b2219,#1c160f);
+    /* clear of the iPad's clock and battery when run from the home screen */
+    padding:calc(8px + max(env(safe-area-inset-top, 0px), var(--ipadTop, 0px))) 16px 8px;
+    background:linear-gradient(#2b2219,#1c160f);
     border-bottom:2px solid var(--gold-dim); flex:0 0 auto;
   }
   header h1{
@@ -514,6 +516,11 @@
 
 <script>
 'use strict';
+// iPadOS runs a home-screen web app underneath its status bar, whatever the
+// page asks for, so leave that much room above the header there.
+if ((/iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)) &&
+    (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)))
+  document.documentElement.style.setProperty('--ipadTop', '24px');
 /* =========================================================================
    WORLD AT WAR  —  Napoleonic Risk with a playable ocean
    ========================================================================= */

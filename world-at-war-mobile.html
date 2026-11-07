@@ -2699,10 +2699,20 @@ function applySafeAreas(){
   // status bar and only drew the top 793 of 852 points, leaving a dead band
   // at the bottom. The page now asks for an opaque status bar instead (see
   // the apple-mobile-web-app-status-bar-style meta), so no guessing here.
+  // iPadOS ignores the opaque status-bar request: a home-screen app on an iPad
+  // runs underneath the clock and battery, which blurred the header on the
+  // user's iPad mini. Keep at least the status bar's height clear there.
+  const top = isIPad() && isStandalone() ? Math.max(t, IPAD_STATUS_BAR) : t;
   const s = document.documentElement.style;
-  s.setProperty('--safeT', t+'px'); s.setProperty('--safeB', b+'px');
+  s.setProperty('--safeT', top+'px'); s.setProperty('--safeB', b+'px');
   s.setProperty('--safeL', l+'px'); s.setProperty('--safeR', r+'px');
-  SAFE = {t, b, l, r};
+  SAFE = {t:top, env:t, b, l, r};
+}
+const IPAD_STATUS_BAR = 24;
+// iPads since iPadOS 13 report themselves as a Mac; a touchscreen gives them away
+function isIPad(){
+  return /iPad/.test(navigator.userAgent) ||
+         (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 }
 let SAFE = {};
 function isStandalone(){
@@ -2713,13 +2723,13 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-07 · m';
+const BUILD = '2026-11-07 · n';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
 function statusBarMode(){
   if (!isStandalone()) return 'Safari';
-  return SAFE.t > 0 ? 'translucent' : 'opaque';
+  return SAFE.env > 0 ? 'translucent' : 'opaque';
 }
 // The readout refreshes itself while open, so it can be left up across a
 // rotation and then show whether later taps are reaching the page at all.
