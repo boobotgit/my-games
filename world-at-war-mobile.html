@@ -500,7 +500,7 @@
       <li><b>General</b> — rivals muster 20% more armies, reinforce the borders of any continent they hold,
       and once any power holds 30% of the land they turn on it together.</li>
       <li><b>Marshal</b> — rivals muster 40% more and close ranks hard against the leader.</li>
-      <li><b>Emperor</b> — Marshal-strength rivals, and diplomacy (below).</li>
+      <li><b>Emperor</b> — rivals muster 60% more, close ranks against the leader, and practise diplomacy (below).</li>
     </ul>
     <p>The bonus is only ever the rivals'. Your own muster follows the normal rules at every level.</p>
 
@@ -762,8 +762,8 @@ const DIFFICULTIES = [
    blurb:'Rivals muster 20% more, guard their continents, and turn on whoever leads.'},
   {id:'marshal', name:'Marshal', income:1.40, leader:14, guard:10,
    blurb:'Rivals muster 40% more and close ranks hard against the leader.'},
-  {id:'emperor', name:'Emperor', income:1.40, leader:14, guard:10, diplomacy:true,
-   blurb:'Marshal-strength rivals who make and break treaties — and hunt down anyone who betrays one.'}
+  {id:'emperor', name:'Emperor', income:1.60, leader:14, guard:10, diplomacy:true,
+   blurb:'Rivals muster 60% more, make and break treaties — and hunt down anyone who betrays one.'}
 ];
 const DIFF = () => DIFFICULTIES.find(d => d.id === G.diff) || DIFFICULTIES[0];
 
@@ -2747,7 +2747,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-07 · q';
+const BUILD = '2026-11-08 · r';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
