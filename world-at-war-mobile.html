@@ -428,6 +428,7 @@
     <p id="diffBlurb" style="text-align:center;font-size:12.5px;color:#6b5636;margin:4px 0 0"></p>
 
     <button class="btn gold go" id="btnBegin">Begin the Campaign</button>
+    <button class="btn go" id="btnResume" hidden style="margin-top:10px">Return to the Campaign</button>
   </div>
 </div>
 
@@ -1589,9 +1590,10 @@ function doTrade(p){
   // one card in the set showing ground you already hold raises two extra
   // regiments on the spot
   const home = taken.find(c => c.r && st[c.r].owner === p.i);
+  G.lastLevy = home ? home.r : null;
   if (home){
     st[home.r].units += 2;
-    log(`Local levies raise <span class="g">2</span> more in <b>${R[home.r].name}</b>.`);
+    log(`Local levies raise <span class="g">2</span> more in <b>${R[home.r].name}</b> — placed there at once, on top of the ${val}.`);
   }
   return val;
 }
@@ -1793,7 +1795,11 @@ $('#btnEnd').onclick = ()=>{
 $('#btnTrade').onclick = ()=>{
   const p = G.players[G.you];
   const n = doTrade(p);
-  if (n){ G.pendA += n; render(); syncUI(); }
+  if (n){
+    G.pendA += n;
+    banner(G.lastLevy ? `+${n} armies to place, and +2 already placed in ${R[G.lastLevy].name}` : `+${n} armies to place`, 3200);
+    render(); syncUI();
+  }
 };
 
 /* ================================== AI ================================== */
@@ -2461,8 +2467,15 @@ $('#btnBegin').onclick = ()=>{
   $('#ovPass').hidden = true; $('#ovOffer').hidden = true; $('#ovDip').hidden = true;
   layout(); newGame(setupAI, setupHum > 1 ? [setupFac, setupFac2] : [setupFac]); render(); syncUI();
 };
-$('#btnNew').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
-$('#btnAgain').onclick = ()=>{ $('#ovEnd').hidden=true; $('#ovSetup').hidden=false; };
+// Opened mid-campaign (the New Campaign button is easy to catch by accident),
+// the setup sheet offers the way back; nothing changes until Begin is pressed.
+$('#btnNew').onclick = ()=>{
+  $('#ovEnd').hidden=true;
+  $('#btnResume').hidden = !(G.players.length && !G.over);
+  $('#ovSetup').hidden=false;
+};
+$('#btnAgain').onclick = ()=>{ $('#ovEnd').hidden=true; $('#btnResume').hidden=true; $('#ovSetup').hidden=false; };
+$('#btnResume').onclick = ()=>{ $('#ovSetup').hidden=true; render(); syncUI(); };
 $('#btnHelp').onclick = ()=>{ $('#ovHelp').hidden=false; };
 $('#btnCloseHelp').onclick = ()=>{ $('#ovHelp').hidden=true; };
 const SPEEDS = [[1,'Normal'],[0.45,'Fast'],[0.12,'Instant']];
@@ -2734,7 +2747,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-07 · p';
+const BUILD = '2026-11-07 · q';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
