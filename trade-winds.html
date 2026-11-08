@@ -525,7 +525,7 @@ function defaultState() {
   const wars = {}; for (let i = 0; i < NAVY_NATIONS.length; i++) for (let j = i + 1; j < NAVY_NATIONS.length; j++) wars[warKey(NAVY_NATIONS[i], NAVY_NATIONS[j])] = false;
   return {
     v: SAVE_VERSION, seed: (Math.random() * 1e9) | 0, captain: 'Captain', created: Date.now(), savedAt: 0, start: '1680-03-01',
-    infamy: 0, won: 0, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
+    infamy: 0, won: 0, home: null, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
     day: 0, gold: 1200, flag: 'neutral', flags: ['neutral'],
     rep: { eng: 0, fra: 0, spa: 0, ned: 0 }, wars,
     fleet: [], nextId: 1, cargo: {}, cost: {},
@@ -699,6 +699,8 @@ function sanitizeSave(s) {
   o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false), autoHoist: !!(isObj(s.settings) && s.settings.autoHoist === true) };
   o.stance = s.stance === 'hunting' ? 'hunting' : 'peaceful';
   o.won = int(s.won, 0, 0, 1e6);
+  // older careers didn't record a home port: the first port visited is where the career began
+  o.home = own(PORT, s.home) ? s.home : (isObj(s.stats) && Array.isArray(s.stats.ports) && own(PORT, s.stats.ports[0]) ? s.stats.ports[0] : null);
   // v2 collections are re-validated in detail by normalizeSave below; pass through only plain objects/arrays
   for (const k of ['warehouses', 'owners', 'holdings', 'sacked']) { o[k] = {}; if (isObj(s[k])) for (const p of Object.keys(s[k])) if (own(PORT, p)) o[k][p] = s[k][p]; }
   // ships docked in your towns get the same checks, and every ship id must be unique
@@ -867,12 +869,13 @@ function updateFactories() {
 function townIncome(pid) { const p = PORT[pid], h = S.holdings[pid]; return p.size * 45 - p.size * 10 * h.fort; }
 function dockGuns(pid) { return (S.holdings[pid].ships || []).reduce((a, s) => a + s.guns, 0); }
 function dockCap(pid) { return PORT[pid].size * 2 + 1; }
-function holdChance(pid) { return Math.min(0.97, 0.3 + 0.2 * S.holdings[pid].fort + Math.min(0.3, dockGuns(pid) / 150)); }
+function holdChance(pid) { const h = S.holdings[pid], g = NAVY_NATIONS.includes(h.prev) ? grievance(h.prev) : 1; return clamp(0.3 + 0.2 * h.fort + Math.min(0.3, dockGuns(pid) / 150) - 0.04 * (g - 1), 0.15, 0.97); }
 function updateHoldings() {
   for (const pid of Object.keys(S.holdings)) {
     const h = S.holdings[pid], p = PORT[pid];
     S.gold = Math.max(0, S.gold + townIncome(pid));
-    if (S.day - h.day < 30 || h.prev === 'den' || !chance(1 / 160)) continue; // the Danes have no fleet out here to retake it
+    const angry = NAVY_NATIONS.includes(h.prev) ? grievance(h.prev) : 1; // the more of its towns you hold, the more often a nation tries
+    if (S.day - h.day < 30 || h.prev === 'den' || !chance(1 / Math.max(60, 160 - 25 * (angry - 1)))) continue; // the Danes have no fleet out here to retake it
     const prev = h.prev;
     if (S.port === pid) { queueEvent({ show: () => showCounterattack(pid) }); continue; }
     if (chance(holdChance(pid))) { news(`A ${NATIONS[prev].adj} expedition against your town of ${p.name} has been beaten off by your garrison!`, 'war'); toast(`Your garrison at ${p.name} beat off a ${NATIONS[prev].adj} attack.`); }
@@ -920,8 +923,8 @@ function updateHurricanes() {
       stepHurr(h, 0.25);
       for (const p of PORTS) {
         const d = dist(p.lon, p.lat, h.lon, h.lat);
-        if (d < h.r + 0.15 && !h.hit.includes(p.id)) { h.hit.push(p.id); hurricaneHitsPort(h, p); }
-        else if (d < h.R && !h.gale.includes(p.id) && !h.hit.includes(p.id)) { h.gale.push(p.id); if (S.port === p.id) queueStorm('galePort', h, p); }
+        if (d < h.r + 0.15 && !h.hit.includes(p.id)) { h.hit.push(p.id); hurricaneHitsPort(h, p, d); }
+        else if (d < h.R && !h.gale.includes(p.id) && !h.hit.includes(p.id)) { h.gale.push(p.id); if (S.port === p.id) queueStorm('galePort', h, p, d); }
       }
     }
     h.age++;
@@ -929,8 +932,8 @@ function updateHurricanes() {
   if (!S.port && (S.voyage || S.station || S.anchoredOff)) for (const h of S.hurricanes) {
     if (h.lon > LON1) continue;
     const d = dist(S.pos[0], S.pos[1], h.lon, h.lat);
-    if (d < h.r + 0.25 && S.day - (h.pHit ?? -99) > 3) { h.pHit = S.day; h.known = true; queueStorm('hurricane', h); }
-    else if (d < h.R && S.day - (h.pGale ?? -99) > 2 && S.day - (h.pHit ?? -99) > 3) { h.pGale = S.day; h.known = true; queueStorm('gale', h); }
+    if (d < h.r + 0.25 && S.day - (h.pHit ?? -99) > 3) { h.pHit = S.day; h.known = true; queueStorm('hurricane', h, null, d); }
+    else if (d < h.R && S.day - (h.pGale ?? -99) > 2 && S.day - (h.pHit ?? -99) > 3) { h.pGale = S.day; h.known = true; queueStorm('gale', h, null, d); }
     else if (d < 8.5 && !h.seaWarned) { h.seaWarned = true; h.known = true; queueStorm('bands', h); }
   }
   S.hurricanes = S.hurricanes.filter(h => {
@@ -939,7 +942,7 @@ function updateHurricanes() {
     return !gone;
   });
 }
-function hurricaneHitsPort(h, p) {
+function hurricaneHitsPort(h, p, dEye) {
   news(`The Hurricane of ${h.name} strikes ${p.name}! ${p.shelter ? 'The harbour is a hurricane hole and most ships rode it out.' : 'Ships in the roads are wrecked and warehouses flattened.'} Prices soar.`, 'storm');
   for (const g of GOODS) {
     const m = S.markets[p.id][g.id];
@@ -947,8 +950,8 @@ function hurricaneHitsPort(h, p) {
     else if (['provisions', 'tools', 'cloth'].includes(g.id)) { m.m = 0.4; m.s *= 0.5; }
   }
   const w = S.warehouses[p.id];
-  if (w && !p.shelter && storeUsed(w)) { const f = rand(0.2, 0.45); for (const g of Object.keys(w.store)) { w.store[g] = Math.floor(w.store[g] * (1 - f)); if (!w.store[g]) delete w.store[g]; } news(`The hurricane wrecked part of your warehouse at ${p.name}; ${Math.round(f * 100)}% of the stock is ruined.`, 'storm'); }
-  if (S.port === p.id) queueStorm('hurricanePort', h, p);
+  if (w && !p.shelter && storeUsed(w)) { const f = Math.min(0.8, rand(0.2, 0.45) * (0.6 + 0.6 * hurricaneSeverity(h, dEye ?? h.r))); for (const g of Object.keys(w.store)) { w.store[g] = Math.floor(w.store[g] * (1 - f)); if (!w.store[g]) delete w.store[g]; } news(`The hurricane wrecked part of your warehouse at ${p.name}; ${Math.round(f * 100)}% of the stock is ruined.`, 'storm'); }
+  if (S.port === p.id) queueStorm('hurricanePort', h, p, dEye);
   else if (S.known[p.id]) toast(`Hurricane strikes ${p.name}!`);
 }
 function harborNotices(pid) {
@@ -1493,7 +1496,9 @@ function tabMarket(p) {
   return `<table class="mk"><tr><th>Goods</th><th class="num">Buy</th><th class="num">Sell</th><th class="num">In port</th><th class="num">Hold</th><th class="num">Paid (margin)</th><th>Buy</th><th>Sell</th><th>Best known elsewhere</th></tr>${rows}</table>
     <p class="hint">Free hold: <b>${free}</b>. Green is cheap for this port, red is dear. Buying pushes a price up and selling pushes it down; markets drift back over a few weeks. Tariff (${Math.round(t * 100)}%) is already in the prices. Fly this port's own colours to pay none.</p>`;
 }
-function repairCost(sh) { const st = shipStats(sh); return Math.ceil((st.maxHull - sh.hull) * st.T.price * 0.25 / st.T.hull); }
+// Repairs cost half in your home port and in any town you hold.
+function cheapRepairs(pid) { return !!pid && (pid === S.home || nat(PORT[pid]) === 'player'); }
+function repairCost(sh) { const st = shipStats(sh); return Math.ceil((st.maxHull - sh.hull) * st.T.price * 0.25 / st.T.hull * (cheapRepairs(S.port) ? 0.5 : 1)); }
 function refitCost(sh) { return Math.round(SHIP_TYPES[sh.type].price * REFIT_COST); }
 function shipPrice(type, p) { return Math.round(SHIP_TYPES[type].price * (p.n === 'ned' ? 0.92 : p.free ? 1.08 : 1)); }
 function shipsForSale(p) {
@@ -1505,7 +1510,8 @@ function shipsForSale(p) {
   return l;
 }
 function tabShipyard(p) {
-  let h = '<div class="grid2">';
+  let h = cheapRepairs(p.id) ? `<div class="notice info" style="margin-top:0">Repairs are <b>half price</b> here — ${p.id === S.home ? 'this is your home port' : 'this is your own town'}.</div>` : '';
+  h += '<div class="grid2">';
   S.fleet.forEach((sh, i) => {
     const st = shipStats(sh), rc = repairCost(sh), rf = refitCost(sh), val = shipValue(sh);
     const canGun = sh.guns < st.maxGuns && S.gold >= GUN_PRICE && freeHold() >= GUN_SPACE;
@@ -1839,6 +1845,17 @@ function mkEnemy(type, spec, gf, kind, nat, used) {
   else { sh.gold = kind === 'pirate' || kind === 'privateer' ? randi(80, 300) * (tier + 1) : randi(40, 160) * (tier + 1); sh.cargo = randomCargo(Math.round(st.hold * rand(0.2, 0.6))); }
   return sh;
 }
+// How many of nation n's towns you hold. Each one makes it angrier and its squadrons bigger.
+function grievance(n) { let g = 0; for (const pid in S.holdings) if (S.holdings[pid].prev === n) g++; return g; }
+function genPunitive(n) {
+  const g = grievance(n), used = [], tier = Math.min(4, playerTier() + Math.ceil(g / 2));
+  const fleet = pick(NAVY_TABLE[tier]).map(([t, sp, gf]) => mkEnemy(t, sp, gf, 'navy', n, used));
+  const extra = Math.min(5 - fleet.length, Math.floor(g / 2));
+  for (let i = 0; i < extra; i++) fleet.push(mkEnemy(g >= 4 ? 'frigate' : 'brig', 'fighter', 1, 'navy', n, used));
+  return fleet;
+}
+function punitiveChance(n) { return Math.min(0.12, 0.025 * grievance(n)); }
+function encounterPunitive(n) { queueEncounter({ kind: 'navyHostile', nation: n, enemies: genPunitive(n), punitive: true }); }
 function genFleet(kind, nat) { const used = []; return pick((kind === 'pirate' || kind === 'privateer' ? PIRATE_TABLE : NAVY_TABLE)[playerTier()]).map(([t, s, gf]) => mkEnemy(t, s, gf, kind, nat, used)); }
 function genMerchants(nat, treasure) {
   const used = [];
@@ -1871,6 +1888,7 @@ function rollSea() {
   const [lo, la] = S.pos, m = curMonth(), season = m >= 5 && m <= 11, tier = playerTier(), v = S.voyage;
   const nearH = S.hurricanes.some(h => h.lon < LON1 && dist(lo, la, h.lon, h.lat) < 11);
   if (chance(0.028 * pirateDanger(lo, la) * (1 + Math.min(2, cargoValue() / 15000)) * (tier === 0 ? 0.5 : 1))) return encounterPirates();
+  for (const n of NAVY_NATIONS) if (chance(punitiveChance(n))) return encounterPunitive(n);
   const pres = navyPresence(lo, la);
   // In wartime, enemy privateers prey on anyone flying their enemies' colours; bounty hunters chase pirates.
   const foes = S.flag === 'pir' || isPirate() ? NAVY_NATIONS : enemiesOf(S.flag);
@@ -1888,6 +1906,7 @@ function rollSea() {
 function rollStation() {
   if (DEV.force) return forcedEvent();
   const gr = GROUND[S.station], m = curMonth();
+  for (const n of NAVY_NATIONS) if (chance(punitiveChance(n))) return encounterPunitive(n);
   if (chance(0.03 + (m >= 5 && m <= 11 ? 0.03 : 0))) { queueStorm('squall'); return; }
   if (chance(isPirate() ? 0.09 : 0.03)) return encounterNavy(weightedPick(gr.w));
   if (chance(gr.traffic)) return merchantSighting(weightedPick(gr.w), true, gr.treasure);
@@ -1938,9 +1957,10 @@ function showEncounter(enc) {
     title = `${adj} privateer!`; text = `${describeFleet(en)} flying ${adj} colours bears down on you — a privateer sailing under a letter of marque. ${why}`;
     btns = fightBtn() + fleeBtn + `<button class="btn" data-act="enc" data-c="surrender">Strike your colours</button>`;
   } else if (enc.kind === 'navyHostile') {
-    const why = S.flag === 'pir' ? 'The Jolly Roger at your masthead is all the reason they need.' : isPirate() ? 'They have orders to hunt down the pirate captain whose face is on every wanted poster.' : S.rep[nat] < -30 ? `The ${adj} want you for your crimes.` : `Your ${FLAGS[S.flag].short} colours mark you as an enemy: ${NATIONS[nat].name} is at war with ${NATIONS[S.flag].name}.`;
-    title = `${adj} warships!`; text = `${describeFleet(en)} of the ${adj} navy bears down on you. ${why}`;
-    const canFool = S.flags.includes(nat) && S.flag !== nat && S.flag !== 'pir' && !isPirate() && S.rep[nat] >= -30;
+    const why = enc.punitive ? '' : S.flag === 'pir' ? 'The Jolly Roger at your masthead is all the reason they need.' : isPirate() ? 'They have orders to hunt down the pirate captain whose face is on every wanted poster.' : S.rep[nat] < -30 ? `The ${adj} want you for your crimes.` : (NATIONS[S.flag] ? `Your ${FLAGS[S.flag].short} colours mark you as an enemy: ${NATIONS[nat].name} is at war with ${NATIONS[S.flag].name}.` : 'They mean to fight.');
+    title = enc.punitive ? `${adj} punitive squadron!` : `${adj} warships!`;
+    text = enc.punitive ? `${describeFleet(en)} of the ${adj} navy has been hunting you. ${NATIONS[nat].name} wants revenge for the ${grievance(nat)} town${grievance(nat) > 1 ? 's' : ''} you have taken from it — and every town you take makes the next squadron bigger.` : `${describeFleet(en)} of the ${adj} navy bears down on you. ${why}`;
+    const canFool = !enc.punitive && S.flags.includes(nat) && S.flag !== nat && S.flag !== 'pir' && !isPirate() && S.rep[nat] >= -30;
     btns = (canFool ? `<button class="btn primary" data-act="enc" data-c="hoistpass">${flagImg(nat)} Hoist the ${adj} ensign (85%)</button>` : '') + fightBtn() + fleeBtn + `<button class="btn" data-act="enc" data-c="surrender">Surrender</button>`;
   } else if (enc.kind === 'merchant') {
     const legal = legalAgainst(nat), tr = en[0].treasure;
@@ -2025,20 +2045,27 @@ function intercept(a) {
 }
 
 // ---------------------------------------------------------------- STORMS
-function queueStorm(kind, h, p) { queueEvent({ fx: S.port ? null : 'cloud', show: () => showStorm(kind, h, p) }); }
-function showStorm(kind, h, p) {
+// How hard a hurricane hits at distance d (degrees) from its eye: full force in the eyewall,
+// easing through the core, down to light damage at the edge of its gales.
+function hurricaneSeverity(h, d) {
+  if (d <= h.r * 0.5) return 1;
+  if (d <= h.r) return 1 - 0.3 * (d - h.r * 0.5) / (h.r * 0.5);
+  return Math.max(0.1, 0.6 - 0.45 * (d - h.r) / Math.max(0.1, h.R - h.r));
+}
+function queueStorm(kind, h, p, d) { queueEvent({ fx: S.port ? null : 'cloud', show: () => showStorm(kind, h, p, d) }); }
+function showStorm(kind, h, p, dEye) {
   let lvl = 0.4, title = '', text = '', dmg = [0, 0], cp = 0, cr = [0, 0]; const pow = h ? h.pow : 1;
   const dir = h ? dirWord(h.lon - S.pos[0], h.lat - S.pos[1]) : '';
   switch (kind) {
     case 'squall': lvl = 0.35; title = 'A squall!'; text = 'A black squall line races down on you. Sails are reefed in a hurry as rain hammers the deck. It passes within the hour.'; dmg = [0.02, 0.06]; break;
     case 'storm': lvl = 0.6; title = 'Storm at sea'; text = 'A tropical storm catches the fleet. For a day and a night the ships labour in heavy seas.'; dmg = [0.05, 0.13]; cp = 0.35; cr = [0.02, 0.07]; break;
     case 'bands': lvl = 0.5; title = 'Ominous skies'; text = `Long, oily swells roll in from the ${dir}. The sky turns a sickly copper and squall after squall races past. The old hands mutter that these are the outer bands of a <b>hurricane</b> to the ${dir}! Its track is now marked on your chart. Steer clear of its path, or run for a hurricane hole.`; dmg = [0.02, 0.07]; break;
-    case 'gale': lvl = 0.8; title = `Gales of the Hurricane of ${h.name}`; text = 'You are on the edge of the hurricane. Screaming winds and mountainous seas batter the fleet for a full day.'; dmg = [0.1, 0.2]; cp = 0.6; cr = [0.04, 0.12]; break;
-    case 'hurricane': lvl = 1; title = `The Hurricane of ${h.name}!`; text = 'The full fury of the hurricane falls upon you. The wind shrieks like the damned, green water sweeps the decks, masts crack like pistol shots.'; dmg = [0.3, 0.55]; cp = 1; cr = [0.15, 0.35]; break;
-    case 'galePort': lvl = 0.6; title = `Gales at ${p.name}`; text = p.shelter ? 'The fringe of the Hurricane of ' + h.name + ' howls over the harbour, but your ships lie snug in the hurricane hole.' : `The fringe of the Hurricane of ${h.name} lashes the exposed anchorage. Anchor cables strain all night.`; dmg = p.shelter ? [0, 0.02] : [0.05, 0.12]; break;
-    case 'hurricanePort': lvl = 1; title = `The Hurricane of ${h.name} strikes ${p.name}!`; text = p.shelter ? 'The hurricane roars over the island, but deep inside the hurricane hole your ships ride it out on double anchors with little harm.' : 'The hurricane smashes into the open anchorage. Ships drag their anchors, collide and are driven ashore.'; dmg = p.shelter ? [0, 0.05] : [0.25, 0.5]; cp = p.shelter ? 0 : 0.8; cr = [0.1, 0.3]; break;
+    case 'gale': case 'hurricane': { const sev = hurricaneSeverity(h, dEye ?? h.r), where = sev >= 0.85 ? 'the eyewall itself' : sev >= 0.6 ? 'the core of the storm' : 'its outer gales'; lvl = 0.5 + 0.5 * sev; title = sev >= 0.6 ? `The Hurricane of ${h.name}!` : `Gales of the Hurricane of ${h.name}`; text = (sev >= 0.6 ? 'The full fury of the hurricane falls upon you. The wind shrieks like the damned, green water sweeps the decks, masts crack like pistol shots.' : 'You are on the edge of the hurricane. Screaming winds and mountainous seas batter the fleet for a full day.') + ` You were about <b>${fmt((dEye ?? h.r) * 20)} leagues</b> from the eye — in ${where}.`; dmg = [0.75 * 0.92 * sev, 1.15 * 0.92 * sev]; cp = Math.min(1, sev * 1.2); cr = [0.05 + 0.1 * sev, 0.1 + 0.3 * sev]; break; }
+
+    case 'galePort': case 'hurricanePort': { const sev = hurricaneSeverity(h, dEye ?? h.r), shelter = p.shelter ? 0.12 : 1; lvl = p.shelter ? 0.6 : 0.5 + 0.5 * sev; title = sev >= 0.6 ? `The Hurricane of ${h.name} strikes ${p.name}!` : `Gales at ${p.name}`; text = (p.shelter ? `The hurricane howls over ${p.name}, but deep in the hurricane hole your ships ride it out on double anchors.` : sev >= 0.6 ? 'The hurricane smashes into the open anchorage. Ships drag their anchors, collide and are driven ashore.' : `The fringe of the Hurricane of ${h.name} lashes the exposed anchorage. Anchor cables strain all night.`) + ` The eye passed about <b>${fmt((dEye ?? h.r) * 20)} leagues</b> away.`; dmg = [0.7 * 0.92 * sev * shelter, 1.1 * 0.92 * sev * shelter]; cp = p.shelter ? 0 : Math.min(1, sev); cr = [0.05 + 0.1 * sev, 0.1 + 0.25 * sev]; break; }
+
   }
-  const big = kind === 'hurricane' || kind === 'hurricanePort', lines = [], lost = [];
+  const big = ['hurricane', 'gale', 'hurricanePort', 'galePort'].includes(kind), lines = [], lost = [];
   for (const sh of S.fleet) {
     const st = shipStats(sh), f = rand(dmg[0], dmg[1]) * (big ? pow * (1.15 - st.T.size * 0.3) : 1), d = Math.round(st.maxHull * f);
     sh.hull -= d; if (!big && sh.hull < 1) sh.hull = 1;
@@ -2426,7 +2453,7 @@ function siegeDone() {
 }
 function showCounterattack(pid) {
   const p = PORT[pid], h = S.holdings[pid]; if (!h) return;
-  const pir = h.prev === 'pir', en = genFleet(pir ? 'pirate' : 'navy', h.prev); en.forEach(e => { e.hull = Math.round(e.hull * 0.75); }); // your shore batteries soften them up
+  const pir = h.prev === 'pir', en = pir ? genFleet('pirate', h.prev) : genPunitive(h.prev); en.forEach(e => { e.hull = Math.round(e.hull * 0.75); }); // your shore batteries soften them up
   const docked = (h.ships || []).filter(s => s.guns > 0);
   showMsg(`${NATIONS[h.prev].adj} expedition!`, `<canvas class="scene" id="scn" width="560" height="170"></canvas><p>A ${NATIONS[h.prev].adj} squadron — ${describeFleet(en)} — has come to retake ${p.name}. Your fleet is in harbour: you can sail out and fight them under the guns of your own batteries${docked.length ? `, with the ${docked.length} armed ship${docked.length > 1 ? 's' : ''} docked here at your side` : ''}, or abandon the town.</p>`,
     'Abandon the town', 'abandonnow', `<button class="btn danger" data-act="defend">Sail out and fight!</button>`);
@@ -2478,7 +2505,8 @@ function showHelp() {
     <p><b>Privateering.</b> A governor whose nation is at war will sell you a <b>letter of marque</b>. Fly that nation's colours and you may lawfully take enemy ships — and even towns. Governors also offer bounty contracts. The crown takes a tenth.</p>
     <p><b>Piracy.</b> Attack anyone else and you are a pirate. Set your stance to <b>⚔ Hunting</b> to be offered merchant ships you meet, click passing ships on the chart to chase them, or sail to a <b>hunting ground</b> (the ✕ marks in the passages) and lie in wait. Infamy closes honest ports and sets navies on you; pirate havens still welcome you, and a governor's pardon clears your name.</p>
     <p><b>Factories.</b> Build a warehouse with a resident agent in a port (you need that nation's papers). It produces the local speciality, stores your goods, and gets you cheaper prices there.</p>
-    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Take every port in the Indies to win the game.</p>
+    <p><b>Repairs</b> cost half in your home port and in any town you hold.</p>
+    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Each town you take from a nation makes it angrier: its punitive squadrons will hunt you at sea, more often and in greater strength, and it will try harder to win its towns back. Take every port in the Indies to win the game.</p>
     <p><b>Saving.</b> The game saves itself constantly into one of three slots in this browser. Use Menu → Export to keep a backup file; you can import it again later, even after the game has been updated.</p>
     <p><b>Keys.</b> Space pauses or resumes a voyage. Esc closes a window.</p></div><div class="btnRow"><button class="btn" data-act="close">Close</button></div>`, { kind: 'help' });
 }
@@ -2539,7 +2567,7 @@ function newGame(slot, captain, shipName, port, era) {
   buildMarketStatic(); ensureMarkets(); ROUTES = {};
   S.fleet = [newShip('shallop', shipName || 'Sloop')];
   S.port = port; S.pos = [PORT[port].lon, PORT[port].lat];
-  applyStartPerks(port);
+  S.home = port; applyStartPerks(port);
   syncWars(true);
   const wars = Object.keys(S.wars).filter(k => S.wars[k]);
   news(wars.length ? `War: ${wars.map(k => { const [a, b] = k.split('|'); const rec = HIST_WARS.find(x => x[0] === k && x[1] <= S.start && S.start < x[2]); return `${NATIONS[a].name} against ${NATIONS[b].name}${rec ? ` (${rec[3]})` : ''}`; }).join('; ')}. Enemy warships and privateers attack each other's colours on sight.` : 'Europe is at peace — though in the Indies, there is "no peace beyond the line".', wars.length ? 'war' : 'peace');
