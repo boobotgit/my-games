@@ -460,7 +460,7 @@ const PORTS = [
   { id: 'stthomas', name: 'St. Thomas', n: 'den', size: 1, lon: -64.93, lat: 18.34, free: true, entrepot: true, prod: [], dem: [], desc: 'Neutral Danish free port. Middling prices for everything, no questions asked.' },
 ];
 const PORT = Object.fromEntries(PORTS.map(p => [p.id, p]));
-const START_PORTS = ['portroyal', 'curacao', 'martinique', 'stthomas', 'barbados'];
+const START_PORTS = ['portroyal', 'havana', 'curacao', 'martinique', 'stthomas']; // one per nation, plus the neutral Danish free port
 
 const HNAMES = ['San Mateo', 'Santa Ana', 'San Bartolomé', 'San Lorenzo', 'San Roque', 'Santa Rosa', 'San Francisco', 'San Miguel', 'San Calixto', 'Santa Teresa', 'San Dionisio', 'Santa Úrsula', 'San Jerónimo', 'San Agustín', 'San Luis', 'Santa Clara', 'San Ramón', 'San Felipe'];
 // Daily hurricane chance by month: season June–December, peaking August–October.
@@ -1537,12 +1537,22 @@ function renderPort() {
   const p = PORT[S.port], acc = portAccess(p.id), notes = harborNotices(p.id), alarm = notes.some(n => n.lv !== 'info');
   const m = $('#modal'), keep = m.scrollTop;
   const tabs = [['market', 'Market'], ['shipyard', 'Shipyard'], ['factory', S.warehouses[p.id] ? 'Factory ▣' : 'Factory'], ['governor', nat(p) === 'player' ? 'Your Residence' : "Governor's House"], ['tavern', `Tavern${alarm ? ' <span class="alert">⚠</span>' : ''}`], ['harbour', 'Harbour']];
-  const body = { market: tabMarket, shipyard: tabShipyard, factory: tabFactory, governor: tabGovernor, tavern: tabTavern, harbour: tabHarbour }[UI.portTab](p, notes);
+  let body;
+  try { body = { market: tabMarket, shipyard: tabShipyard, factory: tabFactory, governor: tabGovernor, tavern: tabTavern, harbour: tabHarbour }[UI.portTab](p, notes); }
+  catch (err) { console.error(err); body = `<p class="notice warn">Sorry — this page could not be shown (${esc(err.message)}). Please tell the developer which port and tab this was.</p>`; }
+  const tabsLeft = m.querySelector('.tabs') ? m.querySelector('.tabs').scrollLeft : 0;
   m.innerHTML = `<div class="portTop"><div class="portHead">${flagImg(nat(p) === 'player' ? 'own' : p.haven && nat(p) === p.n ? 'pir' : nat(p), '')}<div><h2>${p.name}</h2><div class="sub">${nat(p) === 'player' ? '<b>Your town</b>' : NATIONS[nat(p)].adj + (nat(p) !== p.n ? ' (captured)' : '')} · ${['', 'small', 'middling', 'great'][p.size]} port${p.free ? ' · free port' : ''}${p.haven ? ' · pirate haven' : ''}${p.shelter ? ' · <b>hurricane hole</b>' : ''} · tariff ${Math.round(acc.tariff * 100)}% under ${FLAGS[S.flag].short.toLowerCase()} colours</div><div class="sub"><i>${p.desc}</i></div></div><div class="right">Gold <b>${fmt(S.gold)}</b><br>Hold <b>${holdUsed()} / ${holdCap()}</b></div></div>
     <div class="tabs">${tabs.map(([k, n]) => `<button class="${UI.portTab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${n}</button>`).join('')}</div></div>
     <div class="tabBody">${body}</div>
     <div class="btnRow portFoot"><button class="btn primary" data-act="leave">Return to the chart ⟶</button></div>`;
   m.scrollTop = keep;
+  const strip = m.querySelector('.tabs'), on = strip && strip.querySelector('.on');
+  if (strip && on) {
+    strip.scrollLeft = tabsLeft;
+    const sr = strip.getBoundingClientRect(), or = on.getBoundingClientRect();
+    if (or.left < sr.left) strip.scrollLeft -= sr.left - or.left + 12;
+    else if (or.right > sr.right) strip.scrollLeft += or.right - sr.right + 12;
+  }
 }
 function bestKnown(exclude) {
   const out = {};
@@ -1627,7 +1637,7 @@ function contractOffer(p) {
 function pardonCost() { return 1000 + Math.round(S.infamy * 120); }
 function tabResidence(p) {
   const h = S.holdings[p.id], inc = townIncome(p.id), next = h.fort + 1;
-  return `<div class="card"><h4>${flagImg('own')} Your town of ${p.name}</h4><p class="kv">Taken from the ${NATIONS[h.prev].adj} on ${dateStr(h.day)}. Its plantations now work for you: <b>${p.prod.map(g => GOOD[g].name).join(', ')}</b> cost you half price here, and ${GOOD[p.prod[0]].name.toLowerCase()} — its speciality — less than half. No tariffs, ever.</p>
+  return `<div class="card"><h4>${flagImg('own')} Your town of ${p.name}</h4><p class="kv">Taken from the ${NATIONS[h.prev].adj} on ${dateStr(h.day)}. ${p.prod.length ? `Its plantations now work for you: <b>${p.prod.map(g => GOOD[g].name).join(', ')}</b> cost you half price here, and ${GOOD[p.prod[0]].name.toLowerCase()} — its speciality — less than half.` : `${p.name} has no plantations of its own: it lives by trade, and now its trade is yours.`} No tariffs, ever.</p>
     <p class="kv">Taxes less garrison pay: <b>${inc >= 0 ? '+' : ''}${inc}</b> gold a day. Defences: <b>${h.fort}/3</b> — the ${NATIONS[h.prev].adj} will try to take it back, and your garrison holds about <b>${Math.round(holdChance(p.id) * 100)}%</b> of attacks while you are away. If your fleet is in port when they come, you fight them yourself.</p>
     <div class="btnRow">${next <= 3 ? `<button class="btn primary sm" data-act="fortify" ${S.gold >= HOLD_FORT_COST[next] ? '' : 'disabled'}>Strengthen the defences (${fmt(HOLD_FORT_COST[next])})</button>` : '<span class="hint">The defences are as strong as they can be.</span>'}
     <button class="btn danger sm" data-act="abandon">Abandon the town</button></div></div>${tabDocks(p)}`;
