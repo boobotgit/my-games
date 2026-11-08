@@ -112,8 +112,10 @@ details summary{cursor:pointer;color:var(--ink2);font-size:14px;margin-top:4px}
 #tip h4{font-size:16px}
 #zoomCtl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px}
 #zoomCtl button{width:32px;height:32px;font-size:18px;padding:0}
+.toastX{position:absolute;top:2px;right:3px;width:24px;height:24px;border:none;background:none;font-size:20px;line-height:1;color:var(--ink2);cursor:pointer;padding:0}
+.toastX:hover{color:var(--ink)}
 #toasts{position:fixed;left:14px;top:calc(62px + var(--ipadTop,0px));display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
-.toast{background:rgba(244,232,203,.97);border:1px solid var(--wood2);border-left:5px solid var(--gold);padding:7px 11px;border-radius:3px;box-shadow:0 3px 10px #0006;max-width:380px;font-size:14.5px;animation:tin .3s ease-out}
+.toast{pointer-events:auto;cursor:pointer;position:relative;padding-right:30px !important;background:rgba(244,232,203,.97);border:1px solid var(--wood2);border-left:5px solid var(--gold);padding:7px 11px;border-radius:3px;box-shadow:0 3px 10px #0006;max-width:380px;font-size:14.5px;animation:tin .3s ease-out}
 @keyframes tin{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
 .title h1{font-size:52px;color:var(--wood2);text-align:center;line-height:1}
 .title .subt{text-align:center;font-style:italic;color:var(--ink2);margin-bottom:14px}
@@ -1476,7 +1478,9 @@ function showMsg(title, body, btn = 'Continue', act = 'close', extra = '') {
   showModal(`<h2>${title}</h2>${body}<div class="btnRow">${extra}<button class="btn primary" data-act="${act}">${btn}</button></div>`, { cls: 'narrow', kind: 'msg' });
 }
 function toast(msg) {
-  const box = $('#toasts'), d = document.createElement('div'); d.className = 'toast'; d.innerHTML = msg; box.appendChild(d);
+  const box = $('#toasts'), d = document.createElement('div'); d.className = 'toast'; d.title = 'Tap to dismiss';
+  d.innerHTML = '<button class="toastX" aria-label="Dismiss">×</button>' + msg; box.appendChild(d);
+  d.addEventListener('click', () => d.remove()); // tap anywhere on the notice (or its ×) to close it
   while (box.children.length > 5) box.firstChild.remove();
   setTimeout(() => { d.style.transition = 'opacity .6s'; d.style.opacity = '0'; setTimeout(() => d.remove(), 650); }, 5500);
 }
@@ -1967,7 +1971,7 @@ function genPunitive(n) {
   return fleet;
 }
 // ---------- TURNCOAT OFFERS
-const TURNCOAT_REP = -40, TURNCOAT_WINS = 3;
+const TURNCOAT_REP = -100, TURNCOAT_WINS = 3; // only a nation at its wits' end (reputation at rock bottom) tries to buy you
 // The nations you currently serve: your letters of marque, and the colours you fly.
 function patrons(except) { const p = new Set(Object.keys(S.commissions)); if (NAVY_NATIONS.includes(S.flag)) p.add(S.flag); p.delete(except); return [...p]; }
 function turncoatTarget(n) {
@@ -2672,7 +2676,7 @@ function showHelp() {
     <p><b>Piracy.</b> Attack anyone else and you are a pirate. Set your stance to <b>⚔ Hunting</b> to be offered merchant ships you meet, tap passing ships on the chart to chase them, or sail to a <b>hunting ground</b> (the ✕ marks in the passages) and lie in wait. Infamy closes honest ports and sets navies on you; pirate havens still welcome you, and a governor's pardon clears your name.</p>
     <p><b>Factories.</b> Build a warehouse with a resident agent in a port (you need that nation's papers). It produces the local speciality, stores your goods, and gets you cheaper prices there.</p>
     <p><b>Repairs</b> cost half in your home port and in any town you hold.</p>
-    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Beat off a hostile nation's warships three times while your name is mud there, and it may offer you a large ransom to change sides — playing the great powers against each other. Each town you take from a nation makes it angrier: its punitive squadrons will hunt you at sea, more often and in greater strength, and it will try harder to win its towns back. Take every port in the Indies to win the game.</p>
+    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Beat off a hostile nation's warships three times once your name there has sunk as low as it can go (reputation −100), and it may offer you a large ransom to change sides — playing the great powers against each other. Each town you take from a nation makes it angrier: its punitive squadrons will hunt you at sea, more often and in greater strength, and it will try harder to win its towns back. Take every port in the Indies to win the game.</p>
     <p><b>Saving.</b> The game saves itself constantly into one of three slots in this browser. Use Menu → Export to keep a backup file; you can import it again later, even after the game has been updated.</p>
     <p><b>On the iPhone.</b> Tap a port, hunting ground or passing ship to see what it is; tap again to act. Drag the chart to pan and pinch to zoom. Turn the phone sideways for a bigger chart. Saves live on this phone; use Menu → Export / Import to move a career between your computer and your phone.</p></div><div class="btnRow"><button class="btn" data-act="close">Close</button></div>`, { kind: 'help' });
 }
@@ -3131,7 +3135,7 @@ function init() {
       return;
     }
     if (mode === 'ui' && quick && e.touches.length === 0 && start.el && start.el.closest) {
-      const el = start.el.closest('#bcv, button, a[href], summary, [data-act], [data-hud]');
+      const el = start.el.closest('#bcv, button, a[href], summary, [data-act], [data-hud], .toast');
       if (el && el.id === 'bcv') { e.preventDefault(); battleClick({ clientX: x, clientY: y }); }
       else if (el && !el.disabled) { e.preventDefault(); el.click(); }
     }
