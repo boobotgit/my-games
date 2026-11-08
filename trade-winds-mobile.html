@@ -461,6 +461,25 @@ const PORTS = [
 ];
 const PORT = Object.fromEntries(PORTS.map(p => [p.id, p]));
 const START_PORTS = ['portroyal', 'havana', 'curacao', 'martinique', 'stthomas']; // one per nation, plus the neutral Danish free port
+// What your home port gives you at the start of a career. You are born a subject of its nation
+// (its papers, a good name there), plus one signature bonus. You still start under the neutral pennant.
+const START_PERKS = {
+  portroyal: { papers: 'eng', rep: 20, ship: 'sloop', guns: 4, text: 'Born an English subject: <b>English papers</b> and a good name in Jamaica (reputation +20). Port Royal\u2019s buccaneers sold you an <b>armed sloop with 4 guns</b> instead of a plain trading sloop \u2014 bigger hold, but higher wages, and navies take more interest in an armed ship.' },
+  havana: { papers: 'spa', rep: 20, text: 'Born a Spanish subject: <b>Spanish papers</b> (the dearest in the Indies) and reputation +20 with Spain. Fly Spanish colours and all 13 Spanish ports charge you no tariff \u2014 but Spain\u2019s enemies are many.' },
+  curacao: { papers: 'ned', rep: 20, gold: 2500, text: 'A Dutch merchant: <b>Dutch papers</b>, reputation +20, and <b>2,500 extra gold</b> on credit from the West India Company. Dutch shipyards already sell 8% cheaper.' },
+  martinique: { papers: 'fra', rep: 25, gold: 1500, cargo: { sugar: 20 }, text: 'Born a French subject: <b>French papers</b>, reputation +25 (enough for the governor\u2019s quiet commission against Spain once you carry 6 guns), <b>1,500 extra gold</b> and 20 sugar in the hold.' },
+  stthomas: { gold: 2500, allRep: 10, factory: true, text: 'A free-port trader beholden to no crown: <b>your family\u2019s warehouse at St. Thomas</b> (a level-1 factory, already built), <b>2,500 extra gold</b> and reputation +10 with every nation. No papers \u2014 you will have to earn them.' },
+};
+function applyStartPerks(port) {
+  const k = START_PERKS[port]; if (!k) return;
+  if (k.papers && !S.flags.includes(k.papers)) S.flags.push(k.papers);
+  if (k.papers && k.rep) repChange(k.papers, k.rep);
+  if (k.allRep) NAVY_NATIONS.forEach(n => repChange(n, k.allRep));
+  if (k.gold) S.gold += k.gold;
+  if (k.ship) { const old = S.fleet[0], sh = newShip(k.ship, old.name); sh.guns = Math.min(k.guns || 0, shipStats(sh).maxGuns); sh.hull = shipStats(sh).maxHull; S.fleet[0] = sh; }
+  if (k.cargo) for (const g in k.cargo) { addCargo(g, k.cargo[g]); S.cost[g] = Math.round(GOOD[g].base * 0.6); }
+  if (k.factory) S.warehouses[port] = { lvl: 1, store: {}, acc: 0, good: null };
+}
 
 const HNAMES = ['San Mateo', 'Santa Ana', 'San Bartolomé', 'San Lorenzo', 'San Roque', 'Santa Rosa', 'San Francisco', 'San Miguel', 'San Calixto', 'Santa Teresa', 'San Dionisio', 'Santa Úrsula', 'San Jerónimo', 'San Agustín', 'San Luis', 'Santa Clara', 'San Ramón', 'San Felipe'];
 // Daily hurricane chance by month: season June–December, peaking August–October.
@@ -622,7 +641,7 @@ function defaultState() {
     port: null, anchoredOff: null, pos: [-76.84, 17.93], heading: 0, voyage: null,
     markets: {}, known: {}, hurricanes: [], news: [], log: [], rumors: { day: -1, port: null, list: [] },
     stats: { trades: 0, profit: 0, piratesBeaten: 0, naviesBeaten: 0, prizes: 0, storms: 0, hurricanes: 0, wrecks: 0, voyages: 0, bestWorth: 0, ports: [], merchantsTaken: 0, townsTaken: 0, townsSacked: 0 },
-    settings: { speed: 1, follow: true },
+    settings: { speed: 1, follow: true, autoHoist: false },
   };
 }
 const warKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
@@ -786,7 +805,7 @@ function sanitizeSave(s) {
   o.rumors = d.rumors;
   o.stats = {}; const st = isObj(s.stats) ? s.stats : {};
   for (const k in d.stats) o.stats[k] = k === 'ports' ? (Array.isArray(st.ports) ? st.ports.filter(portId) : []) : num(st[k], 0, -1e12, 1e12);
-  o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false) };
+  o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false), autoHoist: !!(isObj(s.settings) && s.settings.autoHoist === true) };
   o.stance = s.stance === 'hunting' ? 'hunting' : 'peaceful';
   o.won = int(s.won, 0, 0, 1e6);
   // v2 collections are re-validated in detail by normalizeSave below; pass through only plain objects/arrays
@@ -1542,6 +1561,7 @@ function renderPort() {
   catch (err) { console.error(err); body = `<p class="notice warn">Sorry — this page could not be shown (${esc(err.message)}). Please tell the developer which port and tab this was.</p>`; }
   const tabsLeft = m.querySelector('.tabs') ? m.querySelector('.tabs').scrollLeft : 0;
   m.innerHTML = `<div class="portTop"><div class="portHead">${flagImg(nat(p) === 'player' ? 'own' : p.haven && nat(p) === p.n ? 'pir' : nat(p), '')}<div><h2>${p.name}</h2><div class="sub">${nat(p) === 'player' ? '<b>Your town</b>' : NATIONS[nat(p)].adj + (nat(p) !== p.n ? ' (captured)' : '')} · ${['', 'small', 'middling', 'great'][p.size]} port${p.free ? ' · free port' : ''}${p.haven ? ' · pirate haven' : ''}${p.shelter ? ' · <b>hurricane hole</b>' : ''} · tariff ${Math.round(acc.tariff * 100)}% under ${FLAGS[S.flag].short.toLowerCase()} colours</div><div class="sub"><i>${p.desc}</i></div></div><div class="right">Gold <b>${fmt(S.gold)}</b><br>Hold <b>${holdUsed()} / ${holdCap()}</b></div></div>
+    ${(h => h ? `<div class="notice info hoistTip" style="margin:8px 0 0;padding:6px 10px;font-size:14px">${flagImg(h.n)} You hold ${NATIONS[h.n].adj} papers: fly the ${NATIONS[h.n].adj} ensign here and pay no tariff${h.saving ? ` (now ${h.saving}%)` : ''}. <button class="btn xs primary" data-act="hoist" data-f="${h.n}">Hoist it</button> <button class="btn xs" data-act="autohoist" data-f="${h.n}" title="Hoist the port's own colours automatically whenever you hold its papers">Always do this</button></div>` : '')(hoistSuggestion(p.id))}
     <div class="tabs">${tabs.map(([k, n]) => `<button class="${UI.portTab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${n}</button>`).join('')}</div></div>
     <div class="tabBody">${body}</div>
     <div class="btnRow portFoot"><button class="btn primary" data-act="leave">Return to the chart ⟶</button></div>`;
@@ -1849,8 +1869,15 @@ function showAssaultPrompt(pid) {
     'Stand off', 'close', `<button class="btn danger" data-act="assault">Attack ${p.name}!</button>`);
   scene = sceneSail($('#scn'));
 }
+// Papers for this port's nation, but flying something else? (Offer to hoist them and save the tariff.)
+function hoistSuggestion(pid) {
+  const p = PORT[pid], n = nat(p);
+  if (p.free || !NAVY_NATIONS.includes(n) || !S.flags.includes(n) || S.flag === n || !portAccess(pid, n).open) return null;
+  return { n, saving: Math.round((portAccess(pid).tariff || 0) * 100) };
+}
 function enterPort(pid) {
   S.port = pid; S.anchoredOff = null; S.voyage = null; S.pos = [PORT[pid].lon, PORT[pid].lat];
+  { const h = hoistSuggestion(pid); if (h && S.settings.autoHoist) { S.flag = h.n; log(`Hoisted the ${FLAGS[h.n].name} on entering ${PORT[pid].name}.`); toast(`Hoisted the <b>${FLAGS[h.n].name}</b> for ${PORT[pid].name}: no tariff here.`); } }
   recordPrices(pid); if (!S.stats.ports.includes(pid)) S.stats.ports.push(pid);
   log(`Dropped anchor at ${PORT[pid].name}.`);
   const alarm = harborNotices(pid).some(n => n.lv !== 'info');
@@ -2002,6 +2029,9 @@ function merchantSighting(n, hunting, treasureOk, forceTreasure) {
   if (!(hunting || S.stance === 'hunting') || !totalGuns()) { if (chance(0.5)) toast(`${aAn(NATIONS[n].adj)} merchantman passes ${pick(['to leeward', 'hull-down to windward', 'a mile off'])}.`); return; }
   queueEncounter({ kind: 'merchant', nation: n, enemies: en });
 }
+// Chance an inspection finds nothing wrong, by the colours you fly.
+const INSPECT_PASS = { own: 0.95, other: 0.8, neutral: 0.55, bribe: 0.85 };
+function inspectPass(nat) { return S.flag === nat ? INSPECT_PASS.own : S.flag === 'neutral' ? INSPECT_PASS.neutral : INSPECT_PASS.other; }
 let ENC = null;
 function showEncounter(enc) {
   ENC = enc; const en = enc.enemies, nat = enc.nation, adj = NATIONS[nat].adj, guns = totalGuns(), eg = en.reduce((a, e) => a + e.guns, 0), fl = fleeChance(en);
@@ -2019,7 +2049,8 @@ function showEncounter(enc) {
   } else if (enc.kind === 'navyHostile') {
     const why = S.flag === 'pir' ? 'The Jolly Roger at your masthead is all the reason they need.' : isPirate() ? 'They have orders to hunt down the pirate captain whose face is on every wanted poster.' : S.rep[nat] < -30 ? `The ${adj} want you for your crimes.` : `Your ${FLAGS[S.flag].short} colours mark you as an enemy: ${NATIONS[nat].name} is at war with ${NATIONS[S.flag].name}.`;
     title = `${adj} warships!`; text = `${describeFleet(en)} of the ${adj} navy bears down on you. ${why}`;
-    btns = fightBtn() + fleeBtn + `<button class="btn" data-act="enc" data-c="surrender">Surrender</button>`;
+    const canFool = S.flags.includes(nat) && S.flag !== nat && S.flag !== 'pir' && !isPirate() && S.rep[nat] >= -30;
+    btns = (canFool ? `<button class="btn primary" data-act="enc" data-c="hoistpass">${flagImg(nat)} Hoist the ${adj} ensign (85%)</button>` : '') + fightBtn() + fleeBtn + `<button class="btn" data-act="enc" data-c="surrender">Surrender</button>`;
   } else if (enc.kind === 'merchant') {
     const legal = legalAgainst(nat), tr = en[0].treasure;
     title = tr ? 'A Spanish treasure galleon!' : `${aAn(adj)} merchantman`.replace(/^./, c => c.toUpperCase());
@@ -2030,7 +2061,8 @@ function showEncounter(enc) {
   } else {
     const bribe = Math.max(100, Math.round(S.gold * 0.05));
     title = `${adj} patrol: heave to!`; text = `${describeFleet(en)} fires a gun to leeward and signals you to heave to for an inspection of your papers and cargo. ${S.flag === 'neutral' ? 'A neutral merchant of your size draws attention; they may find an excuse to fine you or seize goods.' : `Your ${FLAGS[S.flag].short} papers should help.`}`;
-    btns = `<button class="btn primary" data-act="enc" data-c="comply">Heave to</button><button class="btn" data-act="enc" data-c="bribe" data-b="${bribe}" ${S.gold >= bribe ? '' : 'disabled'}>Offer a "gift" (${fmt(bribe)})</button>` + `<button class="btn" data-act="enc" data-c="flee">Run for it (${Math.round(fl * 100)}%, angers them)</button>` + (guns ? `<button class="btn danger" data-act="enc" data-c="attack">Open fire${legalAgainst(nat) ? ' (lawful under your letter of marque)' : ' (piracy!)'}</button>` : '');
+    const canHoist = S.flags.includes(nat) && S.flag !== nat && S.flag !== 'pir';
+    btns = (canHoist ? `<button class="btn primary" data-act="enc" data-c="hoistcomply">${flagImg(nat)} Hoist the ${adj} ensign and show your ${adj} papers (${Math.round(INSPECT_PASS.own * 100)}%)</button>` : '') + `<button class="btn ${canHoist ? '' : 'primary'}" data-act="enc" data-c="comply">Heave to (${Math.round(inspectPass(nat) * 100)}% they find nothing)</button><button class="btn" data-act="enc" data-c="bribe" data-b="${bribe}" ${S.gold >= bribe ? '' : 'disabled'}>Offer a "gift" (${fmt(bribe)}, ${Math.round(INSPECT_PASS.bribe * 100)}%)</button>` + `<button class="btn" data-act="enc" data-c="flee">Run for it (${Math.round(fl * 100)}%, angers them)</button>` + (guns ? `<button class="btn danger" data-act="enc" data-c="attack">Open fire${legalAgainst(nat) ? ' (lawful under your letter of marque)' : ' (piracy!)'}</button>` : '');
   }
   showModal(`<h2>${title}</h2><canvas class="scene" id="scn" width="760" height="230"></canvas><p>${text}</p><div class="odds">Your guns: <b>${guns}</b> · theirs: <b>${eg}</b> · your speed <b>${fleetKnots().toFixed(1)}</b> kn · theirs <b>${es.toFixed(1)}</b> kn</div><div class="btnRow">${btns}</div>`, { cls: 'mid', kind: 'enc' });
   scene = sceneSail($('#scn'), { enemies: en });
@@ -2072,8 +2104,14 @@ function encChoice(c, d) {
     log(`Surrendered to ${enc.kind === 'pirate' ? 'pirates' : enc.kind === 'privateer' ? 'an ' + adj + ' privateer' : 'the ' + adj + ' navy'}.`);
     showMsg('Colours struck', `<p>${enc.kind === 'pirate' ? 'Grinning buccaneers swarm aboard and ransack the hold.' : enc.kind === 'privateer' ? `The ${adj} privateers take your cargo as a lawful prize of war.` : `An ${adj} lieutenant seizes your cargo as a lawful prize and fines you.`} ${txt} ${enc.kind === 'navyHostile' && isPirate() ? 'You talk your way out of the gallows — this time.' : 'At least no one was killed.'}</p>`, 'Sail on'); return;
   }
+  if (c === 'hoistcomply') { if (!S.flags.includes(nat)) return; hoist(nat); c = 'comply'; }
+  if (c === 'hoistpass') {
+    if (!S.flags.includes(nat)) return; hoist(nat);
+    if (chance(0.85)) { log(`Raised ${adj} colours and was allowed to pass.`); showMsg('Colours changed', `<p>You run up the ${FLAGS[nat].name}. Through the glass you see the ${adj} officers lower their speaking-trumpets; a signal flag climbs their mast: <i>proceed</i>. They take you for one of their own.</p>`, 'Sail on'); return; }
+    toast(`They saw you change colours and are not fooled!`); startBattle(enc, true); return;
+  }
   if (c === 'comply' || c === 'bribe') {
-    let pass = chance(S.flag === 'neutral' ? 0.55 : 0.8);
+    let pass = chance(inspectPass(nat));
     if (c === 'bribe') { const b = +d.b; S.gold -= b; pass = chance(0.85); }
     if (pass) { repChange(nat, 1); log(`Inspected by an ${adj} patrol and released.`); showMsg('Papers in order', `<p>${c === 'bribe' ? 'The purse disappears into the lieutenant\'s coat.' : 'The boarding officer thumbs through your papers and pokes about the hold.'} "All in order, Captain. Carry on."</p>`, 'Sail on'); return; }
     const fine = Math.round(cargoValue() * 0.08 + 100), paid = Math.min(S.gold, fine); S.gold -= paid; const parts = [];
@@ -2570,7 +2608,7 @@ function showMenu() {
   showModal(`<h2>Menu</h2><p class="kv">Captain ${esc(S.captain)} · slot ${SLOT}</p>
     <div class="btnRow"><button class="btn" data-act="savenow">Save now</button><button class="btn" data-act="export">Export save file</button><button class="btn" data-act="saves">Saved careers…</button><button class="btn" data-act="help">How to play</button></div>
     <details style="margin-top:12px"><summary>Device check (build ${BUILD})</summary>${deviceCheckHTML()}</details>
-    <h3 style="margin-top:16px">Settings</h3><label style="display:block;margin-top:6px"><input type="checkbox" id="optFollow" ${S.settings.follow ? 'checked' : ''}> Chart follows the fleet while sailing</label>
+    <h3 style="margin-top:16px">Settings</h3><label style="display:block;margin-top:6px"><input type="checkbox" id="optHoist" ${S.settings.autoHoist ? 'checked' : ''}> On entering a port, hoist its own colours if I hold its papers (no tariff)</label><label style="display:block;margin-top:6px"><input type="checkbox" id="optFollow" ${S.settings.follow ? 'checked' : ''}> Chart follows the fleet while sailing</label>
     <details style="margin-top:16px"><summary>Testing tools (for trying out mechanics)</summary><div class="btnRow">
       <button class="btn xs" data-act="dev" data-k="gold">+10,000 gold</button><button class="btn xs" data-act="dev" data-k="rep">+20 reputation with all</button>
       <button class="btn xs" data-act="dev" data-k="hurr">Spawn a hurricane</button><button class="btn xs" data-act="dev" data-k="pirate">Pirates on the next sea day</button>
@@ -2581,6 +2619,7 @@ function showMenu() {
       <button class="btn xs" data-act="dev" data-k="nextwar">Jump to the next historical war</button></div></details>
     <div class="btnRow"><button class="btn primary" data-act="close">Back to the game</button></div>`, { cls: 'narrow', kind: 'menu' });
   const cb = $('#optFollow'); if (cb) cb.addEventListener('change', () => { S.settings.follow = cb.checked; saveGame(); });
+  const ch = $('#optHoist'); if (ch) ch.addEventListener('change', () => { S.settings.autoHoist = ch.checked; saveGame(); });
 }
 function showTitle() {
   const last = +(lsGet(LAST_KEY) || 1), sum = slotSummary(last);
@@ -2597,16 +2636,19 @@ function showNewCareer(slot) {
     <label class="fld">Name of your first ship (a small trading sloop)</label><input class="txt" id="ncShip" maxlength="24" value="Lucky Pomeranian">
     <label class="fld">Home port</label><select class="txt" id="ncPort">${START_PORTS.map(id => `<option value="${id}">${PORT[id].name} (${NATIONS[PORT[id].n].adj})</option>`).join('')}</select>
     <label class="fld">Era (the game follows real history from here)</label><select class="txt" id="ncEra">${ERAS.map((e, i) => `<option value="${i}">${e.name}</option>`).join('')}</select>
+    <p class="notice info" id="ncPerk" style="font-size:14px">${START_PERKS[START_PORTS[0]].text}</p>
     <p class="hint" id="ncEraDesc">${ERAS[0].desc}</p>
-    <p class="hint">You begin with 1,200 pieces of eight, an empty 40-ton trading sloop and a neutral merchant pennant.</p>
+    <p class="hint">Everyone begins with 1,200 pieces of eight and a small ship under the neutral merchant pennant, plus the home port's bonus above.</p>
     <div class="btnRow"><button class="btn primary" data-act="startnew">Set out</button><button class="btn" data-act="title">Back</button></div>`, { cls: 'narrow', kind: 'new' });
   $('#ncEra').addEventListener('change', e => { $('#ncEraDesc').textContent = ERAS[+e.target.value].desc; });
+  $('#ncPort').addEventListener('change', e => { const k = START_PERKS[e.target.value]; $('#ncPerk').innerHTML = k ? k.text : ''; });
 }
 function newGame(slot, captain, shipName, port, era) {
   S = defaultState(); SLOT = slot; S.captain = captain || 'Captain'; S.start = (ERAS[era] || ERAS[0]).start;
   buildMarketStatic(); ensureMarkets(); ROUTES = {};
   S.fleet = [newShip('shallop', shipName || 'Sloop')];
   S.port = port; S.pos = [PORT[port].lon, PORT[port].lat];
+  applyStartPerks(port);
   syncWars(true);
   const wars = Object.keys(S.wars).filter(k => S.wars[k]);
   news(wars.length ? `War: ${wars.map(k => { const [a, b] = k.split('|'); const rec = HIST_WARS.find(x => x[0] === k && x[1] <= S.start && S.start < x[2]); return `${NATIONS[a].name} against ${NATIONS[b].name}${rec ? ` (${rec[3]})` : ''}`; }).join('; ')}. Enemy warships and privateers attack each other's colours on sight.` : 'Europe is at peace — though in the Indies, there is "no peace beyond the line".', wars.length ? 'war' : 'peace');
@@ -2685,7 +2727,8 @@ const ACT = {
   buyship: d => { const p = PORT[S.port], pr = shipPrice(d.t, p); if (S.fleet.length >= MAX_FLEET || S.gold < pr) return; const n = prompt(`Name your new ${SHIP_TYPES[d.t].name.toLowerCase()}:`, pick(['Fortune', 'Good Hope', 'Merry Boo', 'Sea Biscuit', 'Golden Hind', 'Endeavour', 'Providence', 'Swift', 'Dolphin', 'Pelican'])); if (n === null) return; S.gold -= pr; S.fleet.push(newShip(d.t, (n.trim() || 'Nameless').slice(0, 30))); log(`Bought the ${SHIP_TYPES[d.t].name.toLowerCase()} ${n} for ${fmt(pr)}.`); toast(`The ${esc(n)} joins your fleet.`); saveGame(); renderPort(); renderUI(); },
   buyflag: d => { const n = d.f, F = FLAGS[n], cost = S.rep[n] >= COMMISSION_REP ? 0 : F.price; if (S.rep[n] < F.rep || S.gold < cost || S.flags.includes(n)) return; S.gold -= cost; S.flags.push(n); log(`Obtained ${NATIONS[n].adj} papers${cost ? ' for ' + fmt(cost) : ' as a commission'}.`); toast(`You now hold ${NATIONS[n].adj} papers. Hoist the ${F.name} from the Harbour or the flag button.`); saveGame(); renderPort(); renderUI(); },
   donate: d => { const a = +d.a, n = nat(PORT[S.port]); if (S.gold < a) return; S.gold -= a; repChange(n, a === 500 ? 4 : 18); log(`Gave ${fmt(a)} to the governor of ${PORT[S.port].name}.`); saveGame(); renderPort(); renderUI(); },
-  hoist: d => { if (S.port && !portAccess(S.port, d.f).open) return; hoist(d.f); if (modalKind === 'port') renderPort(); },
+  hoist: d => { if (S.port && !portAccess(S.port, d.f).open) return; hoist(d.f); if (S.port) recordPrices(S.port); if (modalKind === 'port') renderPort(); },
+  autohoist: d => { S.settings.autoHoist = true; toast('From now on you will hoist a port\'s own colours on arrival whenever you hold its papers. (Turn this off in the Menu.)'); ACT.hoist(d); },
   hoist2: d => { if (S.port && !portAccess(S.port, d.f).open) return; hoist(d.f); closeModal(); },
   hoistenter: d => { hoist(d.f); const pid = S.anchoredOff; closeModal(); if (pid && portAccess(pid).open) enterPort(pid); },
   wait: d => startWait(d.d),
