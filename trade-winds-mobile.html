@@ -634,7 +634,7 @@ function defaultState() {
   const wars = {}; for (let i = 0; i < NAVY_NATIONS.length; i++) for (let j = i + 1; j < NAVY_NATIONS.length; j++) wars[warKey(NAVY_NATIONS[i], NAVY_NATIONS[j])] = false;
   return {
     v: SAVE_VERSION, seed: (Math.random() * 1e9) | 0, captain: 'Captain', created: Date.now(), savedAt: 0, start: '1680-03-01',
-    infamy: 0, won: 0, home: null, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
+    infamy: 0, won: 0, home: null, repelled: {}, commissions: {}, contracts: [], warehouses: {}, owners: {}, holdings: {}, sacked: {}, station: null, stance: 'peaceful',
     day: 0, gold: 1200, flag: 'neutral', flags: ['neutral'],
     rep: { eng: 0, fra: 0, spa: 0, ned: 0 }, wars,
     fleet: [], nextId: 1, cargo: {}, cost: {},
@@ -650,7 +650,8 @@ function enemiesOf(n) { return NAVY_NATIONS.filter(o => atWar(n, o)); }
 function nat(p) { return (S && S.owners && S.owners[p.id]) || p.n; } // a port's current owner (towns can be conquered)
 function isPirate() { return S.infamy >= 20; }
 // Nations a letter of marque from nation c lets you attack right now.
-function validTargets(c) { const cm = S.commissions[c]; if (!cm) return []; const t = enemiesOf(c); if (cm.peaceSpa && c !== 'spa' && !t.includes('spa')) t.push('spa'); return t; }
+function validTargets(c) { const cm = S.commissions[c]; if (!cm) return []; const t = enemiesOf(c); if (cm.peaceSpa && c !== 'spa' && !t.includes('spa')) t.push('spa'); for (const v of cm.vs || []) if (!t.includes(v)) t.push(v); return t; }
+function contractText(k) { return `${k.kind === 'towns' ? 'capture' : 'take'} ${k.need} ${NATIONS[k.target].adj} ${k.kind === 'towns' ? (k.need > 1 ? 'towns' : 'town') : 'ships'}`; }
 // Is attacking a ship of nation n lawful under the colours you fly? (Pirates are always fair game.)
 function legalAgainst(n) { if (n === 'pir') return true; if (S.flag === 'neutral' || S.flag === 'pir') return false; return validTargets(S.flag).includes(n); }
 function statusText() {
@@ -808,6 +809,7 @@ function sanitizeSave(s) {
   o.settings = { speed: [1, 2, 4].includes(+(isObj(s.settings) && s.settings.speed)) ? +s.settings.speed : 1, follow: !(isObj(s.settings) && s.settings.follow === false), autoHoist: !!(isObj(s.settings) && s.settings.autoHoist === true) };
   o.stance = s.stance === 'hunting' ? 'hunting' : 'peaceful';
   o.won = int(s.won, 0, 0, 1e6);
+  o.repelled = {}; for (const n of NAVY_NATIONS) o.repelled[n] = int(isObj(s.repelled) ? s.repelled[n] : 0, 0, 0, 1000);
   // older careers didn't record a home port: the first port visited is where the career began
   o.home = own(PORT, s.home) ? s.home : (isObj(s.stats) && Array.isArray(s.stats.ports) && own(PORT, s.stats.ports[0]) ? s.stats.ports[0] : null);
   // v2 collections are re-validated in detail by normalizeSave below; pass through only plain objects/arrays
@@ -856,8 +858,8 @@ function normalizeSave(s) {
   s.infamy = clamp(+s.infamy || 0, 0, 200);
   const obj = x => x && typeof x === 'object' && !Array.isArray(x);
   if (!obj(s.commissions)) s.commissions = {};
-  for (const c of Object.keys(s.commissions)) if (!NAVY_NATIONS.includes(c) || !obj(s.commissions[c])) delete s.commissions[c]; else s.commissions[c] = { since: +s.commissions[c].since || 0, peaceSpa: !!s.commissions[c].peaceSpa };
-  s.contracts = (Array.isArray(s.contracts) ? s.contracts : []).filter(c => c && NAVY_NATIONS.includes(c.issuer) && NAVY_NATIONS.includes(c.target)).map(c => ({ id: +c.id || 0, issuer: c.issuer, target: c.target, need: clamp(+c.need || 1, 1, 20), have: clamp(+c.have || 0, 0, 20), reward: +c.reward || 0, until: +c.until || 0 }));
+  for (const c of Object.keys(s.commissions)) if (!NAVY_NATIONS.includes(c) || !obj(s.commissions[c])) delete s.commissions[c]; else s.commissions[c] = { since: +s.commissions[c].since || 0, peaceSpa: !!s.commissions[c].peaceSpa, vs: (Array.isArray(s.commissions[c].vs) ? s.commissions[c].vs : []).filter(t => NAVY_NATIONS.includes(t) && t !== c).slice(0, 3) };
+  s.contracts = (Array.isArray(s.contracts) ? s.contracts : []).filter(c => c && NAVY_NATIONS.includes(c.issuer) && NAVY_NATIONS.includes(c.target)).map(c => ({ id: +c.id || 0, issuer: c.issuer, target: c.target, need: clamp(+c.need || 1, 1, 20), have: clamp(+c.have || 0, 0, 20), reward: +c.reward || 0, until: +c.until || 0, kind: c.kind === 'towns' ? 'towns' : 'ships' }));
   if (!obj(s.owners)) s.owners = {};
   for (const k of Object.keys(s.owners)) if (!PORT[k] || !(NAVY_NATIONS.includes(s.owners[k]) || s.owners[k] === 'player')) delete s.owners[k];
   if (!obj(s.holdings)) s.holdings = {};
@@ -983,6 +985,7 @@ function updateHoldings() {
   for (const pid of Object.keys(S.holdings)) {
     const h = S.holdings[pid], p = PORT[pid];
     S.gold = Math.max(0, S.gold + townIncome(pid));
+    if (S.commissions[h.prev]) continue; // a nation you now serve has recognised your hold on its old towns
     const angry = NAVY_NATIONS.includes(h.prev) ? grievance(h.prev) : 1; // the more of its towns you hold, the more often a nation tries
     if (S.day - h.day < 30 || h.prev === 'den' || !chance(1 / Math.max(60, 160 - 25 * (angry - 1)))) continue; // the Danes have no fleet out here to retake it
     const prev = h.prev;
@@ -1520,7 +1523,7 @@ function renderSide() {
   const soon = upcomingWars(90); if (soon.length) h += `<div class="muted">Rumours of war in Europe…</div>`;
   if (S.infamy > 0.5) h += `<div class="rep" style="margin-top:6px">${flagImg('pir')}<span>Infamy</span><div class="repbar"><i style="left:0;width:${Math.min(100, S.infamy / 1.2)}%;background:#222"></i></div><span style="text-align:right">${Math.round(S.infamy)}</span></div><div class="muted">${isPirate() ? 'Wanted for piracy.' : 'Not yet wanted (20 makes you a pirate).'} Infamy fades slowly; a governor's pardon clears it.</div>`;
   for (const c of Object.keys(S.commissions)) { const t = validTargets(c); h += `<div class="muted" style="margin-top:4px">${flagImg(c)} <b>${NATIONS[c].adj} letter of marque</b>: ${t.length ? 'may take ' + t.map(n => NATIONS[n].adj).join(', ') + ' ships' : 'no enemies at present'}${S.flag === c ? '' : ' <i>(fly their colours to use it)</i>'}</div>`; }
-  for (const k of S.contracts) h += `<div class="muted">Contract: take ${k.need} ${NATIONS[k.target].adj} ships — <b>${k.have}/${k.need}</b>, ${Math.max(0, k.until - S.day)} days left (${fmt(k.reward)} reward)</div>`;
+  for (const k of S.contracts) h += `<div class="muted">Contract: ${contractText(k)} — <b>${k.have}/${k.need}</b>, ${Math.max(0, k.until - S.day)} days left (${fmt(k.reward)} reward)</div>`;
   h += `</section>`;
   const towns = Object.keys(S.holdings), facs = Object.keys(S.warehouses);
   if (towns.length || facs.length) {
@@ -1692,7 +1695,7 @@ function tabGovernor(p) {
       const t = validTargets(n);
       h += `<p class="kv">You sail as a ${NATIONS[n].adj} privateer. ${t.length ? `You may lawfully take <b>${t.map(x => NATIONS[x].adj).join(' and ')}</b> ships — merchantmen, warships and even towns — while flying ${NATIONS[n].adj} colours.` : 'There is no war at present, so the letter gives you no targets until the next one.'} The crown takes a tenth of all plunder.</p>`;
       const k = S.contracts.find(c => c.issuer === n);
-      if (k) h += k.have >= k.need ? `<p><b>Contract fulfilled!</b> <button class="btn primary sm" data-act="claim" data-i="${k.id}">Claim ${fmt(k.reward)} reward</button></p>` : `<p class="kv">Contract: take ${k.need} ${NATIONS[k.target].adj} ships (${k.have} so far), ${k.until - S.day} days left.</p>`;
+      if (k) h += k.have >= k.need ? `<p><b>Contract fulfilled!</b> <button class="btn primary sm" data-act="claim" data-i="${k.id}">Claim ${fmt(k.reward)} reward</button></p>` : `<p class="kv">Contract: ${contractText(k)} (${k.have} so far), ${k.until - S.day} days left.</p>`;
       else { const c = contractOffer(p); if (c) h += `<p class="kv"><b>The governor offers a contract:</b> take <b>${c.need} ${NATIONS[c.target].adj}</b> ships (captured, sunk or struck) within 150 days for a bounty of <b>${fmt(c.reward)}</b>.</p><button class="btn sm" data-act="contract">Accept the contract</button>`; }
     } else {
       const o = commissionOffer(n);
@@ -1963,7 +1966,54 @@ function genPunitive(n) {
   for (let i = 0; i < extra; i++) fleet.push(mkEnemy(g >= 4 ? 'frigate' : 'brig', 'fighter', 1, 'navy', n, used));
   return fleet;
 }
-function punitiveChance(n) { return Math.min(0.12, 0.025 * grievance(n)); }
+// ---------- TURNCOAT OFFERS
+const TURNCOAT_REP = -40, TURNCOAT_WINS = 3;
+// The nations you currently serve: your letters of marque, and the colours you fly.
+function patrons(except) { const p = new Set(Object.keys(S.commissions)); if (NAVY_NATIONS.includes(S.flag)) p.add(S.flag); p.delete(except); return [...p]; }
+function turncoatTarget(n) {
+  const cur = patrons(n), en = enemiesOf(n);
+  return cur.find(x => en.includes(x)) || en[0] || cur[0] || NAVY_NATIONS.filter(x => x !== n).sort((a, b) => PORTS.filter(p => nat(p) === b).length - PORTS.filter(p => nat(p) === a).length)[0];
+}
+function turncoatRansom(n) { return Math.round((6000 + 3000 * Math.min(10, S.repelled[n] || 0) + 4000 * grievance(n)) / 500) * 500; }
+function checkTurncoatOffer(n) {
+  if (S.won || S.commissions[n] || S.rep[n] > TURNCOAT_REP || (S.repelled[n] || 0) < TURNCOAT_WINS) return;
+  const offer = { n, target: turncoatTarget(n), ransom: turncoatRansom(n) };
+  queueEvent({ show: () => showTurncoatOffer(offer) });
+}
+function showTurncoatOffer(o) {
+  UI.turncoat = o;
+  const n = o.n, t = o.target, adj = NATIONS[n].adj, towns = PORTS.filter(p => nat(p) === t).length, need = Math.min(2, Math.max(1, towns));
+  o.need = need; o.bounty = need * 8000;
+  const old = patrons(n);
+  showModal(`<h2>${flagImg(n)} A flag of truce</h2><canvas class="scene" id="scn" width="760" height="200"></canvas>
+    <p>A boat pulls across under a white flag, carrying a sealed letter from the ${adj} governor. The ${adj} have lost ${S.repelled[n]} fights to you${grievance(n) ? ` and ${grievance(n)} of their towns` : ''}, and they have decided it is cheaper to buy you than to fight you.</p>
+    <div class="odds" style="line-height:1.6">If you change sides, ${NATIONS[n].name} offers you:<br>
+      • <b>${fmt(o.ransom)} gold</b> in ransom, paid at once<br>
+      • ${adj} papers and pennant, and a <b>letter of marque against ${NATIONS[t].name}</b> — lawful even if the two crowns are at peace<br>
+      • ${isPirate() ? '<b>a full royal pardon</b> for your piracies, and ' : ''}their forgiveness: reputation restored, no more punitive squadrons, and your hold on any former ${adj} towns recognised<br>
+      • a bounty of <b>${fmt(o.bounty)}</b> for capturing ${need} ${NATIONS[t].adj} town${need > 1 ? 's' : ''} within 300 days</div>
+    ${old.length ? `<p><b>The price:</b> ${old.map(x => NATIONS[x].name).join(' and ')} will brand you a turncoat. Your ${old.map(x => NATIONS[x].adj).join(' and ')} commission${old.length > 1 ? 's are' : ' is'} torn up, your name is mud there, and their warships will come for you.</p>` : ''}
+    <div class="btnRow"><button class="btn primary" data-act="turncoat">Accept — change sides</button><button class="btn" data-act="noturncoat">Refuse the offer</button></div>`, { cls: 'mid', kind: 'turncoat' });
+  scene = sceneSail($('#scn'), { enemies: [mkEnemy('sloop', 'balanced', 0.5, 'navy', n, [])] });
+}
+function acceptTurncoat() {
+  const o = UI.turncoat; if (!o) return; UI.turncoat = null;
+  const n = o.n, t = o.target, adj = NATIONS[n].adj, old = patrons(n);
+  for (const p of old) { delete S.commissions[p]; S.contracts = S.contracts.filter(k => k.issuer !== p); S.rep[p] = Math.min(S.rep[p] - 50, -45); news(`${NATIONS[p].name} denounces Captain ${S.captain} as a turncoat who sold out to ${NATIONS[n].name}.`, 'war'); }
+  S.infamy = 0;
+  S.gold += o.ransom; S.rep[n] = Math.max(S.rep[n], 30); S.repelled[n] = 0;
+  if (!S.flags.includes(n)) S.flags.push(n);
+  S.commissions[n] = { since: S.day, peaceSpa: false, vs: [t] };
+  S.contracts = S.contracts.filter(k => k.issuer !== n);
+  S.contracts.push({ id: S.nextId++, issuer: n, target: t, need: o.need, have: 0, reward: o.bounty, until: S.day + 300, kind: 'towns' });
+  S.flag = n; checkFlagRevocation();
+  news(`Captain ${S.captain} has changed sides and now sails for ${NATIONS[n].name}, against ${NATIONS[t].name}.`, 'war');
+  log(`Changed sides: took ${fmt(o.ransom)} from ${NATIONS[n].name} and a letter of marque against ${NATIONS[t].name}.`);
+  saveGame(); renderUI();
+  showMsg('You have changed sides', `<p>You pocket <b>${fmt(o.ransom)}</b> and run up the ${FLAGS[n].name}. You now hold a letter of marque against ${NATIONS[t].name}: fly ${adj} colours and their ships and towns are lawful prizes. Capture ${o.need} ${NATIONS[t].adj} town${o.need > 1 ? 's' : ''} for a further ${fmt(o.bounty)}, claimed at any ${adj} governor's house.</p>${old.length ? `<p>${old.map(x => NATIONS[x].name).join(' and ')} will not forgive this. Beat off their warships often enough and they may try to buy you back.</p>` : ''}`, 'To sea');
+}
+
+function punitiveChance(n) { return S.commissions[n] ? 0 : Math.min(0.12, 0.025 * grievance(n)); }
 function encounterPunitive(n) { queueEncounter({ kind: 'navyHostile', nation: n, enemies: genPunitive(n), punitive: true }); }
 function genFleet(kind, nat) { const used = []; return pick((kind === 'pirate' || kind === 'privateer' ? PIRATE_TABLE : NAVY_TABLE)[playerTier()]).map(([t, s, gf]) => mkEnemy(t, s, gf, kind, nat, used)); }
 function genMerchants(nat, treasure) {
@@ -2442,7 +2492,7 @@ function endBattle(res) {
         repChange(n, e.role === 'merchant' ? -4 : -8);
         if (S.commissions[S.flag] && validTargets(S.flag).includes(n)) { repChange(S.flag, 3); lawfulPrize = true; }
         enemiesOf(n).forEach(x => { if (x !== S.flag) repChange(x, 2); });
-        for (const k of S.contracts) if (k.target === n && k.have < k.need) { k.have++; if (k.have === k.need) toast(`Contract fulfilled! Claim your bounty from the ${NATIONS[k.issuer].adj} governor.`); }
+        for (const k of S.contracts) if (k.kind !== 'towns' && k.target === n && k.have < k.need) { k.have++; if (k.have === k.need) toast(`Contract fulfilled! Claim your bounty from the ${NATIONS[k.issuer].adj} governor.`); }
       }
       if (e.role === 'merchant') S.stats.merchantsTaken++; else S.stats.naviesBeaten++;
     }
@@ -2451,6 +2501,9 @@ function endBattle(res) {
     S.gold += gold; B.loot = { gold, got, crown, pirated, pirateWin };
     B.prizes = caps.map(e => ({ e, taken: false }));
     if (enc.defend) { news(`Captain ${S.captain} beat off a ${NATIONS[enc.nation].adj} attack on ${PORT[enc.defend].name}.`, 'war'); }
+    // beating off a nation's warships (they attacked you) counts towards it trying to buy you instead
+    const navyN = B.enemies.find(e => NAVY_NATIONS.includes(e.nation) && (e.role === 'navy' || e.role === 'escort' || e.role === 'fort'));
+    if (navyN && !enc.playerAttacked) { S.repelled[navyN.nation] = (S.repelled[navyN.nation] || 0) + 1; checkTurncoatOffer(navyN.nation); }
     log(`Victory over ${describeFleet(B.enemies).replace(/<[^>]+>/g, '')}. Took ${fmt(gold)} gold${got.length ? ' and ' + got.join(', ') : ''}.`);
   } else {
     if (enc.defend && S.holdings[enc.defend]) loseTown(enc.defend, `${PORT[enc.defend].name} has fallen to the ${NATIONS[enc.nation].adj}.`);
@@ -2510,7 +2563,11 @@ function startSiege(pid) {
 function sackValue(pid) { const p = PORT[pid]; return Math.round(p.size * 2500 * (FORT_MULT[pid] || 1) * rand(0.8, 1.25) / 10) * 10; }
 function endSiege(res) {
   const B = battle, pid = B.siege, p = PORT[pid];
-  if (res === 'victory') { S.stats.townsTaken++; B.siegeLoot = sackValue(pid); log(`Took ${p.name} by storm.`); }
+  if (res === 'victory') {
+    S.stats.townsTaken++; B.siegeLoot = sackValue(pid); log(`Took ${p.name} by storm.`);
+    const o = B.enemies[0].nation;
+    for (const k of S.contracts) if (k.kind === 'towns' && k.target === o && k.have < k.need) { k.have++; if (k.have === k.need) toast(`Contract fulfilled! Claim your bounty from the ${NATIONS[k.issuer].adj} governor.`); }
+  }
   else if (res === 'fled') log(`Withdrew from the attack on ${p.name}.`);
   else log(`Beaten off at ${p.name}.`);
 }
@@ -2615,7 +2672,7 @@ function showHelp() {
     <p><b>Piracy.</b> Attack anyone else and you are a pirate. Set your stance to <b>⚔ Hunting</b> to be offered merchant ships you meet, tap passing ships on the chart to chase them, or sail to a <b>hunting ground</b> (the ✕ marks in the passages) and lie in wait. Infamy closes honest ports and sets navies on you; pirate havens still welcome you, and a governor's pardon clears your name.</p>
     <p><b>Factories.</b> Build a warehouse with a resident agent in a port (you need that nation's papers). It produces the local speciality, stores your goods, and gets you cheaper prices there.</p>
     <p><b>Repairs</b> cost half in your home port and in any town you hold.</p>
-    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Each town you take from a nation makes it angrier: its punitive squadrons will hunt you at sea, more often and in greater strength, and it will try harder to win its towns back. Take every port in the Indies to win the game.</p>
+    <p><b>Taking towns.</b> Any town can be assaulted with an armed fleet: bombard the fort, then land troops. It is lawful war against your letter of marque's enemies and against the pirate havens; anything else is piracy. Sack it for plunder, hold it as your own (its plantations sell to you at half price or less, and its docks can keep spare ships), or — as a privateer — hand it to your crown. Beat off a hostile nation's warships three times while your name is mud there, and it may offer you a large ransom to change sides — playing the great powers against each other. Each town you take from a nation makes it angrier: its punitive squadrons will hunt you at sea, more often and in greater strength, and it will try harder to win its towns back. Take every port in the Indies to win the game.</p>
     <p><b>Saving.</b> The game saves itself constantly into one of three slots in this browser. Use Menu → Export to keep a backup file; you can import it again later, even after the game has been updated.</p>
     <p><b>On the iPhone.</b> Tap a port, hunting ground or passing ship to see what it is; tap again to act. Drag the chart to pan and pinch to zoom. Turn the phone sideways for a bigger chart. Saves live on this phone; use Menu → Export / Import to move a career between your computer and your phone.</p></div><div class="btnRow"><button class="btn" data-act="close">Close</button></div>`, { kind: 'help' });
 }
@@ -2822,6 +2879,8 @@ const ACT = {
   encback: () => showEncounter(ENC),
   siegeopt: d => siegeOption(d.o),
   siegedone: () => siegeDone(),
+  turncoat: () => acceptTurncoat(),
+  noturncoat: () => { const o = UI.turncoat; UI.turncoat = null; if (o) { S.repelled[o.n] = 1; log(`Refused a ${NATIONS[o.n].adj} offer to change sides.`); } saveGame(); closeModal(); },
   facgood: d => { const w = S.warehouses[S.port]; if (!w || !factoryOptions(S.port).includes(d.g)) return; if (w.good !== d.g) { w.good = d.g; w.acc = 0; log(`The factor at ${PORT[S.port].name} switches to ${GOOD[d.g].name.toLowerCase()}.`); } saveGame(); renderPort(); },
   sendprize: d => sendPrize(+d.i, d.p),
   dock: d => { const pid = S.port, h = S.holdings[pid], sh = shipById(d.s); if (!h || !sh || S.fleet.length < 2 || (h.ships || []).length >= dockCap(pid) || holdUsed() > holdCap() - shipStats(sh).hold) return; S.fleet.splice(S.fleet.indexOf(sh), 1); (h.ships = h.ships || []).push(sh); log(`Laid up the ${sh.name} at ${PORT[pid].name}.`); saveGame(); renderPort(); renderUI(); },
