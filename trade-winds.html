@@ -243,7 +243,7 @@ const HIST_WARS = [
 ];
 const HIST_END = '1785-01-01';
 const ERAS = [
-  { start: '1680-03-01', name: 'The Buccaneer Era (1680)', desc: 'Europe is at peace, but there is "no peace beyond the line": French governors still quietly license raids on Spain. War comes in 1683.' },
+  { start: '1680-03-01', name: 'The Buccaneer Era (1680)', desc: 'Europe is at peace, but there is "no peace beyond the line": French governors still quietly license raids on Spain. France and Spain go to war on 26 October 1683 (the War of the Reunions, until August 1684); the great Nine Years’ War follows in 1688–89.' },
   { start: '1689-06-01', name: "King William's War (1689)", desc: 'France fights England, the Dutch and Spain at once. Privateers swarm.' },
   { start: '1702-06-01', name: "Queen Anne's War (1702)", desc: 'France and Spain together against England and the Dutch. A long war.' },
   { start: '1714-09-01', name: 'The Golden Age of Piracy (1714)', desc: 'Peace leaves thousands of privateers out of work. Many turn pirate.' },
@@ -554,8 +554,10 @@ function syncWars(silent) {
   for (const k of Object.keys(S.wars)) {
     const w = !!want[k]; if (w === S.wars[k]) continue; S.wars[k] = w; if (silent) continue;
     const [a, b] = k.split('|');
-    if (w) { const rec = HIST_WARS.find(x => x[0] === k && x[1] <= iso && iso < x[2]); news(`WAR! ${NATIONS[a].name} and ${NATIONS[b].name} are at war — ${rec ? rec[3] : 'a new war'}. Governors are eager to issue letters of marque.`, 'war'); toast(`<b>War:</b> ${NATIONS[a].name} vs ${NATIONS[b].name}!`); }
-    else { const rec = HIST_WARS.filter(x => x[0] === k && x[2] <= iso).pop(); news(rec ? `PEACE: ${rec[4].replace(/^t/, 'T')} ends the war between ${NATIONS[a].name} and ${NATIONS[b].name}. Letters of marque between them are void.` : `PEACE: ${NATIONS[a].name} and ${NATIONS[b].name} have made peace. Letters of marque between them are void.`, 'peace'); toast(`<b>Peace</b> between ${NATIONS[a].name} and ${NATIONS[b].name}.`); }
+    if (w) { const rec = HIST_WARS.find(x => x[0] === k && x[1] <= iso && iso < x[2]); news(`WAR! ${NATIONS[a].name} and ${NATIONS[b].name} are at war — ${rec ? rec[3] : 'a new war'}. Governors are eager to issue letters of marque.`, 'war'); toast(`<b>War:</b> ${NATIONS[a].name} vs ${NATIONS[b].name}!`);
+      queueEvent({ show: () => showMsg(`War! ${NATIONS[a].name} against ${NATIONS[b].name}`, `<p>News from Europe: ${NATIONS[a].name} and ${NATIONS[b].name} are at war — ${rec ? rec[3] : 'a new war'}${rec ? `, which will last until ${dateStr(Math.round((new Date(...rec[2].split('-').map((v, i) => i === 1 ? v - 1 : +v)) - gameDate(0)) / 864e5))}` : ''}.</p><p>From now on, ${NATIONS[a].adj} warships and privateers will attack any ship flying ${NATIONS[b].adj} colours, and the other way round. Ports of each close to the other's flag. ${[a, b].includes(S.flag) ? `<b>You fly ${NATIONS[S.flag].adj} colours, so expect trouble.</b>` : 'You are not flying either flag, so this need not touch you.'} Governors of both nations will now sell letters of marque against the enemy.</p>`, 'Carry on') }); }
+    else { const rec = HIST_WARS.filter(x => x[0] === k && x[2] <= iso).pop(); news(rec ? `PEACE: ${rec[4].replace(/^t/, 'T')} ends the war between ${NATIONS[a].name} and ${NATIONS[b].name}. Letters of marque between them are void.` : `PEACE: ${NATIONS[a].name} and ${NATIONS[b].name} have made peace. Letters of marque between them are void.`, 'peace'); toast(`<b>Peace</b> between ${NATIONS[a].name} and ${NATIONS[b].name}.`);
+      queueEvent({ show: () => showMsg(`Peace between ${NATIONS[a].name} and ${NATIONS[b].name}`, `<p>${rec ? `${rec[4].replace(/^t/, 'T')} ends ${rec[3]}.` : 'The war is over.'} Their warships and privateers no longer attack each other's colours, their ports reopen to each other, and letters of marque between them are void.</p>`, 'Carry on') }); }
   }
   return true;
 }
@@ -597,7 +599,10 @@ function removeShip(sh, why) {
   log(`The ${sh.name} was lost — ${why}.`);
 }
 function log(t) { S.log.unshift({ d: S.day, t }); if (S.log.length > 250) S.log.length = 250; }
-function news(t, type = '') { S.news.unshift({ d: S.day, t, type }); if (S.news.length > 60) S.news.length = 60; }
+function news(t, type = '') {
+  S.news.unshift({ d: S.day, t, type });
+  while (S.news.length > 60) { let i = S.news.map(n => n.type).lastIndexOf('market'); if (i < 0) i = S.news.length - 1; S.news.splice(i, 1); } // drop old market chatter first
+}
 function repChange(n, d) { if (S.rep[n] === undefined) return; S.rep[n] = clamp(S.rep[n] + d, -100, 100); }
 
 // ---------------------------------------------------------------- SAVE / LOAD
@@ -1379,7 +1384,7 @@ function renderSide() {
     const r = S.rep[n], w = Math.abs(r) / 2, war = S.flag !== 'neutral' && atWar(S.flag, n);
     h += `<div class="rep">${flagImg(n)}<span>${NATIONS[n].adj}${war ? ' <b style="color:#a02a1c" title="At war with your colours">⚔</b>' : ''}</span><div class="repbar"><i style="left:${r >= 0 ? 50 : 50 - w}%;width:${w}%;background:${r >= 0 ? '#5f8f3a' : '#b0402c'}"></i><i style="left:50%;width:1px;background:#0006"></i></div><span style="text-align:right">${r > 0 ? '+' : ''}${Math.round(r)}</span></div>`;
   }
-  const wars = Object.keys(S.wars).filter(k => S.wars[k]).map(k => k.split('|').map(n => NATIONS[n].adj).join(' vs '));
+  const nowIso = isoDate(S.day), wars = Object.keys(S.wars).filter(k => S.wars[k]).map(k => { const rec = HIST_WARS.find(x => x[0] === k && x[1] <= nowIso && nowIso < x[2]); return k.split('|').map(n => NATIONS[n].adj).join(' vs ') + (rec ? ` (${rec[3].replace(/^the /, '')}, since ${shortDate(Math.round((new Date(...rec[1].split('-').map((v, i) => i === 1 ? v - 1 : +v)) - gameDate(0)) / 864e5))} ${rec[1].slice(0, 4)})` : ''); });
   h += `<div class="muted" style="margin-top:4px">At war: ${wars.length ? wars.join('; ') : 'none — an uneasy peace'}</div>`;
   const soon = upcomingWars(90); if (soon.length) h += `<div class="muted">Rumours of war in Europe…</div>`;
   if (S.infamy > 0.5) h += `<div class="rep" style="margin-top:6px">${flagImg('pir')}<span>Infamy</span><div class="repbar"><i style="left:0;width:${Math.min(100, S.infamy / 1.2)}%;background:#222"></i></div><span style="text-align:right">${Math.round(S.infamy)}</span></div><div class="muted">${isPirate() ? 'Wanted for piracy.' : 'Not yet wanted (20 makes you a pirate).'} Infamy fades slowly; a governor's pardon clears it.</div>`;
