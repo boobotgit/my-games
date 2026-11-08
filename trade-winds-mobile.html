@@ -2505,9 +2505,9 @@ function endBattle(res) {
     S.gold += gold; B.loot = { gold, got, crown, pirated, pirateWin };
     B.prizes = caps.map(e => ({ e, taken: false }));
     if (enc.defend) { news(`Captain ${S.captain} beat off a ${NATIONS[enc.nation].adj} attack on ${PORT[enc.defend].name}.`, 'war'); }
-    // beating off a nation's warships (they attacked you) counts towards it trying to buy you instead
+    // beating off a nation's warships at sea (they attacked you) counts towards it trying to buy you instead
     const navyN = B.enemies.find(e => NAVY_NATIONS.includes(e.nation) && (e.role === 'navy' || e.role === 'escort' || e.role === 'fort'));
-    if (navyN && !enc.playerAttacked) { S.repelled[navyN.nation] = (S.repelled[navyN.nation] || 0) + 1; checkTurncoatOffer(navyN.nation); }
+    if (navyN && !enc.playerAttacked && !enc.defend) { S.repelled[navyN.nation] = (S.repelled[navyN.nation] || 0) + 1; checkTurncoatOffer(navyN.nation); } // only sea battles count, not defending your towns
     log(`Victory over ${describeFleet(B.enemies).replace(/<[^>]+>/g, '')}. Took ${fmt(gold)} gold${got.length ? ' and ' + got.join(', ') : ''}.`);
   } else {
     if (enc.defend && S.holdings[enc.defend]) loseTown(enc.defend, `${PORT[enc.defend].name} has fallen to the ${NATIONS[enc.nation].adj}.`);
