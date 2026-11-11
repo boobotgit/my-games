@@ -451,7 +451,7 @@
 
     <h4>Diplomacy (Emperor)</h4>
     <ul>
-      <li>Powers sign treaties in pairs, for 6 years. A <b>Non-Aggression Pact</b> forbids attacking, bombarding or
+      <li>Powers sign treaties in pairs: a <b>Non-Aggression Pact</b> lasts 3 years, a <b>Military Alliance</b> 6. A pact forbids attacking, bombarding or
       landing on each other. A <b>Military Alliance</b> adds more: each ally's seas carry the other's amphibious
       landings, and whoever attacks one ally finds the other at war with them for two years.</li>
       <li>Use <b>Envoys</b> under Powers on your turn to propose a treaty, or to ask a rival to
@@ -2000,12 +2000,12 @@ function aiBestFortify(p){
      pact      (kind 0)  neither side may attack, bombard or land on the other
      alliance  (kind 1)  a pact, plus each ally's seas carry the other's
                          landings, and an attack on one calls the other to arms
-   A treaty runs TREATY_YEARS and then lapses quietly. Tearing one up early is
+   A treaty runs TREATY_YEARS[kind] (a pact is the shorter promise) and then lapses quietly. Tearing one up early is
    always possible, but the wronged power hunts the betrayer for
    VENDETTA_YEARS — and every court remembers who broke their word.
    Everything here is stored as small integers (player slots and years), so
    it saves and validates like the rest of the board. */
-const TREATY_YEARS = 6, VENDETTA_YEARS = 3, CALL_YEARS = 2;
+const TREATY_YEARS = [3, 6], VENDETTA_YEARS = 3, CALL_YEARS = 2;   // [pact, alliance]
 const TREATY_NAME = ['Non-Aggression Pact', 'Military Alliance'];
 const TREATY_SHORT = ['Pact', 'Allied'];
 // how readily each doctrine signs, and how readily it tears a treaty up
@@ -2045,9 +2045,9 @@ function feuding(a, b){
 function signTreaty(a, b, kind){
   const old = treatyOf(a, b);
   G.treaties = G.treaties.filter(t => t !== old);
-  G.treaties.push({a:Math.min(a, b), b:Math.max(a, b), kind, since:G.turn, until:G.turn + TREATY_YEARS});
+  G.treaties.push({a:Math.min(a, b), b:Math.max(a, b), kind, since:G.turn, until:G.turn + TREATY_YEARS[kind]});
   G.offers = G.offers.filter(o => !(o.kind < 2 && ((o.from === a && o.to === b) || (o.from === b && o.to === a))));
-  log(`<b>${nameOf(a)}</b> and <b>${nameOf(b)}</b> sign a <span class="g">${TREATY_NAME[kind]}</span>, to run until ${yearOf(G.turn + TREATY_YEARS)}.`);
+  log(`<b>${nameOf(a)}</b> and <b>${nameOf(b)}</b> sign a <span class="g">${TREATY_NAME[kind]}</span>, to run until ${yearOf(G.turn + TREATY_YEARS[kind])}.`);
 }
 function breakTreaty(breaker, other){
   const t = treatyOf(breaker, other); if (!t) return;
@@ -2132,7 +2132,7 @@ function treatyWorth(p, q, kind, freeing = -1){
 // What rival p gains by tearing up its treaty with q right now.
 function breakWorth(p, q, ignoreAge){
   const t = treatyOf(p, q); if (!t) return -99;
-  if (!ignoreAge && G.turn - t.since < 3) return -99;  // the ink is barely dry
+  if (!ignoreAge && G.turn - t.since < 2) return -99;  // the ink is barely dry (a pact only runs 3)
   const b = borderStats(p, q);
   let v = b.prey * 0.6 - b.threat * 0.5 - 8;           // 8: the vendetta that follows
   if (q === currentLeader()) v += 20;
@@ -2207,7 +2207,7 @@ function propose(from, q, kind, against = -1){
   }
   if (treatyWorth(q, from, kind) + luck > 0){
     signTreaty(from, q, kind);
-    return `${Q} accepts. The ${TREATY_NAME[kind]} runs until ${yearOf(G.turn + TREATY_YEARS)}.`;
+    return `${Q} accepts. The ${TREATY_NAME[kind]} runs until ${yearOf(G.turn + TREATY_YEARS[kind])}.`;
   }
   return refusalReason(q, from, kind);
 }
@@ -2287,8 +2287,8 @@ function processOffers(){
     $('#offTitle').textContent = TREATY_NAME[o.kind];
     $('#offSub').textContent = `— proposed by ${F} —`;
     $('#offBody').textContent = o.kind === 1
-      ? `${F} proposes a Military Alliance until ${yearOf(G.turn + TREATY_YEARS)}: neither may attack the other, each may land troops from the other's seas, and an attack on one brings the other into the war.`
-      : `${F} proposes a Non-Aggression Pact until ${yearOf(G.turn + TREATY_YEARS)}: neither may attack, bombard or land on the other.`;
+      ? `${F} proposes a Military Alliance until ${yearOf(G.turn + TREATY_YEARS[1])}: neither may attack the other, each may land troops from the other's seas, and an attack on one brings the other into the war.`
+      : `${F} proposes a Non-Aggression Pact until ${yearOf(G.turn + TREATY_YEARS[0])}: neither may attack, bombard or land on the other.`;
     $('#offNo').hidden = false; $('#offYes').textContent = 'Accept';
   } else {
     $('#offTitle').textContent = 'Betrayal';
