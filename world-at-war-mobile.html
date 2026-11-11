@@ -2176,10 +2176,10 @@ function treatyWorth(p, q, kind, freeing = -1){
   if (kind === 1) v += sharesFoe(p, q) ? 3 : -7;
   return v + dipOf(p).sign;
 }
-// What rival p gains by tearing up its treaty with q right now.
-function breakWorth(p, q, ignoreAge){
+// What rival p gains by tearing up its treaty with q right now — however
+// recently it was signed: a rival breaks faith the moment it pays.
+function breakWorth(p, q){
   const t = treatyOf(p, q); if (!t) return -99;
-  if (!ignoreAge && G.turn - t.since < 2) return -99;  // the ink is barely dry (a pact only runs 3)
   const b = borderStats(p, q);
   let v = b.prey * 0.6 - b.threat * 0.5 - 8;           // 8: the vendetta that follows
   if (q === currentLeader()) v += 20;
@@ -2204,7 +2204,7 @@ function aiDiplomacy(p){
   // treachery — at most one treaty torn up a year
   let worst = null;
   for (const t of treatiesOf(p)){
-    const q = partnerIn(t, p), v = breakWorth(p, q, false);
+    const q = partnerIn(t, p), v = breakWorth(p, q);
     if (v > 10 + Math.random() * 6 && (!worst || v > worst.v)) worst = {q, v};
   }
   if (worst) breakTreaty(p, worst.q);
@@ -2243,7 +2243,7 @@ function propose(from, q, kind, against = -1){
   const luck = Math.random() * 4 - 2;
   if (against >= 0){
     const join = treatyWorth(q, from, 1, against);
-    if (join > -12 && breakWorth(q, against, true) + join + 6 + luck > 4){
+    if (join > -12 && breakWorth(q, against) + join + 6 + luck > 4){
       const A = nameOf(against);
       breakTreaty(q, against);
       signTreaty(from, q, 1);
@@ -2754,7 +2754,7 @@ function isStandalone(){
 // Tap the title for a readout of exactly what this phone reports about its
 // screen — so a layout problem on a real device can be fixed from a
 // screenshot rather than guessed at.
-const BUILD = '2026-11-10 · t';
+const BUILD = '2026-11-10 · u';
 // Under an opaque status bar the page starts below it and the top inset is 0;
 // under a translucent one the page runs underneath it (inset ~59 on an island
 // iPhone). So the reported inset tells us which mode iOS actually applied.
