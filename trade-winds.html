@@ -2605,7 +2605,7 @@ function showTitle() {
   const last = +(lsGet(LAST_KEY) || 1), sum = slotSummary(last);
   showModal(`<div class="title"><h1>Trade Winds</h1><div class="subt">Trade, privateering and piracy in the West Indies, 1680–1785</div></div><canvas class="scene" id="scn" width="760" height="220"></canvas>
     <p style="text-align:center">Buy low, sell high, and dodge pirates, navies and hurricanes from Havana to Barbados.</p>
-    <div class="btnRow" style="justify-content:center">${sum ? `<button class="btn primary" data-act="loadslot" data-n="${last}">Continue — ${sum.split(' · ').slice(0, 2).join(' · ')}</button>` : ''}<button class="btn ${sum ? '' : 'primary'}" data-act="newcareer">New career</button><button class="btn" data-act="saves">Saved careers</button><button class="btn" data-act="help">How to play</button></div>`, { cls: 'mid', kind: 'title' });
+    <div class="btnRow" style="justify-content:center">${sum ? `<button class="btn primary" data-act="loadslot" data-n="${last}">Continue — ${sum.split(' · ').slice(0, 2).join(' · ')}</button>` : ''}<button class="btn ${sum ? '' : 'primary'}" data-act="newcareer">New career</button><button class="btn" data-act="saves">Saved careers</button><button class="btn" data-act="help">How to play</button><a class="btn" href="index.html" style="text-decoration:none">⌂ Home</a></div>`, { cls: 'mid', kind: 'title' });
   scene = sceneSail($('#scn'), { title: true });
 }
 function showNewCareer(slot) {
