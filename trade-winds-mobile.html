@@ -2261,7 +2261,7 @@ function startBattle(enc, enemyFirst) {
   B.enemies.forEach(e => { e.disp = e.hull; e.dx = 0; e.tdx = 0; e.sink = 0; e.fled = e.struck = e.captured = false; e.showCap = false; if (!e.role) e.role = B.kind; });
   const adj = NATIONS[enc.nation] ? NATIONS[enc.nation].adj : '';
   const title = B.siege ? `The assault on ${PORT[B.siege].name}` : enc.defend ? `Defending ${PORT[enc.defend].name}` : enc.kind === 'pirate' ? 'Battle with pirates' : enc.kind === 'privateer' ? `Battle with ${aAn(adj)} privateer` : enc.kind === 'merchant' ? `Taking ${aAn(adj)} prize` : `Battle with the ${adj} navy`;
-  const hint = B.siege ? 'Bombard the fort to silence its guns, or land your crews to storm the town — far easier once the walls are battered. Withdraw at any time.' : 'Tap an enemy ship to target it. Broadsides smash hulls; chain shot shreds rigging so they cannot chase you; boarding captures a ship, its cargo and its gold. Your gunners hold fire on crippled ships so they can strike or be boarded — click one to fire on her anyway.';
+  const hint = B.siege ? 'Bombard the fort to silence its guns, or land your crews to storm the town — far easier once the walls are battered. Withdraw at any time.' : 'Tap an enemy ship to target it. Broadsides smash hulls; chain shot shreds rigging so they cannot chase you; boarding captures a ship, its cargo and its gold. Your gunners fire to cripple, not sink: any ship battered below 10% hull strikes her colours, and they hold fire on beaten merchantmen. Click a ship to focus your fire on her; click a beaten merchantman to sink her anyway.';
   showModal(`<h2 id="btitle">${title}</h2><div class="battleWrap"><div><canvas id="bcv" class="scene" width="900" height="380"></canvas><div class="hint">${hint}</div></div><div><div class="blog" id="blog"></div><div id="bact"></div></div></div>`, { kind: 'battle' });
   B.canvas = $('#bcv'); B.g = B.canvas.getContext('2d');
   B.canvas.addEventListener('click', battleClick);
@@ -2273,7 +2273,10 @@ function startBattle(enc, enemyFirst) {
 }
 function blog(t, c = 'i') { if (!battle) return; battle.log.push({ t, c }); const el = $('#blog'); if (el) { el.innerHTML = battle.log.slice(-60).map(l => `<div class="${l.c}">${l.t}</div>`).join(''); el.scrollTop = el.scrollHeight; } }
 const enemyActive = e => e.hull > 0 && !e.fled && !e.struck && !e.captured;
-function crippled(e) { return e.role !== 'fort' && e.hull / e.maxHull < (e.role === 'merchant' ? 0.6 : 0.25); }
+const STRIKE_AT = 0.1; // under 10% hull, any ship strikes her colours
+function crippled(e) { return e.role !== 'fort' && e.hull / e.maxHull < (e.role === 'merchant' ? 0.6 : STRIKE_AT); }
+// Unless you picked her yourself, your gunners aim to cripple, not sink: a broadside leaves her afloat.
+function shotFloor(tgt) { const B = battle; return B.picked === B.target && B.enemies[B.target] === tgt ? 0 : Math.max(1, tgt.maxHull * 0.05); }
 // Where your guns aim: the chosen ship, unless she is crippled and you didn't pick her yourself —
 // then the next ship still fighting. Null means hold fire: everything left is beaten.
 function gunTarget() {
@@ -2316,7 +2319,7 @@ function shipScreen(side, i) {
 function battleClick(e) {
   const B = battle; if (!B || B.over) return; const r = B.canvas.getBoundingClientRect(), mx = (e.clientX - r.left) * 900 / r.width, my = (e.clientY - r.top) * 380 / r.height;
   let best = -1, bd = 1e9; B.enemies.forEach((en, i) => { if (!enemyActive(en)) return; const [x, y, sc] = shipScreen('e', i), d = Math.hypot(mx - x, (my - (y - 40 * sc)) * 0.7); if (d < bd) { bd = d; best = i; } });
-  if (best >= 0 && bd < 110) { B.target = best; B.picked = best; renderBattleUI(); }
+  if (best >= 0 && bd < 110) { B.target = best; B.picked = crippled(B.enemies[best]) ? best : -1; renderBattleUI(); } // clicking a beaten ship means: finish her
 }
 function fireVisual(fs, fi, ts, ti, guns, hits, dmg, delay) {
   const B = battle, balls = clamp(Math.ceil(guns / 3), 1, 6), hb = hits > 0 ? clamp(Math.round(balls * hits / Math.max(1, guns)), 1, balls) : 0;
@@ -2423,7 +2426,7 @@ function battleAction(act) {
       const stone = tgt.role === 'fort' ? 0.55 : 1;
       let hits = 0, dmg = 0; for (let k = 0; k < eff; k++) if (Math.random() < acc) { hits++; dmg += 3.5 * rand(0.7, 1.3) * mult * stone; }
       if (tgt.role === 'fort') { dmg = Math.min(dmg, tgt.hull - 1); tgt.hull -= dmg; if (tgt.hull <= 1.01) { tgt.struck = true; B.timers.push({ t: B.time + delay + 0.9, fn: () => blog('The fort\'s guns fall silent. The garrison hauls down its flag and the town surrenders!', 'p') }); } }
-      else { dmg = Math.min(dmg, tgt.hull); tgt.hull -= dmg; if (tgt.hull <= 0.01) { tgt.hull = 0; const nm = tgt.name; B.timers.push({ t: B.time + delay + 0.8, fn: () => blog(`The ${nm} is going down!`, 'p') }); } }
+      else { dmg = Math.max(0, Math.min(dmg, tgt.hull - shotFloor(tgt))); tgt.hull -= dmg; if (tgt.hull <= 0.01) { tgt.hull = 0; const nm = tgt.name; B.timers.push({ t: B.time + delay + 0.8, fn: () => blog(`The ${nm} is going down!`, 'p') }); } }
       totalHits += hits; totalDmg += dmg;
       fireVisual('p', i, 'e', B.enemies.indexOf(tgt), eff, hits, dmg, delay); delay += 0.22;
     });
@@ -2431,6 +2434,7 @@ function battleAction(act) {
     if (held && !totalHits && !delay) { const bt = activeEnemies().map(e => e.name).join(' and '); blog(`Your gunners hold their fire — the ${bt} ${activeEnemies().length > 1 ? 'are' : 'is'} crippled. Board, or wait for ${activeEnemies().length > 1 ? 'their' : 'her'} colours to come down.`, 'i'); delay = 0.2; }
     else B.timers.push({ t: B.time + delay + 0.7, fn: () => blog(B.siege ? `Your bombardment: ${ttl} hits on the walls (−${dd}).` : act === 'chain' ? `Chain shot whirls into their rigging (${ttl} hits, −${dd}). They will be slower to chase you.` : `Your broadside: ${ttl} hits, −${dd} hull.`, 'p') });
     if (act === 'chain') B.slow++;
+    if (!B.siege) for (const e of activeEnemies()) if (e.hull / e.maxHull < STRIKE_AT) { e.struck = true; const nm = e.name; B.timers.push({ t: B.time + delay + 0.9, fn: () => blog(`Shattered and helpless, the ${nm} strikes her colours!`, 'p') }); }
     delay += 0.2;
   } else if (act === 'board') {
     const ch = boardChance(tgt), ok = chance(ch), lead = playerAlive().sort((a, b) => shipStats(b).crew - shipStats(a).crew)[0], li = B.pShips.indexOf(lead), ti = B.enemies.indexOf(tgt);
