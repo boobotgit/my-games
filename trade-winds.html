@@ -2152,7 +2152,7 @@ function startBattle(enc, enemyFirst) {
   B.enemies.forEach(e => { e.disp = e.hull; e.dx = 0; e.tdx = 0; e.sink = 0; e.fled = e.struck = e.captured = false; e.showCap = false; if (!e.role) e.role = B.kind; });
   const adj = NATIONS[enc.nation] ? NATIONS[enc.nation].adj : '';
   const title = B.siege ? `The assault on ${PORT[B.siege].name}` : enc.defend ? `Defending ${PORT[enc.defend].name}` : enc.kind === 'pirate' ? 'Battle with pirates' : enc.kind === 'privateer' ? `Battle with ${aAn(adj)} privateer` : enc.kind === 'merchant' ? `Taking ${aAn(adj)} prize` : `Battle with the ${adj} navy`;
-  const hint = B.siege ? 'Bombard the fort to silence its guns, or land your crews to storm the town — far easier once the walls are battered. Withdraw at any time.' : 'Click an enemy ship to target it. Broadsides smash hulls; chain shot shreds rigging so they cannot chase you; boarding captures a ship, its cargo and its gold.';
+  const hint = B.siege ? 'Bombard the fort to silence its guns, or land your crews to storm the town — far easier once the walls are battered. Withdraw at any time.' : 'Click an enemy ship to target it. Broadsides smash hulls; chain shot shreds rigging so they cannot chase you; boarding captures a ship, its cargo and its gold. Your gunners hold fire on crippled ships so they can strike or be boarded — click one to fire on her anyway.';
   showModal(`<h2 id="btitle">${title}</h2><div class="battleWrap"><div><canvas id="bcv" class="scene" width="900" height="380"></canvas><div class="hint">${hint}</div></div><div><div class="blog" id="blog"></div><div id="bact"></div></div></div>`, { kind: 'battle' });
   B.canvas = $('#bcv'); B.g = B.canvas.getContext('2d');
   B.canvas.addEventListener('click', battleClick);
@@ -2164,6 +2164,13 @@ function startBattle(enc, enemyFirst) {
 }
 function blog(t, c = 'i') { if (!battle) return; battle.log.push({ t, c }); const el = $('#blog'); if (el) { el.innerHTML = battle.log.slice(-60).map(l => `<div class="${l.c}">${l.t}</div>`).join(''); el.scrollTop = el.scrollHeight; } }
 const enemyActive = e => e.hull > 0 && !e.fled && !e.struck && !e.captured;
+function crippled(e) { return e.role !== 'fort' && e.hull / e.maxHull < (e.role === 'merchant' ? 0.6 : 0.25); }
+// Where your guns aim: the chosen ship, unless she is crippled and you didn't pick her yourself —
+// then the next ship still fighting. Null means hold fire: everything left is beaten.
+function gunTarget() {
+  const B = battle, t = currentTarget(); if (!t || B.siege || !crippled(t) || B.picked === B.target) return t;
+  return activeEnemies().find(e => !crippled(e)) || null;
+}
 function activeEnemies() { return battle.enemies.filter(enemyActive); }
 function playerAlive() { return battle.pShips.filter(s => s.hull > 0); }
 function currentTarget() { const B = battle; if (!enemyActive(B.enemies[B.target])) { const i = B.enemies.findIndex(enemyActive); if (i >= 0) B.target = i; } return enemyActive(B.enemies[B.target]) ? B.enemies[B.target] : null; }
@@ -2184,8 +2191,9 @@ function renderBattleUI() {
       <button class="btn" data-act="bat" data-c="flee" ${dis}>Withdraw</button></div>`;
     return;
   }
-  el.innerHTML = `<div class="odds" style="margin-top:8px">Target: <b>${tgt ? esc(tgt.name) : '—'}</b>${tgt ? ` (${Math.max(0, Math.round(tgt.hull))}/${tgt.maxHull} hull, crew ${tgt.crew})` : ''}</div>
-    <div class="bact"><button class="btn danger" data-act="bat" data-c="broadside" ${dis} ${gunsNow ? '' : 'disabled'}>Broadside</button><button class="btn" data-act="bat" data-c="chain" ${dis} ${gunsNow ? '' : 'disabled'}>Chain shot</button>
+  const gt = gunTarget(), crip = tgt && crippled(tgt);
+  el.innerHTML = `<div class="odds" style="margin-top:8px">Target: <b>${tgt ? esc(tgt.name) : '—'}</b>${tgt ? ` (${Math.max(0, Math.round(tgt.hull))}/${tgt.maxHull} hull, crew ${tgt.crew})` : ''}${crip ? ` — <b>crippled</b>: ${gt === tgt ? 'you chose her, so your guns will fire on her' : gt ? `your guns will fire on the ${esc(gt.name)} instead` : 'your guns will hold fire'}. Board her, or wait for her to strike.` : ''}</div>
+    <div class="bact"><button class="btn danger" data-act="bat" data-c="broadside" ${dis} ${gunsNow ? '' : 'disabled'}>${gt ? 'Broadside' : 'Hold fire'}</button><button class="btn" data-act="bat" data-c="chain" ${dis} ${gunsNow ? '' : 'disabled'}>Chain shot</button>
     <button class="btn" data-act="bat" data-c="board" ${dis} ${tgt ? '' : 'disabled'}>Board (${tgt ? Math.round(boardChance(tgt) * 100) : 0}%)</button><button class="btn" data-act="bat" data-c="flee" ${dis}>Break away (${Math.round(fleeChance(activeEnemies().length ? activeEnemies() : B.enemies, B.slow) * 100)}%)</button></div>`;
 }
 const BPX = [125, 250, 60, 190, 315, 140, 270, 30], BPY = [205, 228, 256, 286, 318, 332, 345, 352];
@@ -2199,7 +2207,7 @@ function shipScreen(side, i) {
 function battleClick(e) {
   const B = battle; if (!B || B.over) return; const r = B.canvas.getBoundingClientRect(), mx = (e.clientX - r.left) * 900 / r.width, my = (e.clientY - r.top) * 380 / r.height;
   let best = -1, bd = 1e9; B.enemies.forEach((en, i) => { if (!enemyActive(en)) return; const [x, y, sc] = shipScreen('e', i), d = Math.hypot(mx - x, (my - (y - 40 * sc)) * 0.7); if (d < bd) { bd = d; best = i; } });
-  if (best >= 0 && bd < 110) { B.target = best; renderBattleUI(); }
+  if (best >= 0 && bd < 110) { B.target = best; B.picked = best; renderBattleUI(); }
 }
 function fireVisual(fs, fi, ts, ti, guns, hits, dmg, delay) {
   const B = battle, balls = clamp(Math.ceil(guns / 3), 1, 6), hb = hits > 0 ? clamp(Math.round(balls * hits / Math.max(1, guns)), 1, balls) : 0;
@@ -2299,8 +2307,9 @@ function battleAction(act) {
   B.busy = true; B.round++; let delay = 0;
   if (act === 'broadside' || act === 'chain') {
     const mult = act === 'chain' ? 0.35 : 1; let totalHits = 0, totalDmg = 0;
+    let held = false;
     B.pShips.forEach((sh, i) => {
-      if (sh.hull <= 0 || sh.guns <= 0) return; tgt = currentTarget(); if (!tgt) return;
+      if (sh.hull <= 0 || sh.guns <= 0) return; tgt = gunTarget(); if (!tgt) { held = true; return; }
       const st = shipStats(sh), eff = Math.max(1, Math.round(sh.guns * (0.5 + 0.5 * sh.hull / st.maxHull))), acc = 0.45 + (sh.spec === 'fighter' ? 0.1 : 0);
       const stone = tgt.role === 'fort' ? 0.55 : 1;
       let hits = 0, dmg = 0; for (let k = 0; k < eff; k++) if (Math.random() < acc) { hits++; dmg += 3.5 * rand(0.7, 1.3) * mult * stone; }
@@ -2310,7 +2319,8 @@ function battleAction(act) {
       fireVisual('p', i, 'e', B.enemies.indexOf(tgt), eff, hits, dmg, delay); delay += 0.22;
     });
     const ttl = totalHits, dd = Math.round(totalDmg);
-    B.timers.push({ t: B.time + delay + 0.7, fn: () => blog(B.siege ? `Your bombardment: ${ttl} hits on the walls (−${dd}).` : act === 'chain' ? `Chain shot whirls into their rigging (${ttl} hits, −${dd}). They will be slower to chase you.` : `Your broadside: ${ttl} hits, −${dd} hull.`, 'p') });
+    if (held && !totalHits && !delay) { const bt = activeEnemies().map(e => e.name).join(' and '); blog(`Your gunners hold their fire — the ${bt} ${activeEnemies().length > 1 ? 'are' : 'is'} crippled. Board, or wait for ${activeEnemies().length > 1 ? 'their' : 'her'} colours to come down.`, 'i'); delay = 0.2; }
+    else B.timers.push({ t: B.time + delay + 0.7, fn: () => blog(B.siege ? `Your bombardment: ${ttl} hits on the walls (−${dd}).` : act === 'chain' ? `Chain shot whirls into their rigging (${ttl} hits, −${dd}). They will be slower to chase you.` : `Your broadside: ${ttl} hits, −${dd} hull.`, 'p') });
     if (act === 'chain') B.slow++;
     delay += 0.2;
   } else if (act === 'board') {
@@ -2339,12 +2349,13 @@ function enemyVolley(delay) {
   const B = battle;
   for (const e of B.enemies) {
     if (!enemyActive(e)) continue; const fr = e.hull / e.maxHull, ei = B.enemies.indexOf(e), role = e.role;
-    if ((role === 'pirate' || role === 'privateer') && fr < 0.25 && chance(0.45)) { e.fled = true; B.timers.push({ t: B.time + delay, fn: () => { e.tdx = -700; blog(`The ${e.name} breaks off and flees!`, 'i'); } }); continue; }
+    if ((role === 'pirate' || role === 'privateer') && fr < 0.25 && chance(0.35)) { e.struck = true; B.timers.push({ t: B.time + delay, fn: () => blog(`The ${e.name} strikes her colours!`, 'p') }); continue; }
+    if ((role === 'pirate' || role === 'privateer') && fr < 0.25 && chance(B.slow ? 0.15 : 0.45)) { e.fled = true; B.timers.push({ t: B.time + delay, fn: () => { e.tdx = -700; blog(`The ${e.name} breaks off and flees!`, 'i'); } }); continue; }
     if (role === 'merchant') {
       if (fr < 0.6 && chance(0.55)) { e.struck = true; B.timers.push({ t: B.time + delay, fn: () => blog(`The ${e.name} strikes her colours!`, 'p') }); continue; }
       if (e.speed > fleetKnots() && B.slow === 0 && chance(0.12)) { e.fled = true; B.timers.push({ t: B.time + delay, fn: () => { e.tdx = -700; blog(`The ${e.name} crowds on sail and escapes!`, 'i'); } }); continue; }
     }
-    if ((role === 'navy' || role === 'escort') && fr < 0.18 && chance(0.5)) { e.struck = true; B.timers.push({ t: B.time + delay, fn: () => blog(`The ${e.name} strikes her colours!`, 'p') }); continue; }
+    if ((role === 'navy' || role === 'escort') && fr < 0.25 && chance(0.5)) { e.struck = true; B.timers.push({ t: B.time + delay, fn: () => blog(`The ${e.name} strikes her colours!`, 'p') }); continue; }
     const alive = playerAlive(); if (!alive.length) break;
     let tot = alive.reduce((a, s) => a + SHIP_TYPES[s.type].size, 0), r = Math.random() * tot, tg = alive[0];
     for (const s of alive) { r -= SHIP_TYPES[s.type].size; if (r <= 0) { tg = s; break; } }
@@ -2603,9 +2614,9 @@ function showMenu() {
 }
 function showTitle() {
   const last = +(lsGet(LAST_KEY) || 1), sum = slotSummary(last);
-  showModal(`<div class="title"><h1>Trade Winds</h1><div class="subt">Trade, privateering and piracy in the West Indies, 1680–1785</div></div><canvas class="scene" id="scn" width="760" height="220"></canvas>
+  showModal(`<a class="btn sm" href="index.html" style="text-decoration:none;display:inline-block;margin:-4px 0 2px -4px">⌂ Home</a><div class="title"><h1>Trade Winds</h1><div class="subt">Trade, privateering and piracy in the West Indies, 1680–1785</div></div><canvas class="scene" id="scn" width="760" height="220"></canvas>
     <p style="text-align:center">Buy low, sell high, and dodge pirates, navies and hurricanes from Havana to Barbados.</p>
-    <div class="btnRow" style="justify-content:center">${sum ? `<button class="btn primary" data-act="loadslot" data-n="${last}">Continue — ${sum.split(' · ').slice(0, 2).join(' · ')}</button>` : ''}<button class="btn ${sum ? '' : 'primary'}" data-act="newcareer">New career</button><button class="btn" data-act="saves">Saved careers</button><button class="btn" data-act="help">How to play</button><a class="btn" href="index.html" style="text-decoration:none">⌂ Home</a></div>`, { cls: 'mid', kind: 'title' });
+    <div class="btnRow" style="justify-content:center">${sum ? `<button class="btn primary" data-act="loadslot" data-n="${last}">Continue — ${sum.split(' · ').slice(0, 2).join(' · ')}</button>` : ''}<button class="btn ${sum ? '' : 'primary'}" data-act="newcareer">New career</button><button class="btn" data-act="saves">Saved careers</button><button class="btn" data-act="help">How to play</button></div>`, { cls: 'mid', kind: 'title' });
   scene = sceneSail($('#scn'), { title: true });
 }
 function showNewCareer(slot) {
