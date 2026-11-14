@@ -25,6 +25,7 @@
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
   #card .panel { padding: 16px 18px; }
   .overlay.show { display: flex; }
+  #titleHome { position: fixed; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px); }
   .panel { background: #fff8ec; border-radius: 22px; padding: 22px 20px; max-width: 360px; width: 100%; text-align: center;
     color: #5a3a1e; box-shadow: 0 16px 50px rgba(40,30,10,0.35); border: 3px solid #f0c890; max-height: 92vh; overflow-y: auto; }
   .panel h1 { font-size: 30px; line-height: 1.05; color: #e0761e; letter-spacing: -0.5px; }
@@ -53,7 +54,9 @@
   <button class="chip" id="recenterBtn">⟲</button>
 </div>
 
-<div class="overlay show" id="titleCard"><div class="panel">
+<div class="overlay show" id="titleCard">
+<a class="chip" id="titleHome" href="index.html">&#8962; Home</a>
+<div class="panel">
   <h1>Boo's Chicken Chase</h1>
   <p>Boo is hungry, and there are chickens loose in the yard.</p>
   <ul>
