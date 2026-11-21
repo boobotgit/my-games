@@ -53,7 +53,17 @@ button.big{font-size:17px;padding:6px 16px}
 .goal{margin:2px 0;font-size:14px}.goal.done{color:var(--ok)}.goal.done::before{content:'✔ '}.goal:not(.done)::before{content:'◇ ';color:#a08a60}
 .fleetrow{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-radius:4px;cursor:pointer;border:1px solid transparent}
 .fleetrow:hover{background:#e6d7b2}.fleetrow.sel{border-color:var(--red);background:#ecdcb4}
-footer#log{height:92px;overflow-y:auto;background:#15110d;border-top:2px solid var(--line);font-size:14px;padding:4px 12px;line-height:1.35}
+footer#log{height:150px;overflow-y:auto;background:linear-gradient(#211a13,#16120d);border-top:3px solid var(--gold);font-size:15.5px;padding:0 14px 6px;line-height:1.4;cursor:pointer}
+footer#log::before{content:'📜 Chronicle · click to read it all';position:sticky;top:0;display:block;background:#211a13;font-family:Cinzel,serif;font-size:13px;letter-spacing:1px;color:var(--gold);padding:5px 0 3px;border-bottom:1px solid var(--line);margin-bottom:3px;z-index:1}
+#log div:last-child{background:#3a2d1c;border-left:3px solid var(--gold);padding-left:6px;color:#fff4da}
+#log.flash{animation:logflash 2.4s ease-out}
+@keyframes logflash{0%{box-shadow:inset 0 0 0 3px #ffd36a,0 -6px 24px #d4a73a88}100%{box-shadow:none}}
+.chronlist{max-height:60vh;overflow-y:auto;font-size:15px;line-height:1.4;background:#00000014;padding:6px 10px;border-radius:4px}
+.chronlist div{margin:2px 0}.chronlist .d,.newscard .d{color:#7a6346;margin-right:6px}
+.chronlist .hist,.newscard .hist{color:#7a5a10;font-weight:600}.chronlist .war,.newscard .war{color:#8e2a16}.chronlist .good,.newscard .good{color:#2f5a1e}
+.counsel{border-color:var(--gold)}.counsel p{margin:3px 0}
+.newscard{display:none}
+#mapwrap,#side,header{user-select:none;-webkit-user-select:none}
 #log div{margin:1px 0}#log .d{color:#a89470;margin-right:6px}
 #log .hist{color:#e9c46a}#log .war{color:#ff9a7a}#log .good{color:#b6dc8c}
 #modal{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:50}
@@ -136,7 +146,8 @@ header .row button{padding:5px 8px;font-size:13.5px}
 main{grid-template-columns:1fr;grid-template-rows:1fr clamp(170px,34%,300px)}
 #map{touch-action:none}
 aside{border-left:none;border-top:2px solid var(--line);padding:8px}
-footer#log{height:calc(46px + var(--safeB));padding-bottom:var(--safeB);font-size:12.5px}
+footer#log{height:calc(76px + var(--safeB));padding:0 10px var(--safeB);font-size:13px}
+footer#log::before{content:'📜 Chronicle · tap to read it all';font-size:11px;padding:3px 0 2px}
 #toasts{left:calc(8px + var(--safeL));right:calc(8px + var(--safeR));top:calc(var(--safeT) + 84px);max-width:none}
 .toast{font-size:13.5px}
 #maphint{font-size:11.5px;right:8px;left:8px;bottom:6px;text-align:center}
@@ -185,6 +196,7 @@ table.t td{padding:5px 4px}
   #app{padding-right:0}
   aside{border-top:none;border-left:2px solid var(--line);padding-right:calc(8px + var(--safeR))}
   footer#log{display:none}
+  .newscard{display:block}
   #toasts{top:calc(var(--safeT) + 48px);right:auto;width:min(380px,55vw)}
   .sagas,.homes{grid-template-columns:1fr 1fr 1fr}
   .grid3{grid-template-columns:1fr 1fr}
@@ -607,11 +619,11 @@ function drawShip(x,y,col,n,hd,sel,hostile,f){const p=w2s(x,y);if(p.x<-30||p.y<-
 
 /* ================= MAP INPUT ================= */
 let drag=null;
-cv.addEventListener('mousedown',e=>{drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false,b:e.button};});
-window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;if(drag.moved&&drag.b===0){cam.x=drag.cx-dx/cam.z;cam.y=drag.cy-dy/cam.z;clampCam();cv.style.cursor='grabbing';}});
+cv.addEventListener('mousedown',e=>{if(e.isTrusted)e.preventDefault();if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false,b:e.button};});
+window.addEventListener('mousemove',e=>{if(!drag)return;if(e.isTrusted&&e.buttons===0){drag=null;cv.style.cursor='grab';return;}const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;if(drag.moved&&drag.b===0){cam.x=drag.cx-dx/cam.z;cam.y=drag.cy-dy/cam.z;clampCam();cv.style.cursor='grabbing';}});
 window.addEventListener('mouseup',e=>{if(!drag)return;const d=drag;drag=null;cv.style.cursor='grab';if(d.moved||e.target!==cv)return;const r=cv.getBoundingClientRect();const w=s2w(e.clientX-r.left,e.clientY-r.top);if(d.b===2)mapRightClick(w,e.clientX-r.left,e.clientY-r.top);else if(d.b===0)mapClick(w,e.clientX-r.left,e.clientY-r.top);});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
-cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const before=s2w(mx,my);cam.z*=e.deltaY<0?1.15:1/1.15;clampCam();const after=s2w(mx,my);cam.x+=before.x-after.x;cam.y+=before.y-after.y;clampCam();},{passive:false});
+document.addEventListener('wheel',e=>{const t=e.target;if(!t||!t.closest||!(t.closest('#mapwrap')||t.closest('#toasts')))return;e.preventDefault();if(!S)return;const r=cv.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const before=s2w(mx,my);let dy=e.deltaMode===1?e.deltaY*33:e.deltaMode===2?e.deltaY*400:e.deltaY;if(e.ctrlKey)dy*=3;dy=clamp(dy,-240,240);cam.z*=Math.exp(-dy*.0016);clampCam();const after=s2w(mx,my);cam.x+=before.x-after.x;cam.y+=before.y-after.y;clampCam();},{passive:false});
 function pickAt(sx,sy){const hit=[];for(const f of S.fleets){const p=w2s(f.x,f.y);const d=Math.hypot(p.x-sx,p.y-sy+4);if(d<26)hit.push({t:'fleet',id:f.id,d});}
  for(const a of S.ai){if(!aiVisible(a))continue;const p=w2s(a.x,a.y);const d=Math.hypot(p.x-sx,p.y-sy+4);if(d<24)hit.push({t:'ai',id:a.id,d:d+1});}
  for(const s of SETS){const st=S.sets[s.id];if(!st.known&&!st.rumor)continue;const g=SG[s.id];const p=w2s(g.x,g.y);const d=Math.hypot(p.x-sx,p.y-sy);if(d<22)hit.push({t:'set',id:s.id,d:d+2});}
@@ -837,10 +849,12 @@ function pay(c){if(c.timber)S.res.timber-=c.timber;if(c.iron)S.res.iron-=c.iron;
 function renderHeader(){const d=doy();$('date').innerHTML=`${esc(dateStr(S.t))}<small>${SEASON_N[seasonOf(d)]}${isSailSeason(d)?' · sailing season':' · ships drawn up'}</small>`;
  const net=0.035*S.pop+(isSailSeason(d)?[0,3,5,8][S.bld.fish]:0)-mouths()*.1;const wm=totalMen('hird')+totalMen('bow')+totalMen('berserk');
  $('res').innerHTML=`<span title="Food in store (daily change)">🌾 <b class="${S.res.food<200?'neg':''}">${fmt(S.res.food)}</b> <small class="${net<0?'neg':''}">${net>=0?'+':''}${net.toFixed(1)}</small></span><span title="Hacksilver">◈ <b>${fmt(S.res.silver)}</b></span><span title="Timber">🪵 <b>${fmt(S.res.timber)}</b></span><span title="Iron">⚒ <b>${fmt(S.res.iron)}</b></span><span title="Free folk at home / thralls">⌂ <b>${Math.round(S.pop)}</b>${S.thralls?' +'+S.thralls:''}</span><span title="Warriors (hird, bowmen, berserkers) everywhere">⚔ <b>${wm}</b></span><span title="Renown">★ <b>${Math.round(S.renown)}</b></span>`;}
-let logLen=0;function renderLog(){if(!logDirty)return;logDirty=false;const el=$('log');const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-20;el.innerHTML=S.log.slice(-80).map(l=>`<div class="${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span>${esc(l.s)}</div>`).join('');if(atBottom||S.log.length!==logLen)el.scrollTop=el.scrollHeight;logLen=S.log.length;}
+let logLen=0;function renderLog(){if(!logDirty)return;logDirty=false;const el=$('log');const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-20;el.innerHTML=S.log.slice(-80).map(l=>`<div class="${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span>${esc(l.s)}</div>`).join('');if(atBottom||S.log.length!==logLen)el.scrollTop=el.scrollHeight;const last=S.log[S.log.length-1];if(S.log.length>logLen&&logLen&&last&&(last.c==='hist'||last.c==='war')){el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');}logLen=S.log.length;}
 
+$('log').addEventListener('click',()=>{if(S&&!battleOn)ACT.chron();});
 /* ================= SIDEBAR ================= */
-function renderSide(){if(!sideDirty)return;sideDirty=false;const r=rank();const R=S.ruler;let h='';
+let sideHTML='',sidePressT=0;
+function renderSide(){if(!sideDirty)return;if(sidePressT&&performance.now()-sidePressT<1200)return;sideDirty=false;const r=rank();const R=S.ruler;let h='';
  h+=`<div class="card"><h3>${esc(rulerName(R))}</h3><div class="between small"><span>${RANKS[r].n} (${RANKS[r].on}) of ${esc(SET[S.home].name)}</span><span>age ${ageOf(R)}</span></div>
  <div class="between small"><span>Renown ★ ${Math.round(S.renown)}</span><span>${r<3?`next: ${RANKS[r+1].ren}${RANKS[r+1].hold?' & '+RANKS[r+1].hold+' holdings':''}`:''}</span></div>
  <div class="small">Hird loyalty</div><div class="bar"><i style="width:${S.loyalty}%;background:${S.loyalty<30?'#9b2a1a':'#3f6b2e'}"></i></div>
@@ -848,10 +862,27 @@ function renderSide(){if(!sideDirty)return;sideDirty=false;const r=rank();const 
  <div class="row" style="margin-top:4px"><button class="sm" data-act="hall">Open hall</button><button class="sm alt" data-act="muster" ${S.ships.some(s=>s.loc==='home')?'':'disabled'}>Muster a fleet</button></div></div>`;
  const ch=CHAPTERS[S.chapter];if(ch&&!S.sagaDone){h+=`<div class="card"><h3>${esc(ch.title)}</h3>${ch.goals.map(g=>`<div class="goal ${g.f()?'done':''}">${esc(g.t)}${g.p?` <span class="small">(${esc(g.p())})</span>`:''}</div>`).join('')}<div class="row"><button class="sm alt" data-act="saga">Saga</button></div></div>`;}
  else if(S.sagaDone)h+=`<div class="card"><h3>Saga I complete</h3><p class="small">Your line has opened the East Way. Play on freely, or see what the next sagas hold.</p><button class="sm alt" data-act="saga">Saga</button></div>`;
+ h+=counselCard();
+ h+=newsCard();
  h=selCard()+h;
  if(S.fleets.length){h+=`<div class="card"><h3>Fleets</h3>${S.fleets.map(f=>`<div class="fleetrow ${SEL&&SEL.t==='fleet'&&SEL.id===f.id?'sel':''}" data-act="selfleet" data-arg="${f.id}"><span>⛵ ${esc(f.name)}${f.chief?' ★':''}</span><span class="small">${fleetShips(f).length} ships · ${fleetMen(f)} men · ${f.at?esc(SET[f.at].name):f.path&&f.path.length?'at sea':'adrift'}</span></div>`).join('')}</div>`;}
  const th=S.ai.filter(a=>a.kind==='raid'&&aiVisible(a));if(th.length)h+=`<div class="card" style="border-color:#9b2a1a"><h3>Sails sighted!</h3>${th.map(a=>`<div class="fleetrow" data-act="selai" data-arg="${a.id}">⚠ ${esc(raidName(a))}: ${a.ships} ships, about ${a.men} men, heading for ${esc(SET[a.target].name)}</div>`).join('')}</div>`;
- $('side').innerHTML=h;}
+ if(h!==sideHTML){sideHTML=h;$('side').innerHTML=h;}}
+['mousedown','touchstart'].forEach(ev=>$('side').addEventListener(ev,()=>{sidePressT=performance.now();},{passive:true}));
+['mouseup','touchend','touchcancel'].forEach(ev=>window.addEventListener(ev,()=>{if(sidePressT){sidePressT=0;sideDirty=true;}},{passive:true}));
+function counselTips(){const t=[];const d=doy(),sail=isSailSeason(d);const atHome=S.ships.filter(s=>s.loc==='home').length;
+ if(S.res.food<400)t.push('Food is short. Raid a weak village for grain, buy grain at a market, or build up fishing. Hungry folk leave or die.');
+ if(!sail&&d>=258)t.push('Ships are drawn up until April. Spend the winter building in the Hall, giving arm-rings to keep the hird loyal, and recruiting for spring.');
+ else if(!sail)t.push('Spring is coming. Ships can sail from April. Build in the Hall now so you are ready.');
+ if(S.res.silver<60)t.push('Silver comes from: loot from raids, buying goods cheap at one market and selling dear at another, selling surplus grain (Hall → Store, once you have 700+ food), harvest tribute from places you hold, and a Trading place building.');
+ if(sail&&S.stats.raids===0&&atHome)t.push('Muster a fleet and raid a small village nearby: click it, check "about N men" against your crew (bring at least half again as many), then Send a fleet.');
+ if(sail&&S.stats.raids>0&&!S.fleets.length&&atHome)t.push('Your ships are idle in the sailing season. Raid, trade, or scout. Fog hides places you have not seen yet.');
+ if(S.loyalty<35)t.push('The hird grows restless. Give arm-rings in the Hall (silver) or win a raid.');
+ if(S.stats.raidWins>0&&!holdings().length&&rank()>=1)t.push('After a raid you win, you can Hold the place. Holdings send food, silver and goods home at every harvest and count toward your rank.');
+ return t.slice(0,2);}
+function counselCard(){const t=counselTips();if(!t.length||S.settings.noCounsel)return'';return`<div class="card counsel"><h3>Counsel</h3>${t.map(x=>`<p class="small">${esc(x)}</p>`).join('')}</div>`;}
+function newsCard(){const L=S.log.filter(l=>l.c).slice(-3).reverse();if(!L.length)return'';return`<div class="card newscard"><h3>Latest news</h3>${L.map(l=>`<div class="small ${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span> ${esc(l.s)}</div>`).join('')}<div class="row"><button class="sm alt" data-act="chron">Full chronicle</button></div></div>`;}
+ACT.chron=()=>{showModal(`<h2>The Chronicle</h2><p class="small">Everything that has happened, newest first.</p><div class="chronlist">${S.log.slice().reverse().map(l=>`<div class="${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span>${esc(l.s)}</div>`).join('')}</div><div class="row"><button data-act="close">Close</button></div>`);};
 ACT.selfleet=a=>{const f=fleetById(+a);if(f){select({t:'fleet',id:f.id});centerOn(f.x,f.y);}};
 ACT.selai=a=>{const x=S.ai.find(q=>q.id===+a);if(x){select({t:'ai',id:x.id});centerOn(x.x,x.y);}};
 ACT.selset=a=>{if(SET[a]){select({t:'set',id:a});centerOn(SG[a].x,SG[a].y);}};
