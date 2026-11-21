@@ -140,7 +140,7 @@ input[type=text]{font-family:inherit;font-size:16px;padding:4px 8px;border:1px s
 <script>
 'use strict';
 /* ================= NORTHMAN SAGA — DATA ================= */
-const BUILD='2026-11-21a';
+const BUILD='2026-11-22a';
 const SAVE_VERSION=1;
 const LON0=3,LON1=34,LAT0=53.4,LAT1=65.6;
 const KX=111*Math.cos(59.5*Math.PI/180),KY=111;
@@ -196,6 +196,8 @@ const MOUNTAIN_AXIS=[[7.3,59.2],[8.3,60.6],[8.6,61.6],[10.2,62.4],[12.3,63.3],[1
 /* ---- peoples & powers ---- */
 const FACS={
  player:{n:'Your kin',c:'#f0c64a',people:'Norse'},
+ rv1:{n:'Rival jarl',c:'#8e4fb0',people:'Norse',ruler:[[0,'a rival jarl']]},
+ rv2:{n:'Rival jarl',c:'#2f9c86',people:'Norse',ruler:[[0,'a rival jarl']]},
  ind:{n:'Free chieftains',c:'#8d8a78',people:'Norse',ruler:[[0,'a local chieftain']]},
  ves:{n:'Vestfold',c:'#c0652e',people:'Norse',ruler:[[0,'King Gudrød the Hunter'],[821,'King Olaf Geirstad-Alf'],[840,'King Halfdan the Black']],seat:'borre'},
  lade:{n:'Jarls of Lade',c:'#4a74ad',people:'Norse',ruler:[[0,'the Jarl of Hlaðir']],seat:'lade'},
@@ -558,7 +560,7 @@ function newGame(o){
   spouse:null,kids:[],kin:'',generation:1,
   res:{food:900,silver:60,timber:80,iron:12},pop:60,thralls:4,hird:15,bow:6,berserk:0,loyalty:65,renown:10,rankSeen:0,
   bld:{hall:1,farm:1,fish:1,wood:1,smith:0,yard:1,hof:0,wall:0,market:0},building:null,yardJob:null,
-  store:{},swords:0,ships:[{id:1,type:'karvi',name:'Sea-Wolf',hp:100,loc:'home'}],fleets:[],ai:[],nextId:2,
+  capts:[],rivals:{},store:{},swords:0,ships:[{id:1,type:'karvi',name:'Sea-Wolf',hp:100,loc:'home'}],fleets:[],ai:[],nextId:2,
   sets:{},facs:{},mk:{},explored:new Uint8Array(FW*FH),log:[],chapter:0,chapterStart:90,
   stats:{raids:0,raidWins:0,conquests:0,battles:0,battleWins:0,trades:0,profit:0,discovered:0,captured:0,voyEast:0},
   flags:{},hist:[],sagaDone:false,settings:{autoPauseArrive:true}};
@@ -569,6 +571,8 @@ function newGame(o){
  if(home==='borre'){S.bld.market=1;S.facs.ves.rel=40;}
  if(home==='roden'){S.facs.svea.rel=30;S.facs.gut.rel=20;}
  if(home==='avald'){S.facs.ves.rel=0;}
+ setupRivals();
+ newCaptain({loy:62});
  const hp=SG[home];
  for(const s of SETS){const g=SG[s.id];if(s.id===home)continue;if(dist(g,hp)<330||['kaupang','hedeby','birka','ribe'].includes(s.id))S.sets[s.id].rumor=true;}
  reveal(hp.x,hp.y,150);
@@ -582,7 +586,7 @@ const popCap=()=>[0,80,140,220][S.bld.hall];
 function holdings(){return SETS.filter(s=>s.id!==S.home&&S.sets[s.id].own==='player').map(s=>s.id);}
 function rankFor(ren,h){let r=0;RANKS.forEach((R,i)=>{if(ren>=R.ren&&h>=R.hold)r=i;});return r;}
 const rank=()=>rankFor(S.renown,holdings().length);
-const hirdCap=()=>[0,20,40,70][S.bld.hall]+RANKS[rank()].hird;
+const hirdCap=()=>[0,20,40,70][S.bld.hall]+RANKS[rank()].hird+specHird();
 function totalMen(type){let n=type==='bondi'?0:(S[type]||0);for(const f of S.fleets)n+=f.men[type]||0;if(type==='hird')for(const id in S.sets)n+=S.sets[id].gar||0;return n;}
 function mouths(){let m=S.pop+S.thralls+S.hird+S.bow+S.berserk;for(const f of S.fleets)m+=fleetMen(f)+(f.captives||0);return m;}
 const armsBonus=()=>[0,.08,.16,.25][S.bld.smith]+Math.min(.15,S.swords/Math.max(10,totalMen('hird'))*.15);
@@ -593,7 +597,7 @@ function changeRel(id,d){const st=S.sets[id];if(st.own==='ind')st.rel=clamp(st.r
 function relWord(r){return r>=60?'Friends':r>=25?'Friendly':r>-15?'Wary':r>-50?'Hostile':'Blood-feud';}
 function facPower(f){let p=0;for(const s of SETS)if(S.sets[s.id].own===f)p+=S.sets[s.id].men;return p;}
 function homeDefense(){let d=S.hird+S.berserk*1.6+S.bow*.6+S.pop*.2*.6;for(const f of S.fleets)if(f.at===S.home)d+=fleetPower(f);return d*(1+[0,.3,.6,1][S.bld.wall]);}
-function setDefense(id){const st=S.sets[id],s=SET[id];if(id===S.home)return homeDefense();if(st.own==='player')return(st.gar*1.05+(st.trib?st.men*.8:baseMen(s)*.3))*(1+.3*wallOf(s));return st.men*.68*(1+.3*wallOf(s));}
+function setDefense(id){const st=S.sets[id],s=SET[id];if(id===S.home)return homeDefense();if(st.own==='player')return(st.gar*1.05*(hasSpec(id,'fort')?2:1)+(st.trib?st.men*.8:baseMen(s)*.3))*(1+.3*wallOf(s))*holdDefMult(id);return st.men*.68*(1+.3*wallOf(s));}
 
 /* ---- daily tick ---- */
 let lastDay=-1;
@@ -614,9 +618,9 @@ function dayTick(){
  if(S.yardJob){S.yardJob.left--;if(S.yardJob.left<=0){const j=S.yardJob;S.ships.push({id:S.nextId++,type:j.type,name:j.name,hp:100,loc:'home'});log(`The shipwrights launch a new ${SHIPS[j.type].n}, the ${j.name}.`,'good');toast(`New ship launched: the ${j.name}.`);S.yardJob=null;}}
  for(const id in S.mk)for(const g in S.mk[id])S.mk[id][g]*=.985;
  // winter sailing
- if(!season)for(const f of S.fleets){if(!f.path||!f.path.length)continue;for(const sh of fleetShips(f)){if(rnd()<.025){sh.hp-=ri(20,55);if(sh.hp<=0){shipLost(f,sh,'foundered in a winter gale');}else log(`A winter gale batters the ${sh.name}.`,'war');}}}
+ if(!season)for(const f of S.fleets){if(!f.path||!f.path.length)continue;const gale=has(fleetLeader(f),'seafarer')?.012:.025;for(const sh of fleetShips(f)){if(rnd()<gale){sh.hp-=ri(20,55);if(sh.hp<=0){shipLost(f,sh,'foundered in a winter gale');}else log(`A winter gale batters the ${sh.name}.`,'war');}}}
  // repairs
- for(const sh of S.ships){if(sh.hp<100){const f=sh.loc==='home'?null:fleetById(sh.loc);if(sh.loc==='home'||(f&&f.at===S.home))sh.hp=Math.min(100,sh.hp+3);}}
+ for(const sh of S.ships){if(sh.hp<100){const f=sh.loc==='home'?null:fleetById(sh.loc);if(sh.loc==='home'||(f&&(f.at===S.home||(f.at&&S.sets[f.at].own==='player'&&hasSpec(f.at,'sheds')))))sh.hp=Math.min(100,sh.hp+3);}}
  if(d===DOY.harvest)harvest();
  if(d===DOY.midsummer)queueEvent(evThing);
  if(d===DOY.winterNights)queueEvent(evWinterNights);
@@ -634,19 +638,22 @@ function shipLost(f,sh,why){const seats=SHIPS[sh.type].seats;const men=fleetMen(
  if(!fleetShips(f).length){log(`${f.name} is lost.`,'war');S.fleets=S.fleets.filter(x=>x!==f);if(f.chief)rulerDies('drowned at sea');}}
 function harvest(){const B=S.bld;const base=[0,900,1600,2400][B.farm],need=[0,60,100,150][B.farm];const workers=S.pop+S.thralls*1.2;const w=Math.min(1.25,workers/need);const weather=S.flags.badHarvest===year()?.55:(.82+rnd()*.36);
  const f=Math.round(base*w*weather);S.res.food+=f;let msg=`Harvest at ${SET[S.home].name}: ${f} food${weather<.7?' (a poor year)':weather>1.08?' (a fine year)':''}.`;
- let hf=0,hs=0,ht=0;for(const id of holdings()){const s=SET[id],st=S.sets[id];const m=(st.trib?.5:1)*st.wealth;hf+=s.size*350*m;hs+=s.size*20*(s.kind==='market'?2.5:1)*m;if(!st.trib)ht+=s.size*30;
+ let hf=0,hs=0,ht=0;for(const id of holdings()){const s=SET[id],st=S.sets[id];const Y=holdYield(id);hf+=Y.food;hs+=Y.silver;ht+=Y.timber;
   for(const g of s.prod){if(GOODS[g].food)continue;S.store[g]=(S.store[g]||0)+Math.round(s.size*(st.trib?1:2));}}
  if(hf){S.res.food+=hf;S.res.silver+=hs;S.res.timber+=ht;msg+=` Your holdings send ${Math.round(hf)} food, ${Math.round(hs)} silver and goods.`;}
  log(msg,'good');toast(msg);}
-function monthly(){const d=doy();if(d>=90&&d<260)aiRaidCheck();for(const f in S.facs){const st=S.facs[f];if(st.rel<0&&!st.griev)st.rel+=1;else if(st.rel>0&&!st.ally)st.rel-=.5;}
+function monthly(){const d=doy();if(d>=90&&d<260){aiRaidCheck();rivalWarCheck();}captMonthly();for(const f in S.facs){const st=S.facs[f];if(st.rel<0&&!st.griev)st.rel+=1;else if(st.rel>0&&!st.ally)st.rel-=.5;}
  for(const id in S.sets){const st=S.sets[id];if(st.own==='ind'&&st.rel<0)st.rel+=1;}autosave();}
 function newYear(){
  // settlements recover
- for(const s of SETS){const st=S.sets[s.id];if(st.own==='player')continue;st.men+=Math.round((baseMen(s)-st.men)*.35);st.wealth=Math.min(1,st.wealth+.3);}
+ for(const s of SETS){const st=S.sets[s.id];if(st.own==='player')continue;st.men+=Math.round((baseMen(s)*(String(st.own).startsWith('rv')?1.5:1)-st.men)*.35);st.wealth=Math.min(1,st.wealth+.3);}
  for(const f in S.facs)if(S.facs[f].griev>0&&rnd()<.4)S.facs[f].griev--;
  for(const id of holdings()){const st=S.sets[id];st.wealth=Math.min(1,st.wealth+.15);if(st.trib&&relOf(id)<-60){}}
  // hof renown
  if(S.bld.hof)addRenown([0,10,25][S.bld.hof],'sacrifices at your hof');
+ const hofR=holdings().reduce((a,id)=>a+(hasSpec(id,'hof')?4*SET[id].size:0),0);if(hofR)addRenown(hofR,'the hofs of your holdings');
+ const mus=holdings().filter(id=>hasSpec(id,'muster')).length;if(mus){const n=Math.min(mus*2,hirdCap()-totalMen('hird'));if(n>0){S.hird+=n;log(`${n} young men from your muster grounds join the hird.`,'good');}}
+ captYearly();rivalYearly();
  // family
  const age=ageOf(S.ruler);if(S.spouse&&age<52&&S.kids.length<7&&rnd()<.32){const m=rnd()<.5;const k={name:pick(m?NAMES_M:NAMES_F),born:year(),sex:m?'m':'f'};S.kids.push(k);log(`${S.spouse.name} bears ${rulerName(S.ruler)} a ${m?'son':'daughter'}, ${k.name}.`,'good');}
  for(const k of S.kids.slice()){if(year()-k.born<6&&rnd()<.06){S.kids=S.kids.filter(x=>x!==k);log(`The child ${k.name} sickens and dies.`,'war');}}
@@ -661,7 +668,7 @@ const fleetSeats=f=>fleetShips(f).reduce((a,s)=>a+SHIPS[s.type].seats,0);
 const fleetCargoCap=f=>fleetShips(f).reduce((a,s)=>a+SHIPS[s.type].cargo,0);
 const fleetMen=f=>(f.men.hird||0)+(f.men.bow||0)+(f.men.bondi||0)+(f.men.berserk||0);
 function cargoUsed(f){let n=f.captives||0;for(const g in f.cargo)n+=f.cargo[g];return n;}
-function fleetSpeed(f){const sh=fleetShips(f);let v=sh.length?Math.min(...sh.map(s=>SHIPS[s.type].spd)):100;if(S.home==='roden')v*=1.1;if(!isSailSeason(doy()))v*=.75;const dmg=Math.min(...sh.map(s=>s.hp),100);if(dmg<50)v*=.8;return v;}
+function fleetSpeed(f){const sh=fleetShips(f);let v=sh.length?Math.min(...sh.map(s=>SHIPS[s.type].spd)):100;if(S.home==='roden')v*=1.1;if(has(fleetLeader(f),'seafarer'))v*=1.12;if(!isSailSeason(doy()))v*=.75;const dmg=Math.min(...sh.map(s=>s.hp),100);if(dmg<50)v*=.8;return v;}
 function fleetPower(f){const e=1+armsBonus();return(f.men.hird||0)*e+(f.men.berserk||0)*1.6+(f.men.bow||0)*.6+(f.men.bondi||0)*.6;}
 function warShips(f){return fleetShips(f).filter(s=>SHIPS[s.type].war).length;}
 function orderSail(f,id){if(f.state==='battle')return;if(id===f.at){openArrival(f,id);return;}const g=SG[id];const p=findPath(f.x,f.y,g.dock.x,g.dock.y);if(!p){toast(`No sea road leads to ${SET[id].name}.`);return;}
@@ -696,7 +703,7 @@ function spawnTrader(){const from=pick(MARKETS),to=pick(MARKETS);if(from===to)re
  S.ai.push({id:S.nextId++,kind:'trade',fac,from,to,x:a.x,y:a.y,path:p,ships,men:ships*ri(8,14),value:Math.round(ships*(50+rnd()*140)),good:g,goods:ships*ri(8,20)});}
 function moveAI(dd){for(const a of S.ai.slice()){const sp=a.kind==='trade'?88:110;const done=stepAlong(a,dd,sp);
   if(a.kind==='raid'&&!a.met){for(const f of S.fleets){if(f.state==='battle')continue;if(Math.hypot(a.x-f.x,a.y-f.y)<9&&aiVisible(a)){a.met=true;encounter(f,a);return;}}}
-  if(done){S.ai=S.ai.filter(x=>x!==a);if(a.kind==='raid')raidArrive(a);}}}
+  if(done){S.ai=S.ai.filter(x=>x!==a);if(a.kind==='raid')raidArrive(a);else if(a.kind==='war')warArrive(a);}}}
 function aiRaidCheck(){if(year()===START_YEAR&&doy()<150)return;
  for(const f in S.facs){const st=S.facs[f];if(st.ally)continue;if(!(st.rel<-35||st.griev>0))continue;let p=.02+Math.min(4,st.griev)*.022+Math.max(0,-st.rel-35)/450;if(FACS[f].big)p*=.75;if(rnd()<p&&launchRaid(f))return;}
  for(const s of SETS){const st=S.sets[s.id];if(st.own!=='ind'||st.rel>-40||st.men<18)continue;if(rnd()<.035&&launchRaid('ind',s.id))return;}
@@ -706,11 +713,11 @@ function launchRaid(f,srcId){const targets=[S.home,...holdings()];let best=null,
    if(S.ai.some(a=>a.kind==='raid'&&a.target===tgt))return false;const men=Math.round(clamp(setDefense(tgt)*(.45+rnd()*.55),18,160));S.ai.push({id:S.nextId++,kind:'raid',fac:'sea',src:null,target:tgt,x,y,path:p,ships:Math.ceil(men/32),men,leader:pick(NAMES_M)+' '+pick(NICK)});return true;}return false;}
  const srcs=srcId?[srcId]:SETS.filter(s=>S.sets[s.id].own===f).map(s=>s.id);
  for(const s of srcs)for(const t of targets){const d=dist(SG[s].dock,SG[t].dock);if(d<bd){bd=d;best=t;src=s;}}
- if(!best||bd>900||S.ai.some(a=>a.kind==='raid'&&a.target===best))return false;const pw=f==='ind'?S.sets[src].men:facPower(f);const men=Math.round(Math.min(pw*.45,Math.max(20,setDefense(best)*(.5+rnd()*.6))));if(men<15)return false;
+ if(!best||bd>900||S.ai.some(a=>a.kind==='raid'&&a.target===best))return false;const pw=f==='ind'?S.sets[src].men:facPower(f);const men=Math.round(Math.min(pw*.45,Math.max(20,setDefense(best)*(.5+rnd()*.6))));if(men<15)return false;const help=coalitionHelp(f);
  const a=SG[src].dock,b=SG[best].dock;const p=findPath(a.x,a.y,b.x,b.y);if(!p)return false;
- S.ai.push({id:S.nextId++,kind:'raid',fac:f==='ind'?'ind':f,src,target:best,x:a.x,y:a.y,path:p,ships:Math.ceil(men/32),men});
+ S.ai.push({id:S.nextId++,kind:'raid',fac:f==='ind'?'ind':f,src,target:best,x:a.x,y:a.y,path:p,ships:Math.ceil((men+help)/32),men:men+help});
  if(f==='ind')S.sets[src].men-=Math.round(men*.6);
- const who=f==='ind'?`the chieftain of ${SET[src].name}`:`${facRuler(f)} of the ${FACS[f].n}`;
+ const who=(f==='ind'?`the chieftain of ${SET[src].name}`:`${facRuler(f)} of the ${FACS[f].n}`)+(help?', with ships from his sworn ally,':'');
  if(S.sets[src].known||rnd()<.6){log(`Word comes: ${who} is gathering ships against ${SET[best].name}.`,'war');toast(`Warning: ${who} is gathering ships against ${SET[best].name}!`);}return true;}
 function raidName(a){return a.fac==='sea'?`the sea-king ${a.leader}`:a.fac==='ind'?`men of ${SET[a.src].name}`:`the ${FACS[a.fac].n}`;}
 function raidArrive(a){const id=a.target;const st=S.sets[id];if(st.own!=='player')return;
@@ -769,7 +776,8 @@ function renderSide(){if(!sideDirty)return;if(sidePressT&&performance.now()-side
  h+=counselCard();
  h+=newsCard();
  h+=selCard();
- if(S.fleets.length){h+=`<div class="card"><h3>Fleets</h3>${S.fleets.map(f=>`<div class="fleetrow ${SEL&&SEL.t==='fleet'&&SEL.id===f.id?'sel':''}" data-act="selfleet" data-arg="${f.id}"><span>⛵ ${esc(f.name)}${f.chief?' ★':''}</span><span class="small">${fleetShips(f).length} ships · ${fleetMen(f)} men · ${f.at?esc(SET[f.at].name):f.path&&f.path.length?'at sea':'adrift'}</span></div>`).join('')}</div>`;}
+ if(S.fleets.length){h+=`<div class="card"><h3>Fleets</h3>${S.fleets.map(f=>`<div class="fleetrow ${SEL&&SEL.t==='fleet'&&SEL.id===f.id?'sel':''}" data-act="selfleet" data-arg="${f.id}"><span>⛵ ${esc(f.name)}${f.chief?' ★':''}</span><span class="small">led by ${esc(leaderLabel(f))}</span><span class="small">${fleetShips(f).length} ships · ${fleetMen(f)} men · ${f.at?esc(SET[f.at].name):f.path&&f.path.length?'at sea':'adrift'}</span></div>`).join('')}</div>`;}
+ h+=rivalsCard();
  const th=S.ai.filter(a=>a.kind==='raid'&&aiVisible(a));if(th.length)h+=`<div class="card" style="border-color:#9b2a1a"><h3>Sails sighted!</h3>${th.map(a=>`<div class="fleetrow" data-act="selai" data-arg="${a.id}">⚠ ${esc(raidName(a))}: ${a.ships} ships, about ${a.men} men, heading for ${esc(SET[a.target].name)}</div>`).join('')}</div>`;
  if(h!==sideHTML){sideHTML=h;$('side').innerHTML=h;}}
 ['mousedown','touchstart'].forEach(ev=>$('side').addEventListener(ev,()=>{sidePressT=performance.now();},{passive:true}));
@@ -783,6 +791,9 @@ function counselTips(){const t=[];const d=doy(),sail=isSailSeason(d);const atHom
  if(sail&&S.stats.raids>0&&!S.fleets.length&&atHome)t.push('Your ships are idle in the sailing season. Raid, trade, or scout. Fog hides places you have not seen yet.');
  if(S.loyalty<35)t.push('The hird grows restless. Give arm-rings in the Hall (silver) or win a raid.');
  if(S.stats.raidWins>0&&!holdings().length&&rank()>=1)t.push('After a raid you win, you can Hold the place. Holdings send food, silver and goods home at every harvest and count toward your rank.');
+ if(t.length<2&&S.capts.some(c=>c.loy<30))t.push(`${captName(S.capts.find(c=>c.loy<30))} grows restless. Give him a gift (Hall → Warband) before he turns on you.`);
+ if(t.length<2&&holdings().some(id=>!S.sets[id].trib&&specOf(id).length<specSlots(id))&&S.res.timber>=40)t.push('A holding has empty plots. Hall → Holdings → Develop: choose fields, a trading post, a ringfort and so on.');
+ if(t.length<2&&S.ai.some(a=>a.kind==='war'&&aiVisible(a)))t.push('A rival war fleet is at sea. Catch it before it lands and you weaken its jarl; or let him bleed against the free chieftains.');
  return t.slice(0,2);}
 function counselCard(){const t=counselTips();if(!t.length||S.settings.noCounsel)return'';return`<div class="card counsel"><h3>Counsel</h3>${t.map(x=>`<p class="small">${esc(x)}</p>`).join('')}</div>`;}
 function newsCard(){const L=S.log.filter(l=>l.c).slice(-3).reverse();if(!L.length)return'';return`<div class="card newscard"><h3>Latest news</h3>${L.map(l=>`<div class="small ${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span> ${esc(l.s)}</div>`).join('')}<div class="row"><button class="sm alt" data-act="chron">Full chronicle</button></div></div>`;}
@@ -799,7 +810,7 @@ function selCard(){if(!SEL)return`<div class="card small">Click a place or a shi
   else{const r=relOf(s.id);h+=`<p class="small">Mood toward you: <b>${relWord(r)}</b> (${Math.round(r)}). Fighting men: about ${Math.round(st.men/5)*5}. Wealth: ${st.wealth>.8?'rich':st.wealth>.45?'recovering':'stripped bare'}.${S.t-st.raided<365?' Raided this past year.':''}${SG[s.id].inland>12?` Lies ${Math.round(SG[s.id].inland)} km inland: a march gives warning.`:''}</p>`;}
   h+=`<p class="small"><i>${esc(s.note)}</i></p>${isHome?'':sailBtns(s.id)}</div>`;return h;}
  if(SEL.t==='fleet'){const f=fleetById(SEL.id);if(!f)return'';const sh=fleetShips(f);
-  return`<div class="card"><h3>⛵ ${esc(f.name)}</h3><div class="small">${f.chief?'★ '+esc(rulerName(S.ruler))+' sails with this fleet. ':''}${f.at?'At '+esc(SET[f.at].name):f.path&&f.path.length?(f.dest&&f.dest.set?'Bound for '+esc(SET[f.dest.set].name)+` · ${Math.max(1,Math.round(pathLen(f.path,f)/fleetSpeed(f)))} days`:'At sea'):'Lying at anchor'}</div>
+  return`<div class="card"><h3>⛵ ${esc(f.name)}</h3><div class="small">${f.chief?'★ '+esc(rulerName(S.ruler))+' sails with this fleet. ':fleetLeader(f)?'Led by '+esc(captName(fleetLeader(f)))+' ('+fleetLeader(f).traits.map(t=>TRAITS[t].n).join(', ')+'). ':'No captain: −10 morale. '}${f.at?'At '+esc(SET[f.at].name):f.path&&f.path.length?(f.dest&&f.dest.set?'Bound for '+esc(SET[f.dest.set].name)+` · ${Math.max(1,Math.round(pathLen(f.path,f)/fleetSpeed(f)))} days`:'At sea'):'Lying at anchor'}</div>
   <h4>Ships</h4><div class="small">${sh.map(x=>`${esc(x.name)} (${SHIPS[x.type].n}${x.hp<100?', '+Math.round(x.hp)+'%':''})`).join(', ')}</div>
   <h4>Crew ${fleetMen(f)}/${fleetSeats(f)}</h4><div class="small">${['hird','berserk','bow','bondi'].filter(k=>f.men[k]).map(k=>f.men[k]+' '+UT[k].n.toLowerCase()).join(', ')||'no crew'}</div>
   <h4>Hold ${cargoUsed(f)}/${fleetCargoCap(f)}</h4><div class="small">${f.silver?Math.round(f.silver)+' silver; ':''}${Object.keys(f.cargo).filter(g=>f.cargo[g]).map(g=>f.cargo[g]+' '+GOODS[g].n.toLowerCase()).join(', ')||'empty'}${f.captives?'; '+f.captives+' captives':''}</div>
@@ -830,7 +841,7 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
   <table class="t"><tr><th>Warriors</th><th>At home</th><th>Everywhere</th><th>Recruit</th><th></th></tr>
   ${['hird','bow','berserk'].map(k=>{const c=RECRUIT[k];const lock=k==='berserk'&&(S.bld.hof<2||S.renown<300);return`<tr><td><b>${UT[k].n}</b><div class="small">${esc(UT[k].d)}</div></td><td>${S[k]}</td><td>${totalMen(k)}</td><td class="small">${c.silver} silver${c.iron?', '+c.iron+' iron':''} each${lock?'<br><i>needs hof level 2 and 300 renown</i>':''}</td><td><button class="sm" data-act="recruit" data-arg="${k}:1" ${lock?'disabled':''}>+1</button><button class="sm" data-act="recruit" data-arg="${k}:5" ${lock?'disabled':''}>+5</button><button class="sm alt" data-act="dismiss" data-arg="${k}:1">−1</button></td></tr>`;}).join('')}</table>
   <h3>Ring-giving</h3><p class="small">A lord is judged by his open hand. Gifts raise loyalty and spread your name.</p><button data-act="rings" data-arg="30" ${S.res.silver<30?'disabled':''}>Give arm-rings (30 silver): +12 loyalty</button> <button data-act="rings" data-arg="80" ${S.res.silver<80?'disabled':''}>Great gift-giving (80 silver): +30 loyalty, +6 renown</button>
-  <p class="small">Arms: smithy level ${S.bld.smith}, ${S.swords} Frankish blades. Your hird fights ${Math.round(armsBonus()*100)}% better than plain-armed men.</p>`;}
+  <p class="small">Arms: smithy level ${S.bld.smith}, ${S.swords} Frankish blades. Your hird fights ${Math.round(armsBonus()*100)}% better than plain-armed men.</p>`+captainsHTML();}
  if(hallTab==='ships'){const home=S.ships.filter(s=>s.loc==='home');h+=`<h3>Ships drawn up at home</h3>${home.length?`<table class="t"><tr><th>Ship</th><th>Type</th><th>Seats</th><th>Hold</th><th>Condition</th></tr>${home.map(s=>`<tr><td>${esc(s.name)}</td><td>${SHIPS[s.type].n}</td><td>${SHIPS[s.type].seats}</td><td>${SHIPS[s.type].cargo}</td><td>${Math.round(s.hp)}%</td></tr>`).join('')}</table>`:'<p class="small">None. All your ships are at sea.</p>'}
   <h3>Boatyard (level ${S.bld.yard})</h3>${S.yardJob?`<p class="story">The ${esc(S.yardJob.name)} (${SHIPS[S.yardJob.type].n}) is on the slipway: ${S.yardJob.left} days left.</p>`:''}
   <div class="grid2">${Object.keys(SHIPS).map(k=>{const T=SHIPS[k];const ok=S.bld.yard>=T.yard;return`<div class="bld"><h4>${T.n}</h4><div class="small">${esc(T.d)}<br>${T.seats} oars & warriors · hold ${T.cargo} · ${T.spd} km a day</div><div class="small"><b>${costStr(T.cost)}, ${T.days} days</b>${ok?'':`<br><i>needs boatyard level ${T.yard}</i>`}</div><button class="sm" data-act="buildship" data-arg="${k}" ${!ok||S.yardJob||!canAfford(T.cost)?'disabled':''}>Lay the keel</button></div>`;}).join('')}</div>`;}
@@ -842,7 +853,7 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
   ${S.kids.length?`<table class="t"><tr><th>Children</th><th>Age</th></tr>${S.kids.map(k=>`<tr><td>${esc(k.name)} (${k.sex==='m'?'son':'daughter'})</td><td>${year()-k.born}</td></tr>`).join('')}</table>`:'<p class="small">No children yet.</p>'}
   <p class="small">Heir: <b>${heir?esc(heir.name)+(year()-heir.born<14?' (a child: there would be a regency)':''):'none; a kinsman would claim the hall'}</b></p>
   ${S.spouse?'':`<button data-act="localmatch" ${S.res.silver<40?'disabled':''}>Marry a daughter of a local farmer (40 silver bride-price)</button>`}`;}
- if(hallTab==='hold'){const hs=holdings();h+=hs.length?`<table class="t"><tr><th>Place</th><th>Status</th><th>Garrison</th><th>Yearly yield</th><th></th></tr>${hs.map(id=>{const s=SET[id],st=S.sets[id];return`<tr><td><a href="#" data-act="selset" data-arg="${id}">${esc(s.name)}</a></td><td>${st.trib?'Tributary':'Held'}</td><td>${st.trib?'—':st.gar}</td><td class="small">${Math.round(s.size*350*st.wealth*(st.trib?.5:1))} food, ${Math.round(s.size*20*(s.kind==='market'?2.5:1)*st.wealth*(st.trib?.5:1))} silver</td><td>${st.trib?`<button class="sm alt" data-act="release" data-arg="${id}">Release</button>`:''}</td></tr>`;}).join('')}</table><p class="small">To change a garrison, bring a fleet there and go ashore.</p>`:'<p><i>You hold no land beyond your own. Conquer a village, or frighten one into paying tribute.</i></p>';}
+ if(hallTab==='hold'){const hs=holdings();h+=hs.length?`<p class="small">Each holding has one plot per size. Shape each place for one purpose: fields, trade, defence, warriors, ships or worship. A steward (one of your captains) rules it in your name.</p><table class="t"><tr><th>Place</th><th>Status</th><th>Plots</th><th>Steward</th><th>Yield each harvest</th><th></th></tr>${hs.map(id=>{const s=SET[id],st=S.sets[id];const Y=holdYield(id);const sc=captById(st.stew);return`<tr><td><a href="#" data-act="selset" data-arg="${id}">${esc(s.name)}</a><div class="small">${st.trib?'':'garrison '+st.gar}</div></td><td>${st.trib?'Tributary':st.fief?'Jarldom':'Held'}</td><td class="small">${st.trib?'—':specOf(id).map(k=>SPEC[k].icon+' '+esc(SPEC[k].n)).join('<br>')+(specOf(id).length<specSlots(id)?`<br><button class="sm" data-act="specpick" data-arg="${id}">Develop (${specSlots(id)-specOf(id).length} free)</button>`:'')}</td><td class="small">${st.trib?'—':sc?esc(captName(sc))+(st.fief?'':` <button class="sm alt" data-act="captrecall" data-arg="${id}">Recall</button>`):`<button class="sm" data-act="stewpick" data-arg="${id}">Appoint</button>`}</td><td class="small">${Math.round(Y.food)} food, ${Math.round(Y.silver)} silver${Y.timber?', '+Math.round(Y.timber)+' timber':''}</td><td>${st.trib?`<button class="sm alt" data-act="release" data-arg="${id}">Release</button>`:''}</td></tr>`;}).join('')}</table><p class="small">To change a garrison, bring a fleet there and go ashore.</p>`:'<p><i>You hold no land beyond your own. Conquer a village, or frighten one into paying tribute.</i></p>';}
  return h+'</div>';}
 ACT.build=k=>{const l=S.bld[k],c=BLD[k].cost[l+1];if(!c||S.building||!canAfford(c))return;pay(c);S.building={k,left:c.days};log(`Work begins on the ${BLD[k].n}.`);rerenderHall();};
 ACT.buildship=k=>{const T=SHIPS[k];if(S.yardJob||!canAfford(T.cost)||S.bld.yard<T.yard)return;pay(T.cost);const used=S.ships.map(s=>s.name);const nm=SHIP_NAMES.find(n=>!used.includes(n))||('Ship '+S.nextId);S.yardJob={type:k,left:T.days,name:nm};log(`The shipwrights lay the keel of a ${T.n}.`);rerenderHall();};
@@ -862,9 +873,9 @@ function heirOf(){const k=S.kids.slice().sort((a,b)=>a.born-b.born);return k.fin
 
 /* ================= FLEET EDITOR (muster) ================= */
 let FE=null;
-ACT.muster=()=>{if(!S.ships.some(s=>s.loc==='home')){toast('No ships are drawn up at home.');return;}FE={fid:null,ships:new Set(),men:{hird:0,bow:0,berserk:0,bondi:0},cargo:{},chief:!chiefFleet()};
+ACT.muster=()=>{if(!S.ships.some(s=>s.loc==='home')){toast('No ships are drawn up at home.');return;}FE={fid:null,ships:new Set(),men:{hird:0,bow:0,berserk:0,bondi:0},cargo:{},chief:!chiefFleet(),lead:chiefFleet()?((S.capts.find(captFree)||{}).id||null):'chief'};
  const sh=S.ships.filter(s=>s.loc==='home'&&s.hp>30);if(sh[0])FE.ships.add(sh[0].id);autoCrew();showModal(feHTML());};
-ACT.editfleet=a=>{const f=fleetById(+a);if(!f||f.at!==S.home)return;unloadHome(f);FE={fid:f.id,ships:new Set(fleetShips(f).map(s=>s.id)),men:Object.assign({hird:0,bow:0,berserk:0,bondi:0},f.men),cargo:Object.assign({},f.cargo),chief:f.chief};showModal(feHTML());};
+ACT.editfleet=a=>{const f=fleetById(+a);if(!f||f.at!==S.home)return;unloadHome(f);FE={fid:f.id,ships:new Set(fleetShips(f).map(s=>s.id)),men:Object.assign({hird:0,bow:0,berserk:0,bondi:0},f.men),cargo:Object.assign({},f.cargo),chief:f.chief,lead:f.chief?'chief':(f.capt||null)};showModal(feHTML());};
 function feAvail(){const f=FE.fid?fleetById(FE.fid):null;const m=f?f.men:{};const c=f?f.cargo:{};return{hird:S.hird+(m.hird||0),bow:S.bow+(m.bow||0),berserk:S.berserk+(m.berserk||0),bondi:Math.max(0,Math.floor(S.pop-25))+(m.bondi||0),cargo:k=>k==='grain'?Math.floor(Math.max(0,S.res.food-300)/20)+(c[k]||0):(S.store[k]||0)+(c[k]||0)};}
 function feSeats(){let n=0,c=0;for(const id of FE.ships){const s=S.ships.find(x=>x.id===id);if(s){n+=SHIPS[s.type].seats;c+=SHIPS[s.type].cargo;}}return{seats:n,cargo:c};}
 function feMen(){return FE.men.hird+FE.men.bow+FE.men.berserk+FE.men.bondi;}
@@ -877,20 +888,20 @@ function feHTML(){const av=feAvail(),cap=feSeats();const f=FE.fid?fleetById(FE.f
  <h3>Crew: ${feMen()}/${cap.seats} seats</h3><table class="t">${['hird','berserk','bow','bondi'].map(k=>`<tr><td><b>${UT[k].n}</b><div class="small">${esc(UT[k].d)}</div></td><td>${step(k,FE.men[k],av[k])}</td></tr>`).join('')}</table>
  <div class="row"><button class="sm" data-act="feauto">Fill seats with warriors</button></div>
  <h3>Cargo: ${cu}/${cap.cargo}</h3><p class="small">Surplus food can be loaded as grain (20 food a load) to sell abroad; 300 food always stays home.</p>${Object.keys(GOODS).filter(k=>av.cargo(k)>0).length?`<table class="t">${Object.keys(GOODS).filter(k=>av.cargo(k)>0).map(k=>`<tr><td>${GOODS[k].n}</td><td><span class="stepper"><button class="sm alt" data-act="fec" data-arg="${k}:-10">−10</button><button class="sm alt" data-act="fec" data-arg="${k}:-1">−</button><b>${FE.cargo[k]||0}</b><button class="sm alt" data-act="fec" data-arg="${k}:1">+</button><button class="sm alt" data-act="fec" data-arg="${k}:10">+10</button></span> <span class="small">of ${av.cargo(k)}</span></td></tr>`).join('')}</table>`:'<p class="small">Nothing in the storehouse to load.</p>'}
- <h3>Leader</h3><label><input type="checkbox" data-act="fechief" ${FE.chief?'checked':''} ${chiefOk?'':'disabled'}> ${esc(rulerName(S.ruler))} sails with this fleet</label><div class="small">${chiefOk?'With you aboard, men fight harder and the glory is yours; but chieftains can fall in battle.':'You are already leading another fleet.'}</div>
+ <h3>Leader</h3><p class="small">Who commands this fleet? With you aboard, men fight hardest and the glory is all yours, but chieftains can fall. A captain's traits shape how his men fight.</p><div class="row"><button class="${FE.lead==='chief'?'gold':'alt'}" data-act="felead" data-arg="chief" ${chiefOk?'':'disabled'}>★ ${esc(rulerName(S.ruler))}${chiefOk?'':' (leads another fleet)'}</button>${S.capts.filter(c=>captFree(c)||(f&&f.capt===c.id)).map(c=>`<button class="${FE.lead===c.id?'gold':'alt'}" data-act="felead" data-arg="${c.id}">${esc(captName(c))} <small>${'★'.repeat(captLvl(c))} ${c.traits.map(t=>esc(TRAITS[t].n)).join(', ')}</small></button>`).join('')}<button class="${FE.lead==null?'gold':'alt'}" data-act="felead" data-arg="none">No captain (−10 morale)</button></div>
  <div class="row" style="margin-top:12px"><button class="big gold" data-act="felaunch" ${FE.ships.size&&feMen()>0?'':'disabled'}>${f?'Done':'Launch'}</button><button class="big alt" data-act="close">Cancel</button></div>`;}
 ACT.feship=a=>{const id=+a;if(FE.ships.has(id))FE.ships.delete(id);else FE.ships.add(id);const cap=feSeats();while(feMen()>cap.seats){for(const k of['bondi','bow','hird','berserk']){if(feMen()>cap.seats&&FE.men[k]>0)FE.men[k]=Math.max(0,FE.men[k]-(feMen()-cap.seats));}}$('mbox').innerHTML=feHTML();};
 ACT.fem=a=>{const[k,d]=a.split(':');const av=feAvail(),cap=feSeats().seats;let v=FE.men[k]+ +d;v=clamp(v,0,av[k]);const others=feMen()-FE.men[k];v=Math.min(v,cap-others);FE.men[k]=Math.max(0,v);$('mbox').innerHTML=feHTML();};
 ACT.fec=a=>{const[k,d]=a.split(':');const av=feAvail(),cap=feSeats().cargo;const cu=Object.values(FE.cargo).reduce((x,y)=>x+y,0)-(FE.cargo[k]||0);FE.cargo[k]=Math.max(0,Math.min(clamp((FE.cargo[k]||0)+ +d,0,av.cargo(k)),cap-cu));$('mbox').innerHTML=feHTML();};
 ACT.feauto=()=>{autoCrew();$('mbox').innerHTML=feHTML();};
-ACT.fechief=(a,b)=>{FE.chief=b.checked;};
+ACT.felead=a=>{FE.lead=a==='chief'?'chief':a==='none'?null:+a;FE.chief=FE.lead==='chief';$('mbox').innerHTML=feHTML();};
 ACT.felaunch=()=>{let f=FE.fid?fleetById(FE.fid):null;const g=SG[S.home].dock;
  if(f){S.hird+=f.men.hird||0;S.bow+=f.men.bow||0;S.berserk+=f.men.berserk||0;S.pop+=f.men.bondi||0;for(const k in f.cargo)S.store[k]=(S.store[k]||0)+f.cargo[k];for(const sh of fleetShips(f))sh.loc='home';}
  else{f={id:S.nextId++,name:'',x:g.x,y:g.y,path:[],dest:null,at:S.home,men:{},cargo:{},silver:0,captives:0,chief:false,heading:0};S.fleets.push(f);}
  for(const id of FE.ships){const s=S.ships.find(x=>x.id===id);if(s)s.loc=f.id;}
  f.men={hird:Math.min(FE.men.hird,S.hird),bow:Math.min(FE.men.bow,S.bow),berserk:Math.min(FE.men.berserk,S.berserk),bondi:Math.min(FE.men.bondi,Math.max(0,Math.floor(S.pop-5)))};S.hird-=f.men.hird;S.bow-=f.men.bow;S.berserk-=f.men.berserk;S.pop-=f.men.bondi;
  f.cargo={};for(const k in FE.cargo){if(k==='grain'){const q=Math.min(FE.cargo.grain,Math.floor(Math.max(0,S.res.food-300)/20));if(q>0){f.cargo.grain=q;S.res.food-=q*20;}continue;}const q=Math.min(FE.cargo[k],S.store[k]||0);if(q>0){f.cargo[k]=q;S.store[k]-=q;}}
- f.chief=!!FE.chief&&(!chiefFleet()||chiefFleet()===f);const lead=fleetShips(f)[0];f.name=(f.chief?rulerName(S.ruler).split(' ')[0]+"'s fleet":'Fleet of the '+(lead?lead.name:'North'));
+ f.chief=FE.lead==='chief'&&(!chiefFleet()||chiefFleet()===f);const cpt=!f.chief&&FE.lead?captById(FE.lead):null;f.capt=cpt&&(captFree(cpt)||f.capt===cpt.id)?cpt.id:null;const lead=fleetShips(f)[0];f.name=(f.chief?rulerName(S.ruler).split(' ')[0]+"'s fleet":f.capt?captById(f.capt).name+"'s fleet":'Fleet of the '+(lead?lead.name:'North'));
  if(!fleetShips(f).length){S.fleets=S.fleets.filter(x=>x!==f);closeModal();return;}
  SEL={t:'fleet',id:f.id};FE=null;closeModal();toast(`${f.name} is ready. Right-click a place on the map to sail.`);};
 
@@ -941,7 +952,7 @@ ACT.mkbuy=a=>{const[g,n0]=a.split(':');const f=fleetById(MK.f),id=MK.id;let n=+n
  for(let k=0;k<n;k++){const p=mprice(id,g);if(purse(f)<p)break;spend(f,p);f.cargo[g]=(f.cargo[g]||0)+1;f.basis=f.basis||{};f.basis[g]=((f.basis[g]||0)*(f.cargo[g]-1)+p)/f.cargo[g];S.mk[id]=S.mk[id]||{};S.mk[id][g]=Math.min(1.5,(S.mk[id][g]||0)+.012);bought++;}
  if(!bought)toast(fleetCargoCap(f)<=cargoUsed(f)?'The hold is full.':'Not enough silver.');$('mbox').innerHTML=marketHTML();};
 ACT.mksell=a=>{const[g,n0]=a.split(':');const f=fleetById(MK.f),id=MK.id;const n=Math.min(+n0,f.cargo[g]||0);let got=0;
- for(let k=0;k<n;k++){const p=mprice(id,g)*.82;got+=p;f.cargo[g]--;S.mk[id]=S.mk[id]||{};S.mk[id][g]=Math.max(-.8,(S.mk[id][g]||0)-.012);}
+ const shr=has(fleetLeader(f),'shrewd')?1.1:1;for(let k=0;k<n;k++){const p=mprice(id,g)*.82*shr;got+=p;f.cargo[g]--;S.mk[id]=S.mk[id]||{};S.mk[id][g]=Math.max(-.8,(S.mk[id][g]||0)-.012);}
  f.silver+=got;const basis=(f.basis&&f.basis[g])||GOODS[g].b*.7;const profit=got-basis*n;if(profit>0){S.stats.profit+=profit;if(dist(SG[id],SG[S.home])>700)addRenown(Math.min(8,profit/60),null);}S.stats.trades++;if(id==='aldeigja'||id==='holmgard')S.flags.tradedEast=1;
  if(!f.cargo[g])delete f.cargo[g];$('mbox').innerHTML=marketHTML();};
 ACT.mkback=()=>{const f=fleetById(MK.f);closeModal();if(f&&f.at&&S.sets[f.at].own!=='player')setTimeout(()=>{if(!modalOpen)openArrival(f,f.at);},0);};
@@ -963,7 +974,7 @@ ACT.codex=a=>{if(a)codexTab=a;let h=`<button class="x" data-act="close">✕</but
  if(codexTab==='hist')h+=S.hist.length?S.hist.map(e=>`<p><b>${e.y}: ${esc(e.title)}</b><br><span class="small">${esc(e.text)}</span></p>`).join(''):'<p><i>Nothing has happened yet.</i></p>';
  showModal(h);};
 ACT.codexgo=id=>{closeModal();ACT.selset(id);};
-const HOWTO=`<p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
+const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another.</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
 <p><b>Time.</b> Days pass while unpaused (Space; speeds 1–3). Ships sail from April to October; winter voyages risk gales. Grain is harvested in mid-September; feasts come at Winter Nights and Yule.</p>
 <p><b>Food.</b> Your people, warriors and crews all eat. Fishing feeds you in summer and the harvest must last the winter. Raids, trade (grain, stockfish) and tribute fill the gap. Hunger kills folk and loyalty.</p>
 <p><b>Fleets.</b> In the hall, <i>Muster a fleet</i>: choose ships, warriors and cargo. Select the fleet and right-click a place on the map to sail. Bondi (farmers) can row and fight, but harvests suffer when they are away.</p>
@@ -972,6 +983,124 @@ const HOWTO=`<p><b>Your aim.</b> Lead your kin from a single hall to lordship ov
 <p><b>Renown</b> comes from raids, victories, feasts and gifts. It raises your rank: Hersir, Jarl, King. Rank lets you keep more hirdmen and build greater halls and ships.</p>
 <p><b>Your line.</b> Chieftains age and die. Marry, and raise an heir to carry the saga on.</p>
 <p><b>Saving.</b> The game autosaves every month. Use Menu for save slots and to export a save file.</p>`;
+
+/* ================= CAPTAINS (named leaders) ================= */
+const TRAITS={
+ bold:{n:'Bold',d:'His men fight with +10 morale and his charges hit harder. More likely to fall in battle.'},
+ cautious:{n:'Cautious',d:'Keeps his men in hand: they take less harm, and he falls back before losses mount.'},
+ shrewd:{n:'Shrewd',d:'Sells goods for 10% more at market.'},
+ seafarer:{n:'Seafarer',d:'His fleet sails 12% faster and rides out winter gales better.'},
+ cruel:{n:'Cruel',d:'Squeezes 20% more plunder from a raid, but the victims hate you more.'},
+ beloved:{n:'Beloved',d:'His men will die for him: +15 morale. Slow to turn against you.'},
+ greedy:{n:'Greedy',d:'His loyalty slips every month unless your treasury is fat or you give him gifts.'},
+ ambitious:{n:'Ambitious',d:'Wants land and a name of his own. If his loyalty sinks he may turn on you.'},
+ fierce:{n:'Fierce',d:'His warriors strike 12% harder.'},
+ wise:{n:'Wise',d:'As a steward his holding yields 25% more, and he gives sound counsel.'},
+};
+const TRAIT_KEYS=Object.keys(TRAITS);
+const MAX_CAPTS=6;
+function rollTraits(){const a=pick(TRAIT_KEYS);let b=pick(TRAIT_KEYS);let n=0;while((b===a||(a==='bold'&&b==='cautious')||(a==='cautious'&&b==='bold')||(a==='beloved'&&b==='cruel')||(a==='cruel'&&b==='beloved'))&&n++<20)b=pick(TRAIT_KEYS);return[a,b];}
+function newCaptain(o){o=o||{};const c={id:S.nextId++,name:o.name||pick(NAMES_M),nick:o.nick!=null?o.nick:pick(NICK),born:o.born||year()-ri(22,38),son:!!o.son,traits:o.traits||rollTraits(),loy:o.loy!=null?o.loy:58,xp:o.xp||0};S.capts.push(c);return c;}
+const captById=id=>S.capts.find(c=>c.id===id);
+const has=(c,t)=>!!c&&c.traits.includes(t);
+function captName(c){return c.name+(c.nick?' '+c.nick:'');}
+function captLvl(c){return c.xp>=12?3:c.xp>=5?2:1;}
+function captFleet(c){return S.fleets.find(f=>f.capt===c.id)||null;}
+function captHold(c){for(const id in S.sets)if(S.sets[id].stew===c.id&&S.sets[id].own==='player')return id;return null;}
+function captFree(c){return!captFleet(c)&&!captHold(c);}
+function captWhere(c){const f=captFleet(c);if(f)return`leads ${f.name}`;const h=captHold(c);if(h)return`steward of ${SET[h].name}`;return'in your hall';}
+function fleetLeader(f){return f.chief?null:f.capt?captById(f.capt):null;}
+function leaderLabel(f){if(f.chief)return rulerName(S.ruler);const c=fleetLeader(f);return c?captName(c):'a helmsman';}
+function captBaseLoy(c){return(c.son?72:56)-(has(c,'ambitious')?10:0)+(has(c,'beloved')?8:0);}
+function captainMorale(f){if(f.chief)return 10;const c=fleetLeader(f);if(!c)return-10;return captLvl(c)*5+(has(c,'beloved')?15:0)+(has(c,'bold')?10:0);}
+function captMonthly(){for(const c of S.capts.slice()){const base=captBaseLoy(c);c.loy+=(base-c.loy)*.08;if(has(c,'greedy')&&S.res.silver<200)c.loy-=1.2;if(S.loyalty<30)c.loy-=1;c.loy=clamp(c.loy,0,100);
+  if(c.loy<25&&!S.flags.captEv&&rnd()<(has(c,'ambitious')?.5:.2)){S.flags.captEv=1;queueEvent(()=>evCaptainDemand(c));}}}
+function captYearly(){for(const k of S.kids){if(k.sex!=='m'||year()-k.born!==15)continue;if(S.capts.some(c=>c.son&&c.name===k.name&&c.born===k.born))continue;if(S.capts.length>=MAX_CAPTS)continue;const c=newCaptain({name:k.name,nick:'',born:k.born,son:true,loy:75});log(`${k.name}, your son, comes of age at fifteen and takes his place among your captains (${c.traits.map(t=>TRAITS[t].n).join(', ')}).`,'good');}
+ for(const c of S.capts.slice()){const age=year()-c.born;const pd=age<45?.01:age<60?.04:.15;if(rnd()<pd)captDies(c,'dies of a fever in the winter dark');}}
+function captDies(c,why){S.capts=S.capts.filter(x=>x!==c);for(const f of S.fleets)if(f.capt===c.id)f.capt=null;for(const id in S.sets)if(S.sets[id].stew===c.id)S.sets[id].stew=0;
+ if(c.son)S.kids=S.kids.filter(k=>!(k.name===c.name&&k.born===c.born));log(`${captName(c)} ${why}.`,'war');toast(`${captName(c)} ${why}.`);sideDirty=true;}
+function captGain(c,res){if(!c)return;c.xp+=res==='victory'?2:1;if(res==='victory')c.loy=clamp(c.loy+5,0,100);if(res==='defeat')c.loy=clamp(c.loy-6,0,100);}
+function evCaptainDemand(c){S.flags.captEv=0;if(!S.capts.includes(c))return;const hold=captHold(c),fl=captFleet(c);const hs=holdings().filter(id=>!S.sets[id].trib);
+ const threat=has(c,'ambitious')?(hold?`If you refuse, he may keep ${SET[hold].name} for himself.`:fl?`If you refuse, he may sail off with ${fl.name}.`:'If you refuse, he will leave and take men with him.'):'If you refuse, he will leave your hall.';
+ showEvent(`${captName(c)} is restless`,`${captName(c)} stands up in your hall and says that a lord who keeps his captains poor will soon have none. He wants a greater share. ${threat}`,[
+  {t:'Give him a rich gift (60 silver)',sub:'+35 loyalty.',dis:S.res.silver<60,fn:()=>{S.res.silver-=60;c.loy=clamp(c.loy+35,0,100);log(`You give ${captName(c)} a rich gift. He is satisfied, for now.`);}},
+  {t:'Grant him a holding of his own',sub:hs.length?`He becomes jarl of ${SET[hold&&hs.includes(hold)?hold:hs[0]].name} under you. It yields half as much, but he will be loyal for years.`:'You hold no land to grant.',dis:!hs.length,fn:()=>{const id=hold&&hs.includes(hold)?hold:hs[0];const st=S.sets[id];st.stew=c.id;st.fief=1;c.loy=95;for(const f of S.fleets)if(f.capt===c.id)f.capt=null;log(`You grant ${SET[id].name} to ${captName(c)} as his jarldom.`,'hist');}},
+  {t:'Refuse him',cls:'red',sub:threat,fn:()=>captBetrays(c)}]);}
+function captBetrays(c){const hold=captHold(c),fl=captFleet(c);
+ if(has(c,'ambitious')&&hold){const st=S.sets[hold];st.own='ind';st.rel=-60;st.men=Math.round(st.gar*1.2+baseMen(SET[hold])*.5);st.gar=0;st.stew=0;st.trib=false;S.capts=S.capts.filter(x=>x!==c);log(`${captName(c)} declares himself lord of ${SET[hold].name} and shuts the gates against you!`,'war');toast(`${captName(c)} has rebelled at ${SET[hold].name}!`);addRenown(-15,'a captain\'s rebellion');return;}
+ if(has(c,'ambitious')&&fl){const men=fleetMen(fl);for(const sh of fleetShips(fl))S.ships=S.ships.filter(x=>x!==sh);S.fleets=S.fleets.filter(x=>x!==fl);S.capts=S.capts.filter(x=>x!==c);log(`${captName(c)} turns his ships away. He sails off with ${men} of your men to become a sea-king.`,'war');toast(`${captName(c)} has deserted with his fleet!`);addRenown(-15,'a captain\'s desertion');
+  return;}
+ const n=Math.min(S.hird,Math.round(S.hird*(has(c,'beloved')?.25:.12)));S.hird-=n;S.capts=S.capts.filter(x=>x!==c);for(const id in S.sets)if(S.sets[id].stew===c.id)S.sets[id].stew=0;log(`${captName(c)} leaves your hall${n?` with ${n} hirdmen who follow him`:''}.`,'war');}
+ACT.captgift=id=>{const c=captById(+id);if(!c||S.res.silver<25)return;S.res.silver-=25;c.loy=clamp(c.loy+15,0,100);log(`You give ${captName(c)} an arm-ring of gold.`);rerenderHall();};
+ACT.captseek=()=>{if(S.capts.length>=MAX_CAPTS||S.res.silver<50)return;S.res.silver-=50;const c=newCaptain({loy:55});log(`${captName(c)} swears to be your man (${c.traits.map(t=>TRAITS[t].n).join(', ')}).`,'good');rerenderHall();};
+ACT.captsteward=a=>{const[cid,id]=a.split(':');const c=captById(+cid);const st=S.sets[id];if(!c||!st||st.own!=='player'||st.trib)return;
+ for(const k in S.sets)if(S.sets[k].stew===c.id)S.sets[k].stew=0;if(st.stew&&st.fief)return;st.stew=c.id;log(`${captName(c)} goes to ${SET[id].name} as your steward.`);closeModal();ACT.hall('hold');};
+ACT.captrecall=id=>{const st=S.sets[id];if(!st||st.fief)return;const c=captById(st.stew);st.stew=0;if(c)log(`${captName(c)} returns to your hall from ${SET[id].name}.`);rerenderHall();};
+ACT.stewpick=id=>{const free=S.capts.filter(captFree);showModal(`<h2>Steward for ${esc(SET[id].name)}</h2><p class="small">A steward rules the place in your name: +15% yield and +25% defence (more with the right traits). An ambitious steward with low loyalty may keep the place for himself.</p>${free.length?free.map(c=>`<button class="choice" data-act="captsteward" data-arg="${c.id}:${id}">${esc(captName(c))}<small>${c.traits.map(t=>esc(TRAITS[t].n)).join(', ')} · loyalty ${Math.round(c.loy)}</small></button>`).join(''):'<p><i>No captain is free. Captains who lead fleets or hold other places cannot go.</i></p>'}<div class="row"><button class="alt" data-act="hall" data-arg="hold">Back</button></div>`);};
+function captainsHTML(){let h=`<h3>Captains (${S.capts.length}/${MAX_CAPTS})</h3><p class="small">Your sons (from age 15) and sworn men. Each fleet you send out needs a leader: you or a captain. A fleet with no captain fights at −10 morale. Captains gain experience in battle, and their traits shape how their men fight.</p>`;
+ if(S.capts.length)h+=`<table class="t"><tr><th>Captain</th><th>Traits</th><th>Loyalty</th><th></th></tr>${S.capts.map(c=>`<tr><td><b>${esc(captName(c))}</b>${c.son?' <span class="pill">son</span>':''}<div class="small">age ${year()-c.born} · ${'★'.repeat(captLvl(c))} · ${esc(captWhere(c))}</div></td><td class="small">${c.traits.map(t=>`<b>${esc(TRAITS[t].n)}</b>: ${esc(TRAITS[t].d)}`).join('<br>')}</td><td><div class="bar" style="width:70px"><i style="width:${c.loy}%;background:${c.loy<30?'#9b2a1a':'#3f6b2e'}"></i></div><span class="small">${Math.round(c.loy)}</span></td><td><button class="sm" data-act="captgift" data-arg="${c.id}" ${S.res.silver<25?'disabled':''}>Gift (25)</button></td></tr>`).join('')}</table>`;
+ else h+='<p><i>You have no captains. Only you can lead a fleet well.</i></p>';
+ h+=`<button data-act="captseek" ${S.capts.length>=MAX_CAPTS||S.res.silver<50?'disabled':''}>Take a sworn man into your service (50 silver)</button>`;return h;}
+
+/* ================= HOLDING SPECIALISATIONS ================= */
+const SPEC={
+ fields:{n:'Fields',icon:'🌾',d:'Clear and plough more land: +60% food at harvest.',cost:{timber:40,silver:20}},
+ post:{n:'Trading post',icon:'◈',d:'Booths for passing traders: +80% silver at harvest (double that at a market town).',cost:{timber:50,silver:40}},
+ fort:{n:'Ringfort',icon:'🛡',d:'An earth bank and palisade: +60% defence. The garrison counts double.',cost:{timber:80,silver:20}},
+ muster:{n:'Muster ground',icon:'⚔',d:'Raises the hird cap by 6 per size, and young men come to your hird each spring.',cost:{timber:40,silver:40}},
+ sheds:{n:'Ship-sheds',icon:'⛵',d:'Your fleets repair here as at home, and the woods send +40 timber each harvest.',cost:{timber:60,silver:20}},
+ hof:{n:'Hof',icon:'ᛟ',d:'A temple for the local cult: +4 renown a year per size, and the place stays loyal.',cost:{timber:50,silver:50}},
+};
+const specOf=id=>(S.sets[id]&&S.sets[id].spec)||[];
+const hasSpec=(id,k)=>specOf(id).includes(k);
+function specSlots(id){return S.sets[id].trib?0:SET[id].size;}
+function holdYield(id){const s=SET[id],st=S.sets[id];const stew=captById(st.stew);let m=(st.trib?.5:1)*st.wealth*(st.fief?.5:1)*(stew&&!st.fief?1.15+(has(stew,'wise')?.25:0):1);
+ const food=s.size*350*m*(hasSpec(id,'fields')?1.6:1);const silver=s.size*20*(s.kind==='market'?2.5:1)*m*(hasSpec(id,'post')?(s.kind==='market'?2.6:1.8):1);const timber=(st.trib?0:s.size*30)+(hasSpec(id,'sheds')?40:0);return{food,silver,timber};}
+function holdDefMult(id){const st=S.sets[id];const stew=captById(st.stew);return(hasSpec(id,'fort')?1.6:1)*(stew?1.25+((has(stew,'bold')||has(stew,'fierce'))?.1:0):1);}
+const specHird=()=>holdings().reduce((a,id)=>a+(hasSpec(id,'muster')?6*SET[id].size:0),0);
+ACT.specpick=id=>{const st=S.sets[id];if(!st||st.own!=='player'||st.trib)return;const used=specOf(id);const free=specSlots(id)-used.length;
+ showModal(`<h2>Develop ${esc(SET[id].name)}</h2><p class="small">${esc(KIND_N[SET[id].kind])}, size ${SET[id].size}: <b>${free}</b> of ${specSlots(id)} plots free. Each place can be shaped one way per plot, and once built it stays. Choose what this place is for.</p>${Object.keys(SPEC).map(k=>{const P=SPEC[k];const done=used.includes(k);return`<button class="choice ${done?'gold':''}" data-act="specbuild" data-arg="${id}:${k}" ${done||free<=0||!canAfford(P.cost)?'disabled':''}>${P.icon} ${esc(P.n)}${done?' (built)':''}<small>${esc(P.d)} Cost: ${esc(costStr(P.cost))}.</small></button>`;}).join('')}<div class="row"><button class="alt" data-act="hall" data-arg="hold">Back</button></div>`);};
+ACT.specbuild=a=>{const[id,k]=a.split(':');const st=S.sets[id];if(!st||st.own!=='player'||st.trib||!SPEC[k])return;st.spec=st.spec||[];if(st.spec.includes(k)||st.spec.length>=specSlots(id)||!canAfford(SPEC[k].cost))return;pay(SPEC[k].cost);st.spec.push(k);log(`${SET[id].name}: your people build a ${SPEC[k].n.toLowerCase()}.`,'good');ACT.specpick(id);};
+
+/* ================= RIVAL JARLS ================= */
+const RIVAL_SEATS={avald:[['alrek','Hordar'],['agdir','Egðir']],borre:[['borg','Vingulmark men'],['agdir','Egðir']],roden:[['hogom','Medelpad men'],['saltvik','Álanders']]};
+const RIVAL_COL={rv1:'#8e4fb0',rv2:'#2f9c86'};
+function setupRivals(){S.rivals={};const list=RIVAL_SEATS[S.home]||[];list.forEach(([seat,people],i)=>{const f='rv'+(i+1);const st=S.sets[seat];if(st.own!=='ind')return;st.own=f;st.orig=f;st.men=Math.max(55,Math.round(baseMen(SET[seat])*1.5));
+  S.rivals[f]={name:pick(NAMES_M),nick:pick(NICK),born:year()-ri(28,40),seat,people,alive:true,friend:null,wins:0};S.facs[f]={rel:-10,griev:0,ally:false};});applyRivals();}
+function applyRivals(){for(const f of['rv1','rv2']){const R=S.rivals&&S.rivals[f];if(!R){FACS[f].n='Rival jarl';FACS[f].ruler=[[0,'a rival jarl']];continue;}FACS[f].n=R.people;FACS[f].ruler=[[0,'Jarl '+R.name+(R.nick?' '+R.nick:'')]];}}
+const rivalIds=()=>Object.keys(S.rivals||{}).filter(f=>S.rivals[f].alive);
+function rivalPlaces(f){return SETS.filter(s=>S.sets[s.id].own===f).map(s=>s.id);}
+function rivalSeatCheck(f,byPlayer){const R=S.rivals&&S.rivals[f];if(!R||!R.alive)return;const pl=rivalPlaces(f);if(S.sets[R.seat].own===f)return;
+ if(pl.length){R.seat=pl.sort((a,b)=>SET[b].size-SET[a].size)[0];log(`Jarl ${R.name} flees and makes ${SET[R.seat].name} his new seat.`,'war');return;}
+ R.alive=false;if(byPlayer)queueEvent(()=>evRivalFate(f));else log(`Jarl ${R.name} of the ${R.people} has lost his last hall and is gone from the land.`,'hist');}
+function evRivalFate(f){const R=S.rivals[f];showEvent(`Jarl ${R.name} is in your hands`,`Your men drag Jarl ${R.name} ${R.nick} out of the ruins of his hall. His people are scattered and his ships are yours to burn. He stands before you bloodied but unbowed.`,[
+ {t:'Put him to death',sub:'+20 renown. His kin and friends will remember.',cls:'red',fn:()=>{addRenown(20,`the death of Jarl ${R.name}`);if(R.friend&&S.facs[R.friend])S.facs[R.friend].griev+=1;log(`Jarl ${R.name} is put to death.`,'hist');}},
+ {t:'Send him into exile',sub:'+8 renown. He sails away with a handful of men.',fn:()=>{addRenown(8,`driving out Jarl ${R.name}`);log(`Jarl ${R.name} sails into exile.`,'hist');}},
+ {t:'Take his oath',sub:S.capts.length<MAX_CAPTS?'He becomes one of your captains: ambitious, and not to be trusted far.':'You have too many captains already.',dis:S.capts.length>=MAX_CAPTS,cls:'gold',fn:()=>{const c=newCaptain({name:R.name,nick:R.nick,born:R.born,traits:['ambitious',pick(['bold','fierce','seafarer','shrewd','cruel'])],loy:38,xp:6});addRenown(12,`Jarl ${R.name} bends the knee`);log(`Jarl ${R.name} kneels and swears to be your man.`,'hist');}}]);}
+function rivalAnger(f){const R=S.rivals&&S.rivals[f];if(!R||!R.friend||!S.facs[R.friend])return;S.facs[R.friend].rel=clamp(S.facs[R.friend].rel-8,-100,100);if(rnd()<.5){S.facs[R.friend].griev++;log(`The ${FACS[R.friend].n} take up the cause of their kinsman Jarl ${R.name}.`,'war');}}
+function rivalYearly(){const r=rank();for(const f of rivalIds()){const R=S.rivals[f],st=S.facs[f];
+  if(r>=1&&!st.ally)st.rel=clamp(st.rel-2-r*2,-100,100);
+  const seat=S.sets[R.seat];if(seat)seat.men=Math.round(seat.men+baseMen(SET[R.seat])*.25);
+  if(!R.friend&&rnd()<.22){const big=['ves','lade','dan','svea','gaut'].filter(x=>S.facs[x]&&x!==S.home);const g=pick(big);if(g){R.friend=g;log(`Jarl ${R.name} of the ${R.people} marries a kinswoman of ${facRuler(g)}. The ${FACS[g].n} will stand by him.`,'war');}}
+  if(year()-R.born>55&&rnd()<.2){const old=R.name;R.name=pick(NAMES_M);R.nick=pick(NICK);R.born=year()-ri(20,30);applyRivals();log(`Jarl ${old} of the ${R.people} dies. His son ${R.name} takes his seat${st.rel<0?' and swears to finish his father\'s feud':''}.`,'hist');if(st.rel<0)st.rel-=10;}}
+ const live=rivalIds();if(r>=2&&live.length===2&&!S.flags.coalition&&live.every(f=>S.facs[f].rel<-20)){S.flags.coalition=1;log(`The ${S.rivals[live[0]].people} and the ${S.rivals[live[1]].people} swear an oath together against you. When one raids, the other will send ships.`,'hist');toast('Your rivals have allied against you!');}}
+function rivalWarCheck(){if(!isSailSeason(doy()))return;
+ // rivals and small powers try to take land from free chieftains and from each other
+ const actors=[...rivalIds(),...['ves','lade','gaut','gut','dan','svea'].filter(f=>S.facs[f])];
+ for(const f of actors){const isR=f.startsWith('rv');if(S.ai.some(a=>a.kind==='war'&&a.fac===f))continue;if(rnd()>(isR?.2:.05))continue;
+  const mine=rivalPlaces(f);if(!mine.length||(isR&&mine.length>=6))continue;let best=null,bs=-1e9,src=null;
+  for(const s of SETS){const st=S.sets[s.id];if(st.own===f||st.own==='player'||s.id===S.home)continue;if(FACS[st.own]&&FACS[st.own].big&&!isR)continue;if(!isR&&!st.own.startsWith('rv')&&st.own!=='ind')continue;
+   for(const m of mine){const d=dist(SG[m].dock,SG[s.id].dock);if(d>(isR?380:260))continue;const sc=-d/60-st.men/4+(st.own.startsWith('rv')?-6:0)+s.size*4;if(sc>bs){bs=sc;best=s.id;src=m;}}}
+  if(!best)continue;const avail=Math.round(S.sets[src].men*.65);const need=setDefense(best)*1.05;if(avail<need||avail<15)continue;
+  const a=SG[src].dock,b=SG[best].dock;const p=findPath(a.x,a.y,b.x,b.y);if(!p)continue;S.sets[src].men-=avail;
+  S.ai.push({id:S.nextId++,kind:'war',fac:f,src,target:best,x:a.x,y:a.y,path:p,ships:Math.ceil(avail/32),men:avail});
+  if(S.sets[best].known||S.sets[src].known)log(`${isR?'Jarl '+S.rivals[f].name+' of the '+S.rivals[f].people:facRuler(f)} sends ${Math.ceil(avail/32)} ships against ${SET[best].name}.`,'war');}}
+function warArrive(a){const id=a.target,st=S.sets[id];if(!st||st.own===a.fac)return;if(st.own==='player'){raidArrive(Object.assign({},a,{kind:'raid'}));return;}
+ const D=setDefense(id),A=a.men*(.8+rnd()*.4);const known=st.known;const prev=st.own;
+ if(A>D){st.own=a.fac;st.men=Math.round(a.men*.65);st.wealth*=.7;st.trib=false;if(a.fac.startsWith('rv'))S.rivals[a.fac].wins++;if(known)log(`${raidName(a)} take ${SET[id].name}.`,'war');if(prev.startsWith('rv'))rivalSeatCheck(prev,false);}
+ else{st.men=Math.max(4,Math.round(st.men-a.men*.45));const back=Math.round(a.men*.4);if(a.src&&S.sets[a.src]&&S.sets[a.src].own===a.fac)S.sets[a.src].men+=back;if(known)log(`${raidName(a)} attack ${SET[id].name} but are thrown back.`,'');}}
+function coalitionHelp(f){if(!S.flags.coalition||!f||!f.startsWith||!f.startsWith('rv'))return 0;const o=rivalIds().find(x=>x!==f);return o?Math.round(facPower(o)*.25):0;}
+function rivalsCard(){const ids=rivalIds();if(!ids.length)return'';return`<div class="card"><h3>Rival jarls</h3>${ids.map(f=>{const R=S.rivals[f];const pl=rivalPlaces(f);return`<div class="fleetrow" data-act="selset" data-arg="${R.seat}"><span><b style="color:${FACS[f].c}">■</b> Jarl ${esc(R.name)} ${esc(R.nick)}</span><span class="small">${pl.length} ${pl.length===1?'hall':'halls'} · ${facPower(f)} men · ${relWord(S.facs[f].rel)}${R.friend?` · friend of the ${esc(FACS[R.friend].n)}`:''}</span></div>`;}).join('')}${S.flags.coalition?'<div class="small" style="color:#9b2a1a">Sworn together against you.</div>':''}</div>`;}
 
 /* ================= BATTLE ENGINE ================= */
 let battleOn=false,B=null;const BW=1000,BH=600,SHIPX=92,VC={x:700,y:300};
@@ -997,6 +1126,30 @@ function placeLine(sqs,x0,spread){sqs.forEach((s,i)=>{s.x=x0+(rnd()-.5)*30;s.y=B
 function enemyArmy(men,setDef,fac,frac){const out=[];const size=Math.max(18,Math.ceil(men/7));const big=setDef.size>=2||setDef.kind!=='village';const gt=fac==='frank'?'frank':'guard';
  const g=big?Math.round(men*.28):Math.round(men*.12),a=Math.round(men*.15),l=men-g-a;out.push(...splitSquads('D',gt,g,size,mkSquad),...splitSquads('D','archer',a,size,mkSquad),...splitSquads('D','levy',l,size,mkSquad));return out;}
 
+/* ---- terrain ---- */
+function makeTerrain(id){const s=SET[id];const T={hills:[],woods:[],river:null};const inl=SG[id]&&SG[id].inland>12;
+ if(s.kind==='fort'||s.kind==='sacred'||(s.kind==='seat'&&rnd()<.5))T.hills.push({x:VC.x-10,y:VC.y,r:165,town:true});
+ else if(rnd()<.6)T.hills.push({x:SHIPX+300+rnd()*230,y:110+rnd()*380,r:70+rnd()*30});
+ if(inl||rnd()<.3){const fords=[];const nf=rnd()<.5?1:2;for(let i=0;i<nf;i++)fords.push(110+rnd()*(BH-220));T.river={x:SHIPX+205+rnd()*70,fords,amp:12+rnd()*14,ph:rnd()*6};}
+ const nw=inl?2+Math.floor(rnd()*2):Math.floor(rnd()*3);for(let i=0;i<nw;i++){for(let k=0;k<25;k++){const w={x:SHIPX+260+rnd()*(BW-SHIPX-300),y:60+rnd()*(BH-120),r:45+rnd()*35};if(Math.hypot(w.x-VC.x,w.y-VC.y)<w.r+150)continue;if(T.hills.some(h=>Math.hypot(h.x-w.x,h.y-w.y)<h.r+w.r))continue;if(T.river&&Math.abs(w.x-T.river.x)<w.r+30)continue;T.woods.push(w);break;}}
+ const p=[];if(T.hills.some(h=>h.town))p.push(`${s.name} stands on a rise: its defenders fight from higher ground`);else if(T.hills.length)p.push('a hill commands the field');if(T.river)p.push(`a stream runs across the field, with ${T.river.fords.length===1?'one ford':'two fords'}`);if(T.woods.length)p.push(`${T.woods.length===1?'a wood':'woods'} where arrows cannot reach`);
+ T.txt=p.length?p.join('; ')+'.':'Open ground.';return T;}
+const rivX=y=>B.ter.river.x+Math.sin(y/80+B.ter.river.ph)*B.ter.river.amp;
+function terAt(x,y){const T=B&&B.ter;const o={hill:false,wood:false,water:false,ford:false};if(!T)return o;for(const h of T.hills)if(Math.hypot(x-h.x,y-h.y)<h.r)o.hill=true;for(const w of T.woods)if(Math.hypot(x-w.x,y-w.y)<w.r)o.wood=true;
+ if(T.river&&Math.abs(x-rivX(y))<17){if(T.river.fords.some(f=>Math.abs(y-f)<34))o.ford=true;else o.water=true;}return o;}
+function terMult(a,e){const A=a.ter||{},E=e.ter||{};return(A.hill&&!E.hill?1.2:1)*(E.hill&&!A.hill?.82:1)*(E.water?1.35:1)*(A.water?.7:1);}
+function hitAngle(att,def){const a=Math.atan2(att.y-def.y,att.x-def.x);const f=def.face??(def.side==='A'?0:Math.PI);return Math.abs((((a-f)%(2*Math.PI))+3*Math.PI)%(2*Math.PI)-Math.PI);}
+function steer(s,tx,ty){const R=B.ter&&B.ter.river;if(!R)return{tx,ty};const side=s.x<rivX(s.y)?-1:1,tside=tx<rivX(ty)?-1:1;if(side===tside)return{tx,ty};
+ let f=R.fords[0];for(const q of R.fords)if(Math.abs(q-(s.y+ty)/2)<Math.abs(f-(s.y+ty)/2))f=q;if(Math.abs(s.y-f)>30)return{tx:rivX(f)+side*40,ty:f};return{tx:rivX(f)-side*40,ty:f};}
+function turnToward(s,ang,rate){const f=s.face??ang;let d=((ang-f)%(2*Math.PI)+3*Math.PI)%(2*Math.PI)-Math.PI;s.face=f+clamp(d,-rate,rate);}
+function deployZone(){return B.ps==='A'?{x0:SHIPX+15,x1:B.ter&&B.ter.river?Math.min(SHIPX+250,B.ter.river.x-B.ter.river.amp-30):SHIPX+250,y0:40,y1:BH-40}:{x0:VC.x-290,x1:BW-30,y0:40,y1:BH-40};}
+function inZone(x,y){const z=deployZone();return x>=z.x0&&x<=z.x1&&y>=z.y0&&y<=z.y1;}
+function clampZone(x,y){const z=deployZone();return{x:clamp(x,z.x0,z.x1),y:clamp(y,z.y0,z.y1)};}
+ACT.bform=k=>{if(!B||!B.deploy)return;const mine=B.sq.filter(s=>s.side===B.ps&&!s.gone);const mel=mine.filter(s=>!UT[s.type].rng),rng=mine.filter(s=>UT[s.type].rng);const z=deployZone();const dir=B.ps==='A'?1:-1;const front=B.ps==='A'?z.x1-25:z.x0+25;const cy=BH/2;
+ if(k==='line'){mel.forEach((s,i)=>{s.x=front;s.y=cy+(i-(mel.length-1)/2)*Math.min(80,440/Math.max(1,mel.length));});}
+ else{mel.forEach((s,i)=>{const r=Math.ceil(i/2),sg=i%2?1:-1;s.x=front-dir*r*42;s.y=cy+sg*r*48;});}
+ rng.forEach((s,i)=>{s.x=front-dir*(k==='line'?70:150);s.y=cy+(i-(rng.length-1)/2)*90;});for(const s of mine){const p=clampZone(s.x,s.y);s.x=p.x;s.y=p.y;s.tx=null;s.ty=null;s.face=B.ps==='A'?0:Math.PI;}renderBattleUI();};
+ACT.bgo=()=>{if(!B||!B.deploy)return;B.deploy=false;for(const s of B.sq)if(s.side===B.ps){s.tx=null;s.ty=null;s.order='hold';}bmsg(B.mode==='raid'?'Forward! Your warriors advance from the beach.':'The raiders come on! Hold the hall!');renderBattleUI();};
 function startRaid(f,id){const s=SET[id],st=S.sets[id];closeModal();
  const alert=S.t-(st.alert||-999)<15;let frac=alert?.85:SG[id].inland>12?.62:.45;if(s.kind==='fort')frac+=.1;frac=Math.min(.95,frac);
  const men=Math.max(4,Math.round(st.men));const present=Math.max(3,Math.round(men*frac));const tot=lootTotals(s,st);
@@ -1004,20 +1157,22 @@ function startRaid(f,id){const s=SET[id],st=S.sets[id];closeModal();
  placeLine(A,SHIPX+60,420);const D=enemyArmy(present,s,st.own,frac);
  const blds=makeBuildings([5,8,11][s.size-1],tot,s.kind==='sacred',s.kind==='market'||own(MKT,id));
  D.forEach((q,i)=>{const b=blds[i%blds.length];q.x=b.x+(rnd()-.5)*50;q.y=b.y+(rnd()-.5)*50+30;q.post={x:q.x,y:q.y};q.wall=q.type==='guard'||q.type==='frank';});
- initBattle({mode:'raid',set:id,f,ps:'A',sq:[...A,...D],blds,pool:men-present,wall:wallOf(s),title:`The raid on ${s.name}`,eq:{A:armsBonus(),D:s.fac==='frank'?.2:s.size*.04},fac:st.own,totals:tot});}
+ const ter=makeTerrain(id);const hh=ter.hills.find(h=>!h.town&&Math.hypot(h.x-VC.x,h.y-VC.y)<330);if(hh)D.filter(q=>q.type==='archer').forEach((q,i)=>{q.x=hh.x+(i-.5)*30;q.y=hh.y;q.post={x:q.x,y:q.y};});
+ initBattle({ter,mode:'raid',set:id,f,ps:'A',sq:[...A,...D],blds,pool:men-present,wall:wallOf(s),title:`The raid on ${s.name}`,eq:{A:armsBonus(),D:s.fac==='frank'?.2:s.size*.04},fac:st.own,totals:tot});}
 function startHomeDefense(a,auto){const s=SET[S.home];const tot={silver:S.res.silver*.6,food:S.res.food*.5,goods:{},captives:Math.round(S.pop*.12)};for(const g in S.store)if(S.store[g])tot.goods[g]=S.store[g]*.6;
  const docked=S.fleets.filter(f=>f.at===S.home);const pool={hird:S.hird,bow:S.bow,berserk:S.berserk,bondi:Math.round(S.pop*.22)};for(const f of docked)for(const k in pool)pool[k]+=f.men[k]||0;
  const tm=pool.hird+pool.bow+pool.berserk+pool.bondi;const size=Math.max(18,Math.ceil(tm/7));const D=[];for(const k of['berserk','hird','bow','bondi'])D.push(...splitSquads('D',k,pool[k],size,mkSquad));
  const blds=makeBuildings(4+S.bld.hall*2,tot,S.bld.hof>0,S.bld.market>0);D.forEach((q,i)=>{const b=blds[i%blds.length];q.x=b.x-40+(rnd()-.5)*40;q.y=b.y+(rnd()-.5)*40;q.post={x:q.x,y:q.y};});
  const as=Math.max(18,Math.ceil(a.men/7));const big=a.fac!=='sea'&&a.fac!=='ind';const g=Math.round(a.men*(big?.35:.45)),ar=Math.round(a.men*.15);const gt=a.fac==='frank'?'frank':'guard';
  const A=[...splitSquads('A',gt,g,as,mkSquad),...splitSquads('A','archer',ar,as,mkSquad),...splitSquads('A','levy',a.men-g-ar,as,mkSquad)];placeLine(A,SHIPX+60,420);
- initBattle({mode:'defend',set:S.home,raid:a,ps:'D',sq:[...A,...D],blds,pool:0,wall:S.bld.wall,title:`${raidName(a)} attacks ${s.name}`,eq:{A:big?.12:.05,D:armsBonus()},fac:a.fac,totals:tot,pool0:pool,docked},auto);}
+ initBattle({ter:makeTerrain(S.home),mode:'defend',set:S.home,raid:a,ps:'D',sq:[...A,...D],blds,pool:0,wall:S.bld.wall,title:`${raidName(a)} attacks ${s.name}`,eq:{A:big?.12:.05,D:armsBonus()},fac:a.fac,totals:tot,pool0:pool,docked},auto);}
 function initBattle(o,auto){B=Object.assign({t:0,nextWave:22,taken:{silver:0,food:0,goods:{},captives:0},fx:[],sel:null,speed:1,paused:false,auto:false,withdrawA:false,over:false,result:null,msg:'',msgT:0},o);
  B.chief=o.mode==='raid'?!!(o.f&&o.f.chief):true;B.totalA0=B.sq.filter(s=>s.side==='A').reduce((a,s)=>a+s.men,0);B.totalD0=B.sq.filter(s=>s.side==='D').reduce((a,s)=>a+s.men,0)+B.pool;
- const pm=(B.chief?10:0)+[0,5,10][S.bld.hof]+(S.loyalty-50)/5;for(const s of B.sq)if(s.side===B.ps&&s.type!=='levy'){s.base+=pm;s.morale=s.base;}
+ B.lead=o.mode==='raid'&&o.f?fleetLeader(o.f):null;B.atkM=(B.chief?1.08:1)*(has(B.lead,'fierce')?1.12:1);for(const s of B.sq)s.face=s.side==='A'?0:Math.PI;
+ const pm=(o.mode==='raid'&&o.f?captainMorale(o.f):10)+[0,5,10][S.bld.hof]+(S.loyalty-50)/5;for(const s of B.sq)if(s.side===B.ps&&s.type!=='levy'){s.base+=pm;s.morale=s.base;}
  if(auto){B.auto=true;let n=0;while(!B.over&&n<2400){battleStep(.2);n++;}if(!B.over)endBattle(B.ps==='A'?'withdraw':'victory');return;}
- battleOn=true;setPaused(true);$('battle').classList.remove('hidden');B.sel=(B.sq.find(s=>s.side===B.ps)||{}).id;resizeBattle();renderBattleUI();B.last=performance.now();
- bmsg(B.mode==='raid'?'Your warriors leap from the ships!':'To arms! Defend the hall!');}
+ battleOn=true;setPaused(true);$('battle').classList.remove('hidden');B.sel=(B.sq.find(s=>s.side===B.ps)||{}).id;B.deploy=true;resizeBattle();renderBattleUI();B.last=performance.now();
+ bmsg('Deploy your warbands: '+(B.ter?B.ter.txt:''));B.msgT=8;}
 function resizeBattle(){const r=bcv.getBoundingClientRect();const d=window.devicePixelRatio||1;bcv.width=Math.max(10,r.width*d);bcv.height=Math.max(10,r.height*d);}
 function bmsg(m){B.msg=m;B.msgT=4;}
 function fieldScale(){const d=window.devicePixelRatio||1;const W=bcv.width/d,H=bcv.height/d;const k=Math.min(W/BW,H/BH);return{k,ox:(W-BW*k)/2,oy:(H-BH*k)/2};}
@@ -1028,7 +1183,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  // reinforcements
  if(B.mode==='raid'&&B.pool>0&&B.t>=B.nextWave){const n=Math.min(B.pool,Math.max(8,Math.round(B.pool*.4)));B.pool-=n;const sz=Math.max(18,Math.ceil(n/3));const ws=splitSquads('D','levy',n,sz,mkSquad);ws.forEach((q,i)=>{q.x=BW-10;q.y=80+rnd()*(BH-160);B.sq.push(q);});B.nextWave=B.t+20+rnd()*8;if(!B.auto)bmsg(`${n} more farmers come running from the fields!`);}
  const sq=B.sq;
- for(const s of sq){if(s.gone)continue;s.cont=[];if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;}
+ for(const s of sq){if(s.gone)continue;s.cont=[];s.ter=terAt(s.x,s.y);if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;if(s.flankT>0)s.flankT-=dt;}
  for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side===b.side)continue;if(Math.hypot(a.x-b.x,a.y-b.y)<sqR(a)+sqR(b)+3){a.cont.push(b);b.cont.push(a);}}}
  // AI
  const ctrl=s=>s.side!==B.ps||B.auto;
@@ -1036,11 +1191,11 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  if(B.mode==='defend'||B.auto){const A=sq.filter(s=>s.side==='A');const now=A.reduce((a,s)=>a+(s.gone?0:s.men),0);if(!B.withdrawA&&(now<B.totalA0*.5||lootLeft<lootTot*.35||B.t>170)){B.withdrawA=true;if(!B.auto||B.mode==='defend')bmsg(B.mode==='defend'?'The raiders fall back to their ships!':'');}}
  for(const s of sq){if(s.gone||s.rout)continue;if(!ctrl(s))continue;aiSquad(s);}
  // move
- for(const s of sq){if(s.gone)continue;const U=UT[s.type];let sp=U.spd*(s.wall?.42:1)*(s.charge>0?1.6:1)*(s.rout?1.25:1);
+ for(const s of sq){if(s.gone)continue;const U=UT[s.type];const tr=s.ter||{};let sp=U.spd*(s.wall?.42:1)*(s.charge>0?1.6:1)*(s.rout?1.25:1)*(tr.water?.35:tr.ford?.7:1)*(tr.wood?.72:1)*(tr.hill?.88:1);
   if(s.rout){const ex=s.side==='A'?-20:BW+20;moveTo(s,ex,s.y,sp*dt);if((s.side==='A'&&s.x<SHIPX-4)||(s.side==='D'&&s.x>BW-6)){s.gone=true;s.fled=true;}continue;}
-  if(s.cont.length)continue;let tx=s.tx,ty=s.ty;const t=s.tgt?sq.find(q=>q.id===s.tgt):null;if(t&&!t.gone){tx=t.x;ty=t.y;}else if(s.tgt){s.tgt=null;}
+  if(s.cont.length){const pr=(s.tgt&&s.cont.find(e=>e.id===s.tgt))||s.cont[0];turnToward(s,Math.atan2(pr.y-s.y,pr.x-s.x),dt*(s.wall?.6:2.5));continue;}let tx=s.tx,ty=s.ty;const t=s.tgt?sq.find(q=>q.id===s.tgt):null;if(t&&!t.gone){tx=t.x;ty=t.y;}else if(s.tgt){s.tgt=null;}
   if(s.bld!=null){const b=B.blds[s.bld];if(b&&b.left>0){tx=b.x;ty=b.y+b.h/2+16;}else s.bld=null;}
-  if(tx!=null){const d=Math.hypot(tx-s.x,ty-s.y);const stop=t?0:4;if(d>stop)moveTo(s,tx,ty,Math.min(sp*dt,d));else if(!t&&s.order==='ships'&&s.side==='A'){}}
+  if(tx!=null){const sv=steer(s,tx,ty);tx=sv.tx;ty=sv.ty;const d=Math.hypot(tx-s.x,ty-s.y);const stop=t?0:4;if(d>stop)moveTo(s,tx,ty,Math.min(sp*dt,d));else if(!t&&s.order==='ships'&&s.side==='A'){}}
   // ranged
   if(U.rng){s.shot-=dt;}
  }
@@ -1048,9 +1203,11 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side!==b.side)continue;const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=sqR(a)+sqR(b)-2;if(d<m){const p=(m-d)/2;a.x-=dx/d*p*.5;a.y-=dy/d*p*.5;b.x+=dx/d*p*.5;b.y+=dy/d*p*.5;}}a.x=clamp(a.x,-30,BW+30);a.y=clamp(a.y,20,BH-20);}
  // combat
  for(const s of sq){if(s.gone)continue;const U=UT[s.type];const eq=B.eq[s.side]||0;const mf=.5+.5*clamp(s.morale/s.base,0,1);
-  if(s.cont.length&&!s.rout){const atk=U.atk*(1+eq)*mf*(s.charge>0?1.7:1)*(s.wall?.75:1)*(B.chief&&s.side===B.ps?1.08:1);const per=atk*s.men*.028/s.cont.length;for(const e of s.cont){e.hurt+=per*dt/defOf(e);if(s.charge>0)e.morale-=dt*6;}}
-  else if(U.rng&&!s.rout&&s.shot<=0){let best=null,bd=U.rng;for(const e of sq){if(e.gone||e.side===s.side)continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}
-   if(best){s.shot=1;const dmg=U.shot*s.men*.016*(1+eq)*mf/(defOf(best)*(best.wall?2.2:1));best.hurt+=dmg;best.morale-=dmg*.8;if(!B.auto)B.fx.push({x0:s.x,y0:s.y,x1:best.x,y1:best.y,t:.35});}}
+  if(s.cont.length&&!s.rout){const mine=s.side===B.ps;const atk=U.atk*(1+eq)*mf*(s.charge>0?(mine&&has(B.lead,'bold')?1.95:1.7):1)*(s.wall?.75:1)*(mine?B.atkM:1);const per=atk*s.men*.028/s.cont.length;
+   for(const e of s.cont){const ang=hitAngle(s,e);const fl=ang<1.05?0:ang<2.1?1:2;e.hurt+=per*[1,1.4,1.8][fl]*terMult(s,e)*dt/defOf(e,fl===0);if(s.charge>0)e.morale-=dt*6;
+    if(fl){e.morale-=dt*(fl===1?3:7);if(!B.auto&&!(e.flankT>0)){e.flankT=3;B.fx.push({txt:fl===1?'Flanked!':'From behind!',x:e.x,y:e.y-sqR(e)-16,t:1.4,c:e.side===B.ps?'#ff8a6a':'#ffe08a'});if(mine&&!B.toldFlank){B.toldFlank=1;bmsg('You hit them in the flank! Attacks from the side or rear do far more harm and break their nerve.');}if(!mine&&e.side===B.ps&&!B.toldFlanked){B.toldFlanked=1;bmsg('Your men are taken in the flank! Turn to face them or pull back.');}}}}}
+  else if(U.rng&&!s.rout&&s.shot<=0){let best=null,bd=U.rng*((s.ter&&s.ter.hill)?1.25:1);for(const e of sq){if(e.gone||e.side===s.side)continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}
+   if(best){s.shot=1;const front=hitAngle(s,best)<1.05;const dmg=U.shot*s.men*.016*(1+eq)*mf*((best.ter&&best.ter.wood)?.5:1)/(defOf(best,front)*(best.wall&&front?2.2:1));best.hurt+=dmg;best.morale-=dmg*.8;if(!B.auto)B.fx.push({x0:s.x,y0:s.y,x1:best.x,y1:best.y,t:.35});}}
   if(s.cont.length)s.morale-=dt*(s.cont.length>1?2.5:.4);
  }
  // loot
@@ -1069,7 +1226,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
   if(B.auto&&B.withdrawA&&aF.every(s=>s.x<SHIPX+40)){endBattle('withdraw');return;}if(B.t>360){endBattle('withdraw');return;}}
  else{if(!aF.length){endBattle('victory');return;}if(!dF.length){endBattle('defeat');return;}}
  for(const f of B.fx)f.t-=dt;B.fx=B.fx.filter(f=>f.t>0);}
-function defOf(e){const U=UT[e.type];const eq=B.eq[e.side]||0;let d=U.def*(1+eq)*(e.wall?1.6:1);if(e.side==='D'&&B.wall&&Math.hypot(e.x-VC.x,(e.y-VC.y)*1.2)<215)d*=1+.3*B.wall;if(e.rout)d*=.5;return d;}
+function defOf(e,front=true){const U=UT[e.type];const eq=B.eq[e.side]||0;let d=U.def*(1+eq)*(e.wall&&front?1.6:1)*(e.side===B.ps&&has(B.lead,'cautious')?1.1:1);if(e.side==='D'&&B.wall&&Math.hypot(e.x-VC.x,(e.y-VC.y)*1.2)<215)d*=1+.3*B.wall;if(e.rout)d*=.5;return d;}
 function moveTo(s,tx,ty,step){const dx=tx-s.x,dy=ty-s.y,d=Math.hypot(dx,dy);if(d<.01)return;const m=Math.min(step,d);s.x+=dx/d*m;s.y+=dy/d*m;s.face=Math.atan2(dy,dx);}
 function nearestEnemy(s,maxD,filter){let best=null,bd=maxD||1e9;for(const e of B.sq){if(e.gone||e.rout||e.side===s.side)continue;if(filter&&!filter(e))continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}return best;}
 function aiSquad(s){const U=UT[s.type];s.bld=s.bld??null;
@@ -1088,7 +1245,7 @@ function aiSquad(s){const U=UT[s.type];s.bld=s.bld??null;
  if(B.mode==='raid'&&B.t>8&&!s.post){const e=nearestEnemy(s);if(e)s.tgt=e.id;}}
 function aWithdrawCheck(){const A=B.sq.filter(s=>s.side==='A');const now=A.reduce((a,s)=>a+(s.gone||s.rout?0:s.men),0);const lootLeft=B.blds.reduce((a,b)=>a+b.left,0);
  const dNow=B.sq.filter(s=>s.side==='D'&&onField(s)).reduce((a,s)=>a+s.men,0)+B.pool;
- if(now<B.totalA0*.45||(lootLeft<B.blds.length*.15&&dNow>now*.4)||(dNow>now*1.6&&B.t>25)||B.t>220){B.withdrawA=true;return true;}return false;}
+ if(now<B.totalA0*(has(B.lead,'cautious')?.6:.45)||(lootLeft<B.blds.length*.15&&dNow>now*.4)||(dNow>now*1.6&&B.t>25)||B.t>220){B.withdrawA=true;return true;}return false;}
 
 /* ---- end & results ---- */
 function endBattle(res){if(B.over)return;B.over=true;B.result=res;const r=applyBattle(res);if(battleOn){battleOn=false;$('battle').classList.add('hidden');}
@@ -1102,15 +1259,16 @@ function applyBattle(res){
   for(const q of abandoned){sv[q.type]=(sv[q.type]||0)-Math.round(q.men);}
   for(const k of['hird','bow','berserk','bondi']){const before=f.men[k]||0;const now=Math.max(0,Math.min(before,sv[k]||0));r.lost[k]=before-now;f.men[k]=now;}
   r.killed=dead('D');st.men=Math.max(0,Math.round(B.sq.filter(q=>q.side==='D'&&(!q.gone||q.fled)).reduce((a,q)=>a+q.men,0)+B.pool));
-  const T=B.taken;if(res!=='defeat'){r.loot=stowLoot(f,T);}
+  const T=B.taken;if(has(B.lead,'cruel')){T.silver*=1.2;T.food*=1.2;T.captives*=1.2;for(const g in T.goods)T.goods[g]*=1.2;changeRel(B.set,-8);}if(res!=='defeat'){r.loot=stowLoot(f,T);}
   const frac=1-B.blds.reduce((a,b)=>a+b.left,0)/B.blds.length;st.wealth=Math.max(.05,st.wealth*(1-frac*.85));st.raided=S.t;
-  const wasOwn=st.own;changeRel(B.set,-22);if(S.facs[wasOwn]){S.facs[wasOwn].griev+=1;if(S.facs[wasOwn].ally){S.facs[wasOwn].ally=false;log(`Your marriage alliance with the ${FACS[wasOwn].n} is broken by this raid.`,'war');}}
+  const wasOwn=st.own;changeRel(B.set,-22);rivalAnger(wasOwn);if(S.facs[wasOwn]){S.facs[wasOwn].griev+=1;if(S.facs[wasOwn].ally){S.facs[wasOwn].ally=false;log(`Your marriage alliance with the ${FACS[wasOwn].n} is broken by this raid.`,'war');}}
   S.stats.raids++;S.stats.battles++;const lostTot=Object.values(r.lost).reduce((a,b)=>a+b,0);
   if(res!=='defeat'&&r.loot&&(r.loot.silver>5||r.loot.food>50)){S.stats.raidWins++;}
   const ren=(res==='victory'?8+s.size*6:res==='withdraw'?3:-6)+(r.loot?r.loot.silver/14:0)+r.killed/6;addRenown(Math.round(ren*(f.chief?1:.6)),`the raid on ${s.name}`);
   if(res==='victory')S.stats.battleWins++;S.loyalty=clamp(S.loyalty+(res==='defeat'?-12:res==='victory'?8:3),0,100);
   r.lostTot=lostTot;if(f.chief){const risk=res==='defeat'?.18:lostTot>B.totalA0*.4?.05:.015;if(rnd()<risk)r.chiefDied=true;}
   if(!fleetMen(f)){r.fleetLost=true;}
+  if(B.lead){captGain(B.lead,res);const risk=(res==='defeat'?.15:lostTot>B.totalA0*.4?.05:.012)*(has(B.lead,'bold')?2:1)*(has(B.lead,'cautious')?.5:1);if(rnd()<risk)r.captDied=B.lead;}
  }else{const sv=survivors('D');const P=B.pool0;const lost={};for(const k in P){lost[k]=Math.max(0,P[k]-(sv[k]||0));}r.lost=lost;
   // take losses: home pools first, then docked fleets
   const takeFrom=(k,n)=>{if(k==='bondi'){S.pop=Math.max(5,S.pop-n);return;}let left=n;const h=Math.min(S[k],left);S[k]-=h;left-=h;for(const f of B.docked){if(left<=0)break;const m=Math.min(f.men[k]||0,left);f.men[k]-=m;left-=m;}};
@@ -1135,7 +1293,7 @@ function raidReport(r){const s=SET[B.set],f=B.f,st=S.sets[B.set];const T={victor
  let h=`<h2>${T}: ${esc(s.name)}</h2><p class="story">${r.res==='victory'?`The last of ${esc(s.name)}'s defenders are dead or fled. The village lies open to you, and your men gather up what is left in the houses.`:r.res==='withdraw'?'Your warriors run the ships off the beach and pull for open water.':'Your warband is broken. Few make it back to the ships.'}</p>
  <p>Plunder: <b>${esc(lootStr(r.loot))}</b>${r.loot&&r.loot.left.length?` <span class="small">(no room aboard for more ${esc(r.loot.left.join(', '))})</span>`:''}</p><p>Your dead: <b>${esc(lossStr(r.lost))}</b>. Enemy dead: about ${Math.round(r.killed)}.</p>`;
  log(`Raid on ${s.name}: ${r.res}. Took ${lootStr(r.loot)}; lost ${lossStr(r.lost)}.`,r.res==='defeat'?'war':'good');
- const after=()=>{if(r.chiefDied)rulerDies(`fell in the fighting at ${s.name}`);if(r.fleetLost&&fleetById(f.id)&&!fleetMen(f)){for(const sh of fleetShips(f))sh.loc='lost';S.ships=S.ships.filter(x=>x.loc!=='lost');S.fleets=S.fleets.filter(x=>x!==f);log(`With no crew left, the ships of ${f.name} are lost.`,'war');}};
+ const after=()=>{if(r.captDied&&S.capts.includes(r.captDied))captDies(r.captDied,`fell in the fighting at ${s.name}`);if(r.chiefDied)rulerDies(`fell in the fighting at ${s.name}`);if(r.fleetLost&&fleetById(f.id)&&!fleetMen(f)){for(const sh of fleetShips(f))sh.loc='lost';S.ships=S.ships.filter(x=>x.loc!=='lost');S.fleets=S.fleets.filter(x=>x!==f);log(`With no crew left, the ships of ${f.name} are lost.`,'war');}};
  if(r.res==='victory'&&f.men.hird+f.men.berserk+f.men.bondi>0){const rem=B.blds.reduce((a,b)=>a+b.left,0)/B.blds.length;
   h+=`<h3>What now?</h3><button class="choice red" data-act="aft" data-arg="burn">Plunder it all and burn the rest<small>Strip every house (${Math.round(rem*100)}% still untouched). More silver and fear, and a deeper hatred.</small></button>
   <button class="choice gold" data-act="aft" data-arg="hold" ${f.men.hird<5?'disabled':''}>Take ${esc(s.name)} as your own<small>Leave a garrison of hirdmen. It sends you food, silver and goods each autumn and counts toward your rank. ${f.men.hird<5?'You need at least 5 hirdmen in this fleet.':''}</small></button>
@@ -1147,10 +1305,10 @@ let AFT=null;
 ACT.aft=a=>{const{after}=AFT;const s=SET[B.set],st=S.sets[B.set],f=B.f;const prev=st.own;
  if(a==='burn'){const T={silver:0,food:0,goods:{},captives:0};for(const b of B.blds){const L=b.loot;T.silver+=L.silver*b.left;T.food+=L.food*b.left;T.captives+=L.captives*b.left;for(const g in L.goods)T.goods[g]=(T.goods[g]||0)+L.goods[g]*b.left;b.left=0;}const got=stowLoot(f,T);st.wealth=.05;changeRel(B.set,-15);addRenown(5,`the burning of ${s.name}`);log(`You burn ${s.name}. More plunder: ${lootStr(got)}.`,'war');toast(`More plunder: ${lootStr(got)}.`);}
  if(a==='hold'){showGarrisonPick();return;}
- if(a==='trib'){st.orig=prev;st.own='player';st.trib=true;st.men=Math.max(st.men,Math.round(baseMen(s)*.4));if(S.facs[prev])S.facs[prev].griev+=1;addRenown(6+s.size*6,`${s.name} swears tribute`);S.stats.tribs=(S.stats.tribs||0)+1;log(`${s.name} swears to pay you tribute.`,'good');}
+ if(a==='trib'){st.orig=prev;st.own='player';st.trib=true;st.men=Math.max(st.men,Math.round(baseMen(s)*.4));if(S.facs[prev])S.facs[prev].griev+=1;addRenown(6+s.size*6,`${s.name} swears tribute`);S.stats.tribs=(S.stats.tribs||0)+1;log(`${s.name} swears to pay you tribute.`,'good');if(String(prev).startsWith('rv'))rivalSeatCheck(prev,true);}
  closeModal();after();};
 function showGarrisonPick(){const f=B.f;const s=SET[B.set];const opts=[5,10,20,40].filter(n=>n<=f.men.hird);showModal(`<h2>Garrison for ${esc(s.name)}</h2><p>How many hirdmen stay behind? More men hold it better against counter-raids. You have ${f.men.hird} hirdmen in this fleet.</p><div class="row">${opts.map(n=>`<button class="big" data-act="garpick" data-arg="${n}">${n}</button>`).join('')}</div>`);}
-ACT.garpick=a=>{const n=+a;const f=B.f,s=SET[B.set],st=S.sets[B.set];const prev=st.own;f.men.hird-=n;st.orig=prev;st.own='player';st.trib=false;st.gar=n;st.men=Math.round(baseMen(s)*.3);if(S.facs[prev])S.facs[prev].griev+=2;S.stats.conquests++;addRenown(12+s.size*10,`the taking of ${s.name}`);log(`${s.name} is yours. ${n} hirdmen stay as its garrison.`,'hist');closeModal();AFT.after();};
+ACT.garpick=a=>{const n=+a;const f=B.f,s=SET[B.set],st=S.sets[B.set];const prev=st.own;f.men.hird-=n;st.orig=prev;st.own='player';st.trib=false;st.gar=n;st.men=Math.round(baseMen(s)*.3);if(S.facs[prev])S.facs[prev].griev+=2;S.stats.conquests++;addRenown(12+s.size*10,`the taking of ${s.name}`);log(`${s.name} is yours. ${n} hirdmen stay as its garrison.`,'hist');closeModal();AFT.after();if(String(prev).startsWith('rv'))rivalSeatCheck(prev,true);};
 function defenseReport(r){const s=SET[B.set];const a=B.raid;let h=`<h2>${r.res==='victory'?'The raiders are beaten off!':'Your hall is sacked'}</h2><p class="story">${r.res==='victory'?`${esc(raidName(a))} leave their dead on your fields and row away.`:'Smoke rises from the thatch. The raiders carry off what they can and are gone with the tide.'}</p>
  <p>They carried off: ${r.stolen.silver} silver, ${r.stolen.food} food${r.stolen.captives?`, ${r.stolen.captives} of your people`:''}.</p><p>Your dead: ${esc(lossStr(r.lost))}. Raiders slain: about ${Math.round(r.killed)}.</p><div class="row"><button class="gold" data-act="close">Continue</button></div>`;
  log(`${raidName(a)} attacked ${s.name}: ${r.res==='victory'?'beaten off':'your hall was sacked'}.`,r.res==='victory'?'good':'war');showModal(h,()=>{if(r.chiefDied)rulerDies(`fell defending the hall`);});}
@@ -1161,6 +1319,7 @@ function renderBattleUI(){if(!B)return;const mine=B.sq.filter(s=>s.side===B.ps);
  $('btop').innerHTML=`<b style="font-family:Cinzel;color:#d4a73a">${esc(B.title)}</b><span>⏱ ${Math.floor(B.t)}s</span><span>You: <b>${sumSide(B.ps)}</b></span><span>Them: <b>${sumSide(B.ps==='A'?'D':'A')}</b>${B.pool>0?` <span style="color:#ff9a7a">(+${B.pool} gathering)</span>`:''}</span><span>${lootTxt}</span><span class="grow"></span>
  <button data-act="bpause">${B.paused?'▶ Resume':'❚❚ Pause'}</button><button data-act="bspeed">${B.speed}× speed</button><button class="${B.auto?'gold':''}" data-act="bauto">${B.auto?'Auto: on':'Auto: off'}</button>${B.mode==='raid'?`<button class="alt" data-act="bships">⛵ Back to the ships</button><button class="red" data-act="bsail">Sail away</button>`:''}`;
  const sel=B.sq.find(s=>s.id===B.sel);
+ if(B.deploy){$('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}</div>`).join('')+`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px"><button data-act="bform" data-arg="line">Line</button><button data-act="bform" data-arg="wedge">Wedge (svínfylking)</button><button class="gold" data-act="bgo">⚔ Begin the fight</button><div class="small" style="color:#d9c79a">Deploy: pick a warband, then click inside the bright area to place it. ${esc(B.ter?B.ter.txt:'')}${B.lead?' Led by '+esc(captName(B.lead))+'.':''}</div></div>`;return;}
  $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (fleeing)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
  +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break shield wall':'Shield wall (W)'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge (C)${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot (L)</button>':''}<button data-act="bhold">Hold (H)</button><div class="small" style="color:#b9a682">Click ground to move · click an enemy to attack${B.ps==='A'?' · click a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Select a warband (click, or keys 1–8)</span>'}</div>`;}
 ACT.bsel=a=>{B.sel=+a;renderBattleUI();};
@@ -1178,7 +1337,8 @@ function battleKey(e){if(e.code==='Space'){e.preventDefault();ACT.bpause();retur
  const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='r'&&B.ps==='A')ACT.bships();}
 bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const{k,ox,oy}=fieldScale();const x=(e.clientX-r.left-ox)/k,y=(e.clientY-r.top-oy)/k;
  let hit=null,hd=1e9;for(const s of B.sq){if(s.gone)continue;const d=Math.hypot(s.x-x,s.y-y);if(d<sqR(s)+8&&d<hd){hd=d;hit=s;}}
- if(hit&&hit.side===B.ps&&e.button===0){B.sel=hit.id;renderBattleUI();return;}const s=selSq();if(!s)return;B.auto=false;
+ if(hit&&hit.side===B.ps&&e.button===0){B.sel=hit.id;renderBattleUI();return;}const s=selSq();if(!s)return;
+ if(B.deploy){const p=clampZone(x,y);s.x=p.x;s.y=p.y;renderBattleUI();return;}B.auto=false;
  if(hit&&hit.side!==B.ps){s.tgt=hit.id;s.bld=null;s.order='attack';}
  else{const bi=B.ps==='A'?B.blds.findIndex(b=>b.left>0&&Math.abs(b.x-x)<b.w/2+6&&Math.abs(b.y-y)<b.h/2+6):-1;if(bi>=0){s.bld=bi;s.tgt=null;s.order='loot';}else{s.tgt=null;s.bld=null;s.tx=x;s.ty=y;s.order='move';}}
  renderBattleUI();});
@@ -1187,6 +1347,12 @@ function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bc
  // ground
  const gr=g.createLinearGradient(0,0,BW,0);gr.addColorStop(0,'#2a4a5e');gr.addColorStop(SHIPX/BW,'#3a6070');gr.addColorStop((SHIPX+14)/BW,'#b8a879');gr.addColorStop((SHIPX+50)/BW,'#6f7d45');gr.addColorStop(1,'#56693a');g.fillStyle=gr;g.fillRect(0,0,BW,BH);
  for(let i=0;i<70;i++){const x=hash2(i,3)*BW,y=hash2(i,7)*BH;if(x<SHIPX+40)continue;g.fillStyle='rgba(40,60,25,.35)';g.beginPath();g.ellipse(x,y,20+hash2(i,9)*40,10+hash2(i,5)*16,0,0,6.28);g.fill();}
+ if(B.ter){const T=B.ter;
+  for(const h of T.hills){const gg=g.createRadialGradient(h.x,h.y,h.r*.1,h.x,h.y,h.r);gg.addColorStop(0,'rgba(170,165,95,.55)');gg.addColorStop(1,'rgba(120,130,70,0)');g.fillStyle=gg;g.beginPath();g.arc(h.x,h.y,h.r,0,6.28);g.fill();g.strokeStyle='rgba(60,55,30,.35)';g.setLineDash([3,5]);for(const k of[.55,.85]){g.beginPath();g.arc(h.x,h.y,h.r*k,0,6.28);g.stroke();}g.setLineDash([]);}
+  if(T.river){g.strokeStyle='#3d6a82';g.lineWidth=30;g.lineCap='round';g.beginPath();for(let y=0;y<=BH;y+=10){const x=rivX(y);if(y)g.lineTo(x,y);else g.moveTo(x,y);}g.stroke();g.strokeStyle='rgba(160,200,215,.35)';g.lineWidth=3;g.stroke();
+   for(const f of T.river.fords){g.fillStyle='rgba(196,178,124,.85)';g.fillRect(rivX(f)-17,f-30,34,60);g.fillStyle='rgba(61,106,130,.35)';for(let k=0;k<4;k++)g.fillRect(rivX(f)-15,f-26+k*15,30,3);}}
+  for(const w of T.woods){for(let k=0;k<16;k++){const a=hash2(k,w.x|0)*6.28,rr=hash2(k,w.y|0)*w.r*.85;g.fillStyle=k%3?'#2f4a24':'#3a5a2c';g.beginPath();g.arc(w.x+Math.cos(a)*rr,w.y+Math.sin(a)*rr,9+hash2(k,7)*8,0,6.28);g.fill();}}}
+ if(B.deploy){const z=deployZone();g.fillStyle='rgba(255,224,140,.13)';g.fillRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.strokeStyle='rgba(255,224,140,.7)';g.setLineDash([8,6]);g.lineWidth=2;g.strokeRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.setLineDash([]);}
  // ships
  for(let i=0;i<5;i++){const y=90+i*105;g.fillStyle='#3a2414';g.beginPath();g.moveTo(SHIPX-6,y-28);g.quadraticCurveTo(SHIPX+10,y,SHIPX-6,y+28);g.lineTo(SHIPX-22,y+24);g.quadraticCurveTo(SHIPX-10,y,SHIPX-22,y-24);g.closePath();g.fill();}
  // palisade
@@ -1207,10 +1373,10 @@ function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bc
   g.fillStyle='rgba(0,0,0,.55)';g.fillRect(s.x-14,s.y-sqR(s)-9,28,4);g.fillStyle=mine?'#e8c050':'#d0503a';g.fillRect(s.x-14,s.y-sqR(s)-9,28*clamp(s.morale/s.base,0,1),4);
   if(mine){g.fillStyle='#fff';g.font='bold 11px EB Garamond';g.textAlign='center';g.fillText(String(B.sq.filter(q=>q.side===B.ps).indexOf(s)+1),s.x,s.y-sqR(s)-12);}
   if(mine&&s.id===B.sel&&(s.tx!=null)&&!s.tgt&&s.bld==null&&!s.cont.length&&Math.hypot(s.tx-s.x,s.ty-s.y)>8){g.strokeStyle='rgba(255,211,106,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(s.x,s.y);g.lineTo(s.tx,s.ty);g.stroke();g.setLineDash([]);}}
- for(const f of B.fx){if(f.sp){g.fillStyle=`rgba(255,220,120,${f.t})`;g.beginPath();g.arc(f.x,f.y-(1-f.t)*20,2.5,0,6.28);g.fill();}else{g.strokeStyle=`rgba(230,220,190,${f.t*2})`;g.lineWidth=1;g.beginPath();const t=1-f.t/.35;g.moveTo(f.x0+(f.x1-f.x0)*t,f.y0+(f.y1-f.y0)*t);g.lineTo(f.x0+(f.x1-f.x0)*Math.min(1,t+.15),f.y0+(f.y1-f.y0)*Math.min(1,t+.15));g.stroke();}}
+ for(const f of B.fx){if(f.txt){g.globalAlpha=clamp(f.t,0,1);g.font='bold 14px EB Garamond';g.textAlign='center';g.lineWidth=3;g.strokeStyle='#000';g.strokeText(f.txt,f.x,f.y-(1.4-f.t)*14);g.fillStyle=f.c;g.fillText(f.txt,f.x,f.y-(1.4-f.t)*14);g.globalAlpha=1;continue;}if(f.sp){g.fillStyle=`rgba(255,220,120,${f.t})`;g.beginPath();g.arc(f.x,f.y-(1-f.t)*20,2.5,0,6.28);g.fill();}else{g.strokeStyle=`rgba(230,220,190,${f.t*2})`;g.lineWidth=1;g.beginPath();const t=1-f.t/.35;g.moveTo(f.x0+(f.x1-f.x0)*t,f.y0+(f.y1-f.y0)*t);g.lineTo(f.x0+(f.x1-f.x0)*Math.min(1,t+.15),f.y0+(f.y1-f.y0)*Math.min(1,t+.15));g.stroke();}}
  $('bmsg').style.display=B.msgT>0&&B.msg?'block':'none';$('bmsg').textContent=B.msg;}
 let bUiT=0;
-function battleFrame(now){if(!battleOn||!B)return;const dt=Math.min(.05,(now-B.last)/1000);B.last=now;if(!B.paused){for(let i=0;i<B.speed;i++){battleStep(dt);if(B.over)return;}}B.msgT-=dt;drawBattle();bUiT-=dt;if(bUiT<=0){bUiT=.25;renderBattleUI();}}
+function battleFrame(now){if(!battleOn||!B)return;const dt=Math.min(.05,(now-B.last)/1000);B.last=now;if(!B.paused&&!B.deploy){for(let i=0;i<B.speed;i++){battleStep(dt);if(B.over)return;}}B.msgT-=dt;drawBattle();bUiT-=dt;if(bUiT<=0){bUiT=.25;renderBattleUI();}}
 
 /* ================= EVENTS ================= */
 let EVC=[];
@@ -1251,13 +1417,14 @@ function evEncounter(f,a){if(!fleetById(f.id))return;if(!S.ai.includes(a)){retur
   {t:'Board her',sub:'Take the cargo and the silver. Her people and the market she sails for will hate you.',cls:'red',fn:()=>{const r=seaFight(f,a);S.ai=S.ai.filter(x=>x!==a);if(r.win){const L=stowLoot(f,{silver:a.value,food:0,goods:{[a.good]:a.goods},captives:ri(0,a.men/2)});if(S.facs[a.fac])S.facs[a.fac].rel-=15;changeRel(a.to,-8);addRenown(3+L.silver/25,'taking a merchant ship');log(`${f.name} takes a merchant ship: ${lootStr(L)}. Lost ${r.dead} ${r.dead===1?'man':'men'}.`,'good');toast(`Prize taken: ${lootStr(L)}.`);}else{log(`The merchants fight you off! ${f.name} loses ${r.dead} men.`,'war');}sideDirty=true;}},
   {t:'Hail her and let her pass',fn:()=>{}}]);return;}
  const P=Math.round(fleetPower(f));showEvent('War sails!',`${f.name} meets ${raidName(a)} at sea: ${a.ships} ships and about ${a.men} warriors, bound for ${SET[a.target].name}. Your strength: ${P}.`,[
-  {t:'Lash the ships together and fight',sub:'A sea battle: ship against ship, until one side breaks.',cls:'red',fn:()=>{const r=seaFight(f,a);if(r.win){S.ai=S.ai.filter(x=>x!==a);addRenown(8+a.men/8,'victory at sea');S.stats.battleWins++;log(`Victory at sea! ${raidName(a)} is broken. You lost ${r.dead} ${r.dead===1?'man':'men'}.`,'good');toast('Victory at sea!');if(f.chief&&rnd()<.02)rulerDies('fell in the sea battle');}
+  {t:'Lash the ships together and fight',sub:'A sea battle: ship against ship, until one side breaks.',cls:'red',fn:()=>{const r=seaFight(f,a);if(r.win){S.ai=S.ai.filter(x=>x!==a);if(a.kind==='war'&&S.facs[a.fac])S.facs[a.fac].rel=clamp(S.facs[a.fac].rel-12,-100,100);captGain(fleetLeader(f),'victory');addRenown(8+a.men/8,'victory at sea');S.stats.battleWins++;log(`Victory at sea! ${raidName(a)} is broken. You lost ${r.dead} ${r.dead===1?'man':'men'}.`,'good');toast('Victory at sea!');if(f.chief&&rnd()<.02)rulerDies('fell in the sea battle');}
     else{a.men=Math.round(a.men*r.eLeft);log(`Your fleet is beaten at sea and pulls away, losing ${r.dead} men.`,'war');if(f.chief&&rnd()<.1)rulerDies('fell in the sea battle');}S.stats.battles++;sideDirty=true;if(f&&!fleetMen(f)){S.fleets=S.fleets.filter(x=>x!==f);}}},
   {t:'Stand off',sub:'Let them pass. They will continue to their target.',fn:()=>{}}]);}
 function randomEvent(){const d=doy(),ev=[];
  ev.push(()=>showEvent('A skald at your door','A wandering skald asks for a place by your fire. For a gold ring he will make a poem of your deeds that will be sung in every hall.',[{t:'Give him a ring (15 silver)',dis:S.res.silver<15,fn:()=>{S.res.silver-=15;addRenown(10,'a skald\'s praise-poem');}},{t:'Send him on his way'}]));
  if(S.renown>=50)ev.push(()=>{const n=Math.min(ri(3,8),hirdCap()-totalMen('hird'));if(n<=0)return;showEvent('Warriors seek your hall',`${n} young warriors, landless younger sons, have heard your name and come to offer their swords.`,[{t:'Take them in (gifts: '+n*4+' silver)',dis:S.res.silver<n*4,fn:()=>{S.res.silver-=n*4;S.hird+=n;log(`${n} warriors join your hird.`,'good');}},{t:'Turn them away'}]);});
  if(isSailSeason(d))ev.push(()=>showEvent('Traders on the beach','Frisian traders put in on their way north, with grain and Rhineland pots.',[{t:'Buy grain (30 silver for 500 food)',dis:S.res.silver<30,fn:()=>{S.res.silver-=30;S.res.food+=500;}},{t:'Let them pass'}]));
+ if(S.capts.length<MAX_CAPTS&&S.renown>=40)ev.push(()=>{const tr=rollTraits();const nm=pick(NAMES_M)+' '+pick(NICK);showEvent('A sword for hire',`${nm}, a landless warrior who has fought in the Danish wars, comes to your hall with a few followers. He offers to be your man. Those who know him say he is ${TRAITS[tr[0]].n.toLowerCase()} and ${TRAITS[tr[1]].n.toLowerCase()}.`,[{t:'Take his oath (30 silver)',dis:S.res.silver<30,fn:()=>{S.res.silver-=30;const p=nm.split(' ');const c=newCaptain({name:p[0],nick:p.slice(1).join(' '),traits:tr,loy:55});const n=Math.min(3,hirdCap()-totalMen('hird'));if(n>0)S.hird+=n;log(`${captName(c)} becomes your captain${n>0?` and ${n} of his men join your hird`:''}.`,'good');}},{t:'Send him away'}]);});
  ev.push(()=>{const n=Math.round(S.pop*.05);S.pop-=n;showEvent('Sickness','A coughing sickness goes through the farms. The old and the very young die first.',OK);log(`Sickness kills ${n} of your people.`,'war');});
  if(d<240&&d>120)ev.push(()=>{S.flags.badHarvest=year();showEvent('A wet summer','Rain and more rain. The barley is lying flat in the fields and rotting. This harvest will be poor.',OK);});
  if(S.hird>=10)ev.push(()=>showEvent('Outlaws in the hills','A band of outlaws has been stealing cattle from your farms.',[{t:'Send 10 hirdmen to hunt them down',fn:()=>{if(rnd()<.8){S.res.silver+=20;addRenown(4,'hunting down outlaws');}else{S.hird=Math.max(0,S.hird-4);log('The outlaws ambush your men; 4 are killed.','war');}}},{t:'Ignore them',fn:()=>{S.res.food=Math.max(0,S.res.food-100);}}]));
@@ -1329,6 +1496,8 @@ function checkChapter(){for(const f of S.fleets)if(f.at==='aldeigja'&&warShips(f
 /* ================= SUCCESSION ================= */
 function rulerDies(why){if(S.flags.dying)return;S.flags.dying=1;const old=S.ruler,oldName=rulerName(old);const heir=heirOf();let txt;
  for(const f of S.fleets)f.chief=false;
+ if(heir){const hc=S.capts.find(c=>c.son&&c.name===heir.name&&c.born===heir.born);if(hc){for(const f of S.fleets)if(f.capt===hc.id){f.capt=null;f.chief=true;}for(const id in S.sets)if(S.sets[id].stew===hc.id)S.sets[id].stew=0;S.capts=S.capts.filter(c=>c!==hc);}}
+ for(const c of S.capts)if(!c.son)c.loy=clamp(c.loy-15,0,100);
  if(heir){const age=year()-heir.born;S.kids=S.kids.filter(k=>k!==heir);S.ruler={name:heir.name,nick:'',born:heir.born,sex:heir.sex,might:3,wit:3};S.spouse=null;S.generation++;
   const keep=age<14?.55:.78;S.renown=Math.round(S.renown*keep);S.loyalty=age<14?40:55;txt=`${oldName} ${why}. ${heir.name}, ${age<14?'a child of '+age:'aged '+age}, takes the high seat${age<14?'; kinsmen rule as regents until the heir comes of age':''}. Some renown dies with the old lord.`;}
  else{const m=rnd()<.8;S.ruler={name:pick(m?NAMES_M:NAMES_F),nick:'',born:year()-ri(22,34),sex:m?'m':'f',might:3,wit:3};S.spouse=null;S.kids=[];S.generation++;S.renown=Math.round(S.renown*.45);S.loyalty=40;
@@ -1389,12 +1558,12 @@ function sanitizeSave(o){if(!o||typeof o!=='object')throw new Error('not a save'
  n.yardJob=o.yardJob&&own(SHIPS,o.yardJob.type)?{type:o.yardJob.type,left:int(o.yardJob.left,0,999,1),name:str(o.yardJob.name,30,'New ship')}:null;
  n.store=goodsObj(o.store);n.swords=num(o.swords,0,1e5,0);
  const fl=Array.isArray(o.fleets)?o.fleets.slice(0,12):[];const fids=new Set();
- n.fleets=fl.map(f=>{const id=int(f&&f.id,1,1e9,0);if(!id||fids.has(id))return null;fids.add(id);const m=f.men||{};return{id,name:str(f.name,40,'Fleet'),x:num(f.x,0,WKM,0),y:num(f.y,0,HKM,0),path:pathArr(f.path),dest:f.dest&&setId(f.dest.set)?{set:f.dest.set}:null,at:setId(f.at,null),men:{hird:int(m.hird,0,1e4,0),bow:int(m.bow,0,1e4,0),bondi:int(m.bondi,0,1e4,0),berserk:int(m.berserk,0,1e4,0)},cargo:goodsObj(f.cargo,1e4),basis:goodsObj(f.basis,1e4),silver:num(f.silver,0,1e7,0),captives:int(f.captives,0,1e4,0),food:0,chief:bool(f.chief),heading:num(f.heading,-10,10,0),chase:null};}).filter(Boolean);
+ n.fleets=fl.map(f=>{const id=int(f&&f.id,1,1e9,0);if(!id||fids.has(id))return null;fids.add(id);const m=f.men||{};return{id,name:str(f.name,40,'Fleet'),x:num(f.x,0,WKM,0),y:num(f.y,0,HKM,0),path:pathArr(f.path),dest:f.dest&&setId(f.dest.set)?{set:f.dest.set}:null,at:setId(f.at,null),men:{hird:int(m.hird,0,1e4,0),bow:int(m.bow,0,1e4,0),bondi:int(m.bondi,0,1e4,0),berserk:int(m.berserk,0,1e4,0)},cargo:goodsObj(f.cargo,1e4),capt:int(f.capt,0,1e9,0)||null,basis:goodsObj(f.basis,1e4),silver:num(f.silver,0,1e7,0),captives:int(f.captives,0,1e4,0),food:0,chief:bool(f.chief),heading:num(f.heading,-10,10,0),chase:null};}).filter(Boolean);
  n.ships=(Array.isArray(o.ships)?o.ships.slice(0,80):[]).map(s=>{if(!s||!own(SHIPS,s.type))return null;const loc=s.loc==='home'?'home':(fids.has(+s.loc)?+s.loc:'home');return{id:int(s.id,1,1e9,1),type:s.type,name:str(s.name,30,'Ship'),hp:num(s.hp,1,100,100),loc};}).filter(Boolean);
  n.fleets=n.fleets.filter(f=>n.ships.some(s=>s.loc===f.id));let chief=false;for(const f of n.fleets){if(f.chief&&chief)f.chief=false;if(f.chief)chief=true;}
- n.ai=(Array.isArray(o.ai)?o.ai.slice(0,50):[]).map(a=>{if(!a||!['trade','raid'].includes(a.kind))return null;const fac=a.fac==='sea'?'sea':facId(a.fac,'ind');const r={id:int(a.id,1,1e9,1),kind:a.kind,fac,from:setId(a.from,null),to:setId(a.to,null),src:setId(a.src,null),target:setId(a.target,null),x:num(a.x,0,WKM,0),y:num(a.y,0,HKM,0),path:pathArr(a.path),ships:int(a.ships,1,200,1),men:int(a.men,1,5000,10),value:num(a.value,0,1e5,0),good:own(GOODS,a.good)?a.good:'fur',goods:int(a.goods,0,1e4,0),leader:str(a.leader,40,'Ivar'),met:bool(a.met)};
-  if(r.kind==='trade'&&(!r.from||!r.to))return null;if(r.kind==='raid'&&!r.target)return null;return r;}).filter(Boolean);
- n.sets={};for(const s of SETS){const q=(o.sets&&own(o.sets,s.id)&&o.sets[s.id])||{};n.sets[s.id]={own:facId(q.own,s.fac),men:num(q.men,0,1e5,baseMen(s)),wealth:num(q.wealth,0,1,1),rel:num(q.rel,-100,100,0),known:bool(q.known),rumor:bool(q.rumor),raided:num(q.raided,-1e5,1e6,-9999),trib:bool(q.trib),gar:int(q.gar,0,1e4,0),orig:facId(q.orig,s.fac),alert:num(q.alert,-1e5,1e6,-999)};}
+ n.ai=(Array.isArray(o.ai)?o.ai.slice(0,50):[]).map(a=>{if(!a||!['trade','raid','war'].includes(a.kind))return null;const fac=a.fac==='sea'?'sea':facId(a.fac,'ind');const r={id:int(a.id,1,1e9,1),kind:a.kind,fac,from:setId(a.from,null),to:setId(a.to,null),src:setId(a.src,null),target:setId(a.target,null),x:num(a.x,0,WKM,0),y:num(a.y,0,HKM,0),path:pathArr(a.path),ships:int(a.ships,1,200,1),men:int(a.men,1,5000,10),value:num(a.value,0,1e5,0),good:own(GOODS,a.good)?a.good:'fur',goods:int(a.goods,0,1e4,0),leader:str(a.leader,40,'Ivar'),met:bool(a.met)};
+  if(r.kind==='trade'&&(!r.from||!r.to))return null;if(r.kind!=='trade'&&!r.target)return null;return r;}).filter(Boolean);
+ n.sets={};for(const s of SETS){const q=(o.sets&&own(o.sets,s.id)&&o.sets[s.id])||{};n.sets[s.id]={own:facId(q.own,s.fac),men:num(q.men,0,1e5,baseMen(s)),wealth:num(q.wealth,0,1,1),rel:num(q.rel,-100,100,0),known:bool(q.known),rumor:bool(q.rumor),raided:num(q.raided,-1e5,1e6,-9999),trib:bool(q.trib),gar:int(q.gar,0,1e4,0),orig:facId(q.orig,s.fac),alert:num(q.alert,-1e5,1e6,-999),stew:int(q.stew,0,1e9,0),fief:q.fief?1:0,spec:(Array.isArray(q.spec)?q.spec:[]).filter(k=>own(SPEC,k)).filter((k,i,a)=>a.indexOf(k)===i).slice(0,s.size)};}
  n.sets[n.home].own='player';n.sets[n.home].known=true;
  n.facs={};for(const f in FACS){if(f==='player'||f==='ind')continue;const q=(o.facs&&own(o.facs,f)&&o.facs[f])||{};n.facs[f]={rel:num(q.rel,-100,100,INIT_REL[f]||0),griev:int(q.griev,0,50,0),ally:bool(q.ally)};}
  n.mk={};if(o.mk&&typeof o.mk==='object')for(const id of Object.keys(o.mk)){if(!own(SET,id))continue;const m={};for(const g of Object.keys(GOODS))if(o.mk[id]&&own(o.mk[id],g))m[g]=num(o.mk[id][g],-1,2,0);n.mk[id]=m;}
@@ -1405,9 +1574,13 @@ function sanitizeSave(o){if(!o||typeof o!=='object')throw new Error('not a save'
  n.flags={};if(o.flags&&typeof o.flags==='object')for(const k of Object.keys(o.flags).slice(0,300))if(/^[A-Za-z0-9_]{1,30}$/.test(k)&&k!=='dying'&&k!=='chPending'){const v=o.flags[k];n.flags[k]=typeof v==='number'&&isFinite(v)?v:v===true?1:0;}
  n.hist=(Array.isArray(o.hist)?o.hist.slice(0,80):[]).map(h=>({y:int(h&&h.y,500,1300,800),title:str(h&&h.title,100,''),text:str(h&&h.text,800,'')}));
  n.sagaDone=bool(o.sagaDone);n.settings={autoPauseArrive:o.settings?o.settings.autoPauseArrive!==false:true};
- n.nextId=int(o.nextId,1,1e9,1);for(const x of[...n.ships,...n.fleets,...n.ai])n.nextId=Math.max(n.nextId,x.id+1);
+ n.capts=(Array.isArray(o.capts)?o.capts.slice(0,MAX_CAPTS):[]).map(c=>c&&typeof c==='object'?{id:int(c.id,1,1e9,0),name:str(c.name,30,'Ulf'),nick:str(c.nick,30,''),born:num(c.born,500,1300,770),son:bool(c.son),traits:(Array.isArray(c.traits)?c.traits:[]).filter(t=>own(TRAITS,t)).slice(0,3),loy:num(c.loy,0,100,50),xp:num(c.xp,0,1e4,0)}:null).filter(c=>c&&c.id&&c.traits.length);
+ const cids=new Set(n.capts.map(c=>c.id));for(const f of n.fleets)if(f.capt&&(!cids.has(f.capt)||f.chief))f.capt=null;for(const id in n.sets){const q=n.sets[id];if(q.stew&&(!cids.has(q.stew)||q.own!=='player'))q.stew=0;}
+ n.rivals={};if(o.rivals&&typeof o.rivals==='object')for(const f of['rv1','rv2']){const R=own(o.rivals,f)&&o.rivals[f];if(!R||typeof R!=='object')continue;n.rivals[f]={name:str(R.name,30,'Hrafn'),nick:str(R.nick,30,''),born:num(R.born,500,1300,760),seat:setId(R.seat,'alrek'),people:str(R.people,40,'Rivals'),alive:bool(R.alive),friend:R.friend&&S0facOk(R.friend)?R.friend:null,wins:int(R.wins,0,1e4,0)};}
+ n.nextId=int(o.nextId,1,1e9,1);for(const c of n.capts)n.nextId=Math.max(n.nextId,c.id+1);for(const x of[...n.ships,...n.fleets,...n.ai])n.nextId=Math.max(n.nextId,x.id+1);
  return n;}
-function loadState(obj){S=sanitizeSave(obj);fogDirty=true;logDirty=true;sideDirty=true;EVQ.length=0;lastDay=Math.floor(S.t);const h=SG[S.home];centerOn(h.x,h.y,1.2);SEL={t:'set',id:S.home};closeTitle();setPaused(true);updateSpeedBtns();}
+function S0facOk(f){return own(FACS,f)&&f!=='player'&&f!=='ind'&&!String(f).startsWith('rv');}
+function loadState(obj){S=sanitizeSave(obj);if(obj&&!obj.rivals)setupRivals();if(obj&&!obj.capts)newCaptain({loy:62});applyRivals();fogDirty=true;logDirty=true;sideDirty=true;EVQ.length=0;lastDay=Math.floor(S.t);const h=SG[S.home];centerOn(h.x,h.y,1.2);SEL={t:'set',id:S.home};closeTitle();setPaused(true);updateSpeedBtns();}
 function readSlot(k){try{const s=localStorage.getItem(SKEY+k);if(!s)return null;if(s.length>2e6)return null;return JSON.parse(s);}catch(e){return null;}}
 ACT.menu=()=>{let h=`<button class="x" data-act="close">✕</button><h2>Menu</h2><h3>Save slots</h3><table class="t">`;
  for(const k of['auto','1','2','3']){const o=readSlot(k);h+=`<tr><td><b>${k==='auto'?'Autosave':'Slot '+k}</b><div class="small">${o?esc(str(o.label,120,'')):'<i>empty</i>'}</div></td><td>${k!=='auto'?`<button class="sm" data-act="savek" data-arg="${k}">Save here</button>`:''}${o?`<button class="sm alt" data-act="loadk" data-arg="${k}">Load</button>`:''}</td></tr>`;}
