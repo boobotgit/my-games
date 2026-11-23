@@ -30,6 +30,7 @@ main{display:grid;grid-template-columns:1fr 350px;min-height:0}
 #mapwrap{position:relative;min-width:0;min-height:0;background:#1a2a36}
 #map{width:100%;height:100%;display:block;cursor:grab}
 #maphint{position:absolute;left:10px;bottom:8px;font-size:13px;color:#d9ccb0;background:#000a;padding:3px 8px;border-radius:4px;pointer-events:none}
+img.portrait{float:left;border-radius:4px;border:1px solid #6a5636;margin:0 8px 2px 0;background:#2a2018}img.portrait.pr{width:54px;height:63px}img.portrait.sm{width:38px;height:44px}img.portrait.xs{width:22px;height:26px;margin:-3px 5px 0 0;vertical-align:middle;float:none}img.portrait.big{width:84px;height:98px;float:none;margin-right:6px}.kinrow{display:flex;gap:4px;margin:4px 0}.evpic{margin:6px 0}
 #maplegend{position:absolute;left:10px;top:8px;font-size:12.5px;color:#e9dcc0;background:#000a;padding:3px 8px;border-radius:4px;pointer-events:none;max-width:calc(100% - 20px)}#maplegend .lk{color:#cdbb92}
 .townpic{display:block;width:100%;height:auto;border-radius:4px;margin:-2px 0 6px;border:1px solid #8a7550}
 .tstats{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;font-size:13px;margin:2px 0 4px}.tstats b{color:var(--ink)}
@@ -868,7 +869,7 @@ $('log').addEventListener('click',()=>{if(S&&!battleOn)ACT.chron();});
 /* ================= SIDEBAR ================= */
 let sideHTML='',sidePressT=0;
 function renderSide(){if(!sideDirty)return;if(sidePressT&&performance.now()-sidePressT<1200)return;sideDirty=false;const r=rank();const R=S.ruler;let h='';
- h+=`<div class="card"><h3>${esc(rulerName(R))}</h3><div class="between small"><span>${RANKS[r].n} (${RANKS[r].on}) of ${esc(SET[S.home].name)}</span><span>age ${ageOf(R)}</span></div>
+ h+=`<div class="card">${pimg(portraitOf('ruler',R),'pr')}<h3>${esc(rulerName(R))}</h3><div class="between small"><span>${RANKS[r].n} (${RANKS[r].on}) of ${esc(SET[S.home].name)}</span><span>age ${ageOf(R)}</span></div>
  <div class="between small"><span>Renown ★ ${Math.round(S.renown)}</span><span>${r<3?`next: ${RANKS[r+1].ren}${RANKS[r+1].hold?' & '+RANKS[r+1].hold+' holdings':''}`:''}</span></div>
  <div class="small">Hird loyalty</div><div class="bar"><i style="width:${S.loyalty}%;background:${S.loyalty<30?'#9b2a1a':'#3f6b2e'}"></i></div>
  <div class="small">At home: ${S.hird} hird, ${S.bow} bowmen${S.berserk?', '+S.berserk+' berserkers':''} · ${S.ships.filter(s=>s.loc==='home').length} ships drawn up</div>
@@ -950,7 +951,7 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
  if(hallTab==='store'){const g=Object.keys(S.store).filter(k=>S.store[k]>0);h+=`<p class="small">Goods brought home or sent by your holdings. Load them onto a fleet to sell at a far market. Grain, fish, iron and swords go straight to use when unloaded.</p>${g.length?`<table class="t"><tr><th>Goods</th><th>In store</th></tr>${g.map(k=>`<tr><td>${GOODS[k].n}</td><td>${S.store[k]}</td></tr>`).join('')}</table>`:'<p><i>The storehouse is empty.</i></p>'}
   <h3>Thralls</h3><p class="small">${S.thralls} unfree workers labour in your fields (each counts a little more than a free worker at harvest). Freeing thralls was a pious and honoured act.</p><button data-act="freethralls" ${S.thralls<5?'disabled':''}>Free 5 thralls (+3 renown; they join your free folk)</button>
   ${S.bld.market?`<h3>Your trading place</h3><p class="small">Merchants who stop at your beach sell a few staples.</p><table class="t">${['grain','iron','salt'].map(k=>`<tr><td>${GOODS[k].n}</td><td>${homePrice(k).toFixed(1)} silver</td><td><button class="sm" data-act="homebuy" data-arg="${k}:10" ${S.res.silver<homePrice(k)*10?'disabled':''}>Buy 10</button></td></tr>`).join('')}</table><p class="small">Passing traders will also buy your surplus grain, though cheaply.</p><button data-act="homesell" ${S.res.food<700?'disabled':''}>Sell 400 food (${Math.round(homeSellGrain()*20)} silver)</button>`:''}`;}
- if(hallTab==='kin'){const R=S.ruler;const heir=heirOf();h+=`<h3>${esc(rulerName(R))}</h3><p>${RANKS[rank()].n} of ${esc(SET[S.home].name)}, ${ageOf(R)} winters old. Generation ${S.generation} of ${esc(S.kin)}.</p>
+ if(hallTab==='kin'){const R=S.ruler;const heir=heirOf();h+=`<div class="kinrow">${pimg(portraitOf('ruler',R),'big')}${S.spouse?pimg(portraitOf('spouse',S.spouse),'big'):''}</div><h3>${esc(rulerName(R))}</h3><p>${RANKS[rank()].n} of ${esc(SET[S.home].name)}, ${ageOf(R)} winters old. Generation ${S.generation} of ${esc(S.kin)}.</p>
   <p>${S.spouse?`Married to <b>${esc(S.spouse.name)}</b>${S.spouse.from?' of the '+esc(FACS[S.spouse.from]?FACS[S.spouse.from].n:S.spouse.from):''}.`:'Unmarried. A marriage brings heirs and allies. Seek a match at a lord\'s seat (with good relations), or among your own people below.'}</p>
   ${S.kids.length?`<table class="t"><tr><th>Children</th><th>Age</th></tr>${S.kids.map(k=>`<tr><td>${esc(k.name)} (${k.sex==='m'?'son':'daughter'})</td><td>${year()-k.born}</td></tr>`).join('')}</table>`:'<p class="small">No children yet.</p>'}
   <p class="small">Heir: <b>${heir?esc(heir.name)+(year()-heir.born<14?' (a child: there would be a regency)':''):'none; a kinsman would claim the hall'}</b></p>
@@ -1130,7 +1131,7 @@ function evCaptainDemand(c){S.flags.captEv=0;if(!S.capts.includes(c))return;cons
  showEvent(`${captName(c)} is restless`,`${captName(c)} stands up in your hall and says that a lord who keeps his captains poor will soon have none. He wants a greater share. ${threat}`,[
   {t:'Give him a rich gift (60 silver)',sub:'+35 loyalty.',dis:S.res.silver<60,fn:()=>{S.res.silver-=60;c.loy=clamp(c.loy+35,0,100);log(`You give ${captName(c)} a rich gift. He is satisfied, for now.`);}},
   {t:'Grant him a holding of his own',sub:hs.length?`He becomes jarl of ${SET[hold&&hs.includes(hold)?hold:hs[0]].name} under you. It yields half as much, but he will be loyal for years.`:'You hold no land to grant.',dis:!hs.length,fn:()=>{const id=hold&&hs.includes(hold)?hold:hs[0];const st=S.sets[id];st.stew=c.id;st.fief=1;c.loy=95;for(const f of S.fleets)if(f.capt===c.id)f.capt=null;log(`You grant ${SET[id].name} to ${captName(c)} as his jarldom.`,'hist');}},
-  {t:'Refuse him',cls:'red',sub:threat,fn:()=>captBetrays(c)}]);}
+  {t:'Refuse him',cls:'red',sub:threat,fn:()=>captBetrays(c)}],`<div class="evpic">${pimg(portraitOf('capt',c),'big')}</div>`);}
 function captBetrays(c){const hold=captHold(c),fl=captFleet(c);
  if(has(c,'ambitious')&&hold){const st=S.sets[hold];st.own='ind';st.rel=-60;st.men=Math.round(st.gar*1.2+baseMen(SET[hold])*.5);st.gar=0;st.stew=0;st.trib=false;S.capts=S.capts.filter(x=>x!==c);log(`${captName(c)} declares himself lord of ${SET[hold].name} and shuts the gates against you!`,'war');toast(`${captName(c)} has rebelled at ${SET[hold].name}!`);addRenown(-15,'a captain\'s rebellion');return;}
  if(has(c,'ambitious')&&fl){const men=fleetMen(fl);for(const sh of fleetShips(fl))S.ships=S.ships.filter(x=>x!==sh);S.fleets=S.fleets.filter(x=>x!==fl);S.capts=S.capts.filter(x=>x!==c);log(`${captName(c)} turns his ships away. He sails off with ${men} of your men to become a sea-king.`,'war');toast(`${captName(c)} has deserted with his fleet!`);addRenown(-15,'a captain\'s desertion');
@@ -1143,7 +1144,7 @@ ACT.captsteward=a=>{const[cid,id]=a.split(':');const c=captById(+cid);const st=S
 ACT.captrecall=id=>{const st=S.sets[id];if(!st||st.fief)return;const c=captById(st.stew);st.stew=0;if(c)log(`${captName(c)} returns to your hall from ${SET[id].name}.`);rerenderHall();};
 ACT.stewpick=id=>{const free=S.capts.filter(captFree);showModal(`<h2>Steward for ${esc(SET[id].name)}</h2><p class="small">A steward rules the place in your name: +15% yield and +25% defence (more with the right traits). An ambitious steward with low loyalty may keep the place for himself.</p>${free.length?free.map(c=>`<button class="choice" data-act="captsteward" data-arg="${c.id}:${id}">${esc(captName(c))}<small>${c.traits.map(t=>esc(TRAITS[t].n)).join(', ')} · loyalty ${Math.round(c.loy)}</small></button>`).join(''):'<p><i>No captain is free. Captains who lead fleets or hold other places cannot go.</i></p>'}<div class="row"><button class="alt" data-act="hall" data-arg="hold">Back</button></div>`);};
 function captainsHTML(){let h=`<h3>Captains (${S.capts.length}/${MAX_CAPTS})</h3><p class="small">Your sons (from age 15) and sworn men. Each fleet you send out needs a leader: you or a captain. A fleet with no captain fights at −10 morale. Captains gain experience in battle, and their traits shape how their men fight.</p>`;
- if(S.capts.length)h+=`<table class="t"><tr><th>Captain</th><th>Traits</th><th>Loyalty</th><th></th></tr>${S.capts.map(c=>`<tr><td><b>${esc(captName(c))}</b>${c.son?' <span class="pill">son</span>':''}<div class="small">age ${year()-c.born} · ${'★'.repeat(captLvl(c))} · ${esc(captWhere(c))}</div></td><td class="small">${c.traits.map(t=>`<b>${esc(TRAITS[t].n)}</b>: ${esc(TRAITS[t].d)}`).join('<br>')}</td><td><div class="bar" style="width:70px"><i style="width:${c.loy}%;background:${c.loy<30?'#9b2a1a':'#3f6b2e'}"></i></div><span class="small">${Math.round(c.loy)}</span></td><td><button class="sm" data-act="captgift" data-arg="${c.id}" ${S.res.silver<25?'disabled':''}>Gift (25)</button></td></tr>`).join('')}</table>`;
+ if(S.capts.length)h+=`<table class="t"><tr><th>Captain</th><th>Traits</th><th>Loyalty</th><th></th></tr>${S.capts.map(c=>`<tr><td>${pimg(portraitOf('capt',c),'sm')}<b>${esc(captName(c))}</b>${c.son?' <span class="pill">son</span>':''}<div class="small">age ${year()-c.born} · ${'★'.repeat(captLvl(c))} · ${esc(captWhere(c))}</div></td><td class="small">${c.traits.map(t=>`<b>${esc(TRAITS[t].n)}</b>: ${esc(TRAITS[t].d)}`).join('<br>')}</td><td><div class="bar" style="width:70px"><i style="width:${c.loy}%;background:${c.loy<30?'#9b2a1a':'#3f6b2e'}"></i></div><span class="small">${Math.round(c.loy)}</span></td><td><button class="sm" data-act="captgift" data-arg="${c.id}" ${S.res.silver<25?'disabled':''}>Gift (25)</button></td></tr>`).join('')}</table>`;
  else h+='<p><i>You have no captains. Only you can lead a fleet well.</i></p>';
  h+=`<button data-act="captseek" ${S.capts.length>=MAX_CAPTS||S.res.silver<50?'disabled':''}>Take a sworn man into your service (50 silver)</button>`;return h;}
 
@@ -1181,7 +1182,7 @@ function rivalSeatCheck(f,byPlayer){const R=S.rivals&&S.rivals[f];if(!R||!R.aliv
 function evRivalFate(f){const R=S.rivals[f];showEvent(`Jarl ${R.name} is in your hands`,`Your men drag Jarl ${R.name} ${R.nick} out of the ruins of his hall. His people are scattered and his ships are yours to burn. He stands before you bloodied but unbowed.`,[
  {t:'Put him to death',sub:'+20 renown. His kin and friends will remember.',cls:'red',fn:()=>{addRenown(20,`the death of Jarl ${R.name}`);if(R.friend&&S.facs[R.friend])S.facs[R.friend].griev+=1;log(`Jarl ${R.name} is put to death.`,'hist');}},
  {t:'Send him into exile',sub:'+8 renown. He sails away with a handful of men.',fn:()=>{addRenown(8,`driving out Jarl ${R.name}`);log(`Jarl ${R.name} sails into exile.`,'hist');}},
- {t:'Take his oath',sub:S.capts.length<MAX_CAPTS?'He becomes one of your captains: ambitious, and not to be trusted far.':'You have too many captains already.',dis:S.capts.length>=MAX_CAPTS,cls:'gold',fn:()=>{const c=newCaptain({name:R.name,nick:R.nick,born:R.born,traits:['ambitious',pick(['bold','fierce','seafarer','shrewd','cruel'])],loy:38,xp:6});addRenown(12,`Jarl ${R.name} bends the knee`);log(`Jarl ${R.name} kneels and swears to be your man.`,'hist');}}]);}
+ {t:'Take his oath',sub:S.capts.length<MAX_CAPTS?'He becomes one of your captains: ambitious, and not to be trusted far.':'You have too many captains already.',dis:S.capts.length>=MAX_CAPTS,cls:'gold',fn:()=>{const c=newCaptain({name:R.name,nick:R.nick,born:R.born,traits:['ambitious',pick(['bold','fierce','seafarer','shrewd','cruel'])],loy:38,xp:6});addRenown(12,`Jarl ${R.name} bends the knee`);log(`Jarl ${R.name} kneels and swears to be your man.`,'hist');}}],`<div class="evpic">${pimg(portraitOf('rival',Object.assign({col:FACS[f].c},R)),'big')}</div>`);}
 function rivalAnger(f){const R=S.rivals&&S.rivals[f];if(!R||!R.friend||!S.facs[R.friend])return;S.facs[R.friend].rel=clamp(S.facs[R.friend].rel-8,-100,100);if(rnd()<.5){S.facs[R.friend].griev++;log(`The ${FACS[R.friend].n} take up the cause of their kinsman Jarl ${R.name}.`,'war');}}
 function rivalYearly(){const r=rank();for(const f of rivalIds()){const R=S.rivals[f],st=S.facs[f];
   if(r>=1&&!st.ally)st.rel=clamp(st.rel-2-r*2,-100,100);
@@ -1205,7 +1206,7 @@ function warArrive(a){const id=a.target,st=S.sets[id];if(!st||st.own===a.fac)ret
  if(A>D){st.own=a.fac;st.men=Math.round(a.men*.65);st.wealth*=.7;st.trib=false;if(a.fac.startsWith('rv'))S.rivals[a.fac].wins++;if(known)log(`${raidName(a)} take ${SET[id].name}.`,'war');if(prev.startsWith('rv'))rivalSeatCheck(prev,false);}
  else{st.men=Math.max(4,Math.round(st.men-a.men*.45));const back=Math.round(a.men*.4);if(a.src&&S.sets[a.src]&&S.sets[a.src].own===a.fac)S.sets[a.src].men+=back;if(known)log(`${raidName(a)} attack ${SET[id].name} but are thrown back.`,'');}}
 function coalitionHelp(f){if(!S.flags.coalition||!f||!f.startsWith||!f.startsWith('rv'))return 0;const o=rivalIds().find(x=>x!==f);return o?Math.round(facPower(o)*.25):0;}
-function rivalsCard(){const ids=rivalIds();if(!ids.length)return'';return`<div class="card"><h3>Rival jarls</h3>${ids.map(f=>{const R=S.rivals[f];const pl=rivalPlaces(f);return`<div class="fleetrow" data-act="selset" data-arg="${R.seat}"><span><b style="color:${FACS[f].c}">■</b> Jarl ${esc(R.name)} ${esc(R.nick)}</span><span class="small">${pl.length} ${pl.length===1?'hall':'halls'} · ${facPower(f)} men · ${relWord(S.facs[f].rel)}${R.friend?` · friend of the ${esc(FACS[R.friend].n)}`:''}</span></div>`;}).join('')}${S.flags.coalition?'<div class="small" style="color:#9b2a1a">Sworn together against you.</div>':''}</div>`;}
+function rivalsCard(){const ids=rivalIds();if(!ids.length)return'';return`<div class="card"><h3>Rival jarls</h3>${ids.map(f=>{const R=S.rivals[f];const pl=rivalPlaces(f);return`<div class="fleetrow" data-act="selset" data-arg="${R.seat}"><span>${pimg(portraitOf('rival',Object.assign({col:FACS[f].c},R)),'xs')}<b style="color:${FACS[f].c}">■</b> Jarl ${esc(R.name)} ${esc(R.nick)}</span><span class="small">${pl.length} ${pl.length===1?'hall':'halls'} · ${facPower(f)} men · ${relWord(S.facs[f].rel)}${R.friend?` · friend of the ${esc(FACS[R.friend].n)}`:''}</span></div>`;}).join('')}${S.flags.coalition?'<div class="small" style="color:#9b2a1a">Sworn together against you.</div>':''}</div>`;}
 
 /* ================= TOWN PICTURES ================= */
 // A small painted scene for each place, drawn from what we know about it:
@@ -1269,6 +1270,101 @@ function townStats(id){const s=SET[id],st=S.sets[id];const home=id===S.home;cons
  const rows=home?[['Folk',`${Math.round(S.pop)} free, ${S.thralls} thralls`],['Warriors',`${S.hird} hird, ${S.bow} bowmen at home`],['Longhouse',`level ${S.bld.hall}`],['Walls',S.bld.wall?`palisade level ${S.bld.wall}`:'none'],['Market',S.bld.market?'trading place':'none'],['Ships home',String(S.ships.filter(x=>x.loc==='home').length)]]
   :[['Size',`${SZ[s.size]} (${s.size} of 3)`],['Fighting men',st.own==='player'?(st.trib?`about ${Math.round(st.men/5)*5} (their own)`:`${st.gar} of your hird`):`about ${Math.round(st.men/5)*5}`],['Wealth',st.wealth>.8?'rich':st.wealth>.45?'recovering':'stripped bare'],['Walls',wall?(wall>1?'strong walls':'palisade'):'none'],['Market',s.kind==='market'?'<b style="color:#8a5a00">yes, trade here</b>':'no'],['Produces',esc(goods)]];
  return`<div class="tstats">${rows.map(([k,v])=>`<span>${k}: <b>${k==='Market'?v:esc(v)}</b></span>`).join('')}</div>`;}
+
+/* ================= SOLDIER FIGURES ================= */
+// Each man on the battlefield is a tiny top-down figure, drawn once per unit type and
+// side into a small sprite and then stamped. "Up" in the sprite is the way the squad faces.
+const SPRITES={};
+function soldierSprite(type,mine){const key=type+(mine?'m':'e');if(SPRITES[key])return SPRITES[key];
+ const Z=40;const c=document.createElement('canvas');c.width=c.height=Z;const g=c.getContext('2d');g.translate(Z/2,Z/2+(type==='frank'?2:0));g.scale(Z/(type==='frank'?30:17),Z/(type==='frank'?30:17));
+ const shieldA=mine?'#d9b44a':'#8c2e22',shieldB=mine?'#9b3520':'#2f4f7a';
+ const tunic={hird:mine?'#7a2e22':'#3c4a6a',bondi:'#8a7a58',bow:'#5a6a3a',berserk:'#5a3c22',levy:'#7a7464',guard:'#3a4a7a',archer:'#4a6a4a',frank:'#8a7a3a'}[type]||'#777';
+ const helm=['hird','guard','frank'].includes(type)?'#9aa0a8':type==='berserk'?'#4a3018':type==='bow'||type==='archer'?'#4f5f30':'#6a4a2a';
+ // shadow
+ g.fillStyle='rgba(0,0,0,.28)';g.beginPath();g.ellipse(.8,1.2,type==='frank'?6:6.5,type==='frank'?11:5,0,0,6.28);g.fill();
+ if(type==='frank'){// horse seen from above
+  g.fillStyle='#5a3a22';g.beginPath();g.ellipse(0,1,4.2,9.5,0,0,6.28);g.fill();g.beginPath();g.ellipse(0,-9,2,3.4,0,0,6.28);g.fill();g.fillStyle='#2a1a10';g.fillRect(-.6,8,1.2,3.5);
+  g.strokeStyle='#d8c070';g.lineWidth=.9;g.beginPath();g.moveTo(-3.6,-2);g.lineTo(3.6,-2);g.stroke();}
+ // body / shoulders
+ g.fillStyle='#1a120a';g.beginPath();g.ellipse(0,0,6,3.6,0,0,6.28);g.fill();g.fillStyle=tunic;g.beginPath();g.ellipse(0,0,5.3,3,0,0,6.28);g.fill();
+ if(type==='hird'||type==='guard'||type==='frank'){g.fillStyle='rgba(190,195,205,.55)';g.beginPath();g.ellipse(0,0,5.3,3,0,Math.PI,0);g.fill();}
+ // weapons (forward = -y)
+ const spear=(x)=>{g.strokeStyle='#5a3e22';g.lineWidth=.9;g.beginPath();g.moveTo(x,5);g.lineTo(x,-11);g.stroke();g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(x,-13.5);g.lineTo(x-1,-10.5);g.lineTo(x+1,-10.5);g.fill();};
+ const axe=(x,y)=>{g.strokeStyle='#5a3e22';g.lineWidth=1;g.beginPath();g.moveTo(x,y+4);g.lineTo(x,y-6);g.stroke();g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(x,y-6);g.quadraticCurveTo(x+4,y-6.5,x+3.6,y-2.5);g.lineTo(x,y-3.6);g.fill();};
+ if(['bondi','levy','guard'].includes(type))spear(4.2);
+ if(type==='hird')axe(4.4,0);
+ if(type==='frank'){g.strokeStyle='#6a4a2a';g.lineWidth=1;g.beginPath();g.moveTo(3,4);g.lineTo(3,-16);g.stroke();g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(3,-18);g.lineTo(2,-15);g.lineTo(4,-15);g.fill();}
+ if(type==='berserk'){axe(4.6,0);axe(-4.6,0);}
+ if(type==='bow'||type==='archer'){g.strokeStyle='#7a5a2a';g.lineWidth=1.1;g.beginPath();g.arc(0,-1,6.2,Math.PI*1.18,Math.PI*1.82);g.stroke();g.strokeStyle='rgba(240,230,200,.8)';g.lineWidth=.5;g.beginPath();g.moveTo(-3.6,-5.9);g.lineTo(3.6,-5.9);g.stroke();g.strokeStyle='#d8c8a0';g.lineWidth=.6;g.beginPath();g.moveTo(0,-1);g.lineTo(0,-9);g.stroke();}
+ // round shield on the left arm, held forward
+ if(!['bow','archer','berserk'].includes(type)){g.fillStyle='#1a120a';g.beginPath();g.arc(-3.6,-2.6,4.4,0,6.28);g.fill();g.fillStyle=shieldA;g.beginPath();g.arc(-3.6,-2.6,3.8,0,6.28);g.fill();g.fillStyle=shieldB;g.beginPath();g.moveTo(-3.6,-2.6);g.arc(-3.6,-2.6,3.8,0,Math.PI/2);g.closePath();g.fill();g.beginPath();g.moveTo(-3.6,-2.6);g.arc(-3.6,-2.6,3.8,Math.PI,Math.PI*1.5);g.closePath();g.fill();g.fillStyle='#b8b8b0';g.beginPath();g.arc(-3.6,-2.6,1.1,0,6.28);g.fill();}
+ // head and helmet
+ g.fillStyle='#1a120a';g.beginPath();g.arc(0,-.3,2.9,0,6.28);g.fill();g.fillStyle=helm;g.beginPath();g.arc(0,-.3,2.4,0,6.28);g.fill();
+ if(helm==='#9aa0a8'){g.strokeStyle='#5a5f66';g.lineWidth=.5;g.beginPath();g.moveTo(-2.4,-.3);g.lineTo(2.4,-.3);g.moveTo(0,-2.7);g.lineTo(0,2.1);g.stroke();}
+ if(type==='berserk'){g.fillStyle='#6a4a2a';g.beginPath();g.arc(-2.2,.6,1,0,6.28);g.arc(2.2,.6,1,0,6.28);g.fill();}
+ SPRITES[key]=c;return c;}
+
+/* ================= PORTRAITS ================= */
+// Painted head-and-shoulders portraits for your ruler, kin, captains and rival jarls.
+// Grounded in the period: no horned helmets; spangenhelm or spectacle helms, tortoise brooches, arm-rings.
+const PORTRAITS={};
+function portrait(o){const key=JSON.stringify(o);if(PORTRAITS[key])return PORTRAITS[key];const url=drawPortrait(o);PORTRAITS[key]=url;return url;}
+function portraitOf(kind,p){if(kind==='ruler')return portrait({seed:'r'+p.name+p.born,sex:p.sex,age:year()-p.born,rank:rank(),col:'#d4a73a',traits:[]});
+ if(kind==='spouse')return portrait({seed:'s'+p.name,sex:S.ruler.sex==='m'?'f':'m',age:Math.max(18,year()-S.ruler.born-3),rank:0,col:'#8a6a4a',traits:[]});
+ if(kind==='capt')return portrait({seed:'c'+p.id+p.name,sex:'m',age:year()-p.born,rank:0,col:'#6a4a32',traits:p.traits,helm:p.traits.includes('bold')||p.traits.includes('fierce')});
+ if(kind==='rival')return portrait({seed:'v'+p.name+p.born,sex:'m',age:year()-p.born,rank:2,col:p.col||'#555',traits:['fierce'],helm:false});
+ return portrait({seed:'x'+(p.name||''),sex:p.sex||'m',age:p.age||30,rank:0,col:'#666',traits:[]});}
+function pimg(url,cls){return`<img class="portrait ${cls||''}" alt="" src="${url}">`;}
+function drawPortrait(o){const W=96,H=112,K=2;const c=document.createElement('canvas');c.width=W*K;c.height=H*K;const g=c.getContext('2d');g.scale(K,K);const R=seeded(strHash(o.seed));const pick2=a=>a[Math.floor(R()*a.length)];
+ const male=o.sex!=='f',age=o.age||30;
+ // background
+ const bg=g.createRadialGradient(48,40,8,48,56,80);bg.addColorStop(0,shade(o.col,.35));bg.addColorStop(1,shade(o.col,-.55));g.fillStyle=bg;g.fillRect(0,0,W,H);
+ const skin=pick2(['#f1d2b8','#e9c4a4','#dfb393','#f5dcc8','#e2bc9a']);
+ let hair=pick2(['#e2c27a','#c99a4a','#a8642e','#7a4a24','#4a3020','#d8b070','#b0542a']);if(age>58)hair='#d8d4cc';else if(age>46)hair=mix(hair,'#c8c4bc',.5);
+ const cloak=pick2(['#7a2e22','#2f4a6a','#3e5a32','#6a5a3a','#5a2a4a','#8a6a3a']);
+ // long hair behind the head
+ g.fillStyle=hair;if(!male){g.beginPath();g.ellipse(48,62,25,34,0,0,6.28);g.fill();}else if(R()<.55&&!o.helm){g.beginPath();g.ellipse(48,56,22,26,0,0,6.28);g.fill();}
+ // shoulders, cloak, tunic
+ g.fillStyle=cloak;g.beginPath();g.moveTo(4,H);g.quadraticCurveTo(10,80,30,78);g.lineTo(66,78);g.quadraticCurveTo(86,80,92,H);g.closePath();g.fill();
+ g.fillStyle=shade(cloak,-.25);g.beginPath();g.moveTo(30,78);g.lineTo(48,H);g.lineTo(66,78);g.closePath();g.fill();
+ const tun=pick2(['#c8b48a','#9a8a6a','#b0a080','#7a8a9a']);g.fillStyle=tun;g.beginPath();g.moveTo(36,79);g.lineTo(48,H);g.lineTo(60,79);g.closePath();g.fill();
+ // neck
+ g.fillStyle=shade(skin,-.08);g.fillRect(41,64,14,16);
+ if(male){g.fillStyle='#d8b040';g.beginPath();g.arc(70,86,4,0,6.28);g.fill();g.strokeStyle='#8a6a20';g.lineWidth=1;g.beginPath();g.moveTo(66,82);g.lineTo(76,92);g.stroke();}
+ else{for(const x of[36,60]){g.fillStyle='#c8a040';g.beginPath();g.ellipse(x,90,5.5,4,0,0,6.28);g.fill();g.strokeStyle='#7a5a18';g.lineWidth=.8;g.stroke();}g.strokeStyle='#2a6a8a';g.lineWidth=1.4;g.setLineDash([1.5,1.5]);g.beginPath();g.moveTo(36,93);g.quadraticCurveTo(48,100,60,93);g.stroke();g.setLineDash([]);}
+ // head
+ g.fillStyle=skin;g.beginPath();g.ellipse(48,48,17,21,0,0,6.28);g.fill();
+ g.fillStyle=shade(skin,-.06);g.beginPath();g.ellipse(31.5,50,2.6,4.5,0,0,6.28);g.ellipse(64.5,50,2.6,4.5,0,0,6.28);g.fill();
+ // eyes, brows, nose, mouth
+ const eye=pick2(['#3a6a9a','#4a7a6a','#5a5a6a','#6a4a2a','#3a5a8a']);
+ for(const x of[41,55]){g.fillStyle='#f4efe6';g.beginPath();g.ellipse(x,47,3.4,2,0,0,6.28);g.fill();g.fillStyle=eye;g.beginPath();g.arc(x,47,1.5,0,6.28);g.fill();g.fillStyle='#111';g.beginPath();g.arc(x,47,.7,0,6.28);g.fill();}
+ g.strokeStyle=shade(hair,-.35);g.lineWidth=male?2:1.3;g.lineCap='round';const bro=male?(R()-.5)*2:0;g.beginPath();g.moveTo(37,42.5+bro);g.lineTo(45,41.5);g.moveTo(51,41.5);g.lineTo(59,42.5+bro);g.stroke();
+ g.strokeStyle=shade(skin,-.3);g.lineWidth=1.2;g.beginPath();g.moveTo(48,47);g.lineTo(46.5,56);g.lineTo(49.5,56.5);g.stroke();
+ g.strokeStyle='#8a4a3a';g.lineWidth=1.3;g.beginPath();g.moveTo(43.5,61);g.quadraticCurveTo(48,62.5,52.5,61);g.stroke();
+ if(age>44){g.strokeStyle=shade(skin,-.22);g.lineWidth=.7;g.beginPath();g.moveTo(41,36);g.lineTo(55,36);g.moveTo(42,38.5);g.lineTo(54,38.5);g.moveTo(34,49);g.lineTo(36,50);g.moveTo(62,49);g.lineTo(60,50);g.stroke();}
+ if(o.traits&&(o.traits.includes('fierce')||o.traits.includes('cruel')||o.traits.includes('bold'))&&R()<.7){g.strokeStyle='#a0504a';g.lineWidth=1.2;g.beginPath();g.moveTo(54,43);g.lineTo(60,55);g.stroke();}
+ // beard and moustache
+ if(male&&age>=17){g.fillStyle=hair;const style=pick2(['long','braid','short','fork','long']);g.beginPath();
+  if(style==='short'){g.moveTo(32,50);g.quadraticCurveTo(34,70,48,71);g.quadraticCurveTo(62,70,64,50);g.quadraticCurveTo(60,62,48,64);g.quadraticCurveTo(36,62,32,50);}
+  else if(style==='fork'){g.moveTo(32,50);g.quadraticCurveTo(33,74,42,82);g.lineTo(47,70);g.lineTo(49,70);g.lineTo(54,82);g.quadraticCurveTo(63,74,64,50);g.quadraticCurveTo(60,63,48,65);g.quadraticCurveTo(36,63,32,50);}
+  else{g.moveTo(32,50);g.quadraticCurveTo(32,80,48,86);g.quadraticCurveTo(64,80,64,50);g.quadraticCurveTo(60,63,48,65);g.quadraticCurveTo(36,63,32,50);}
+  g.fill();if(style==='braid'){g.strokeStyle='#d8b040';g.lineWidth=2;g.beginPath();g.moveTo(45,80);g.lineTo(51,80);g.stroke();}
+  g.beginPath();g.moveTo(40,60);g.quadraticCurveTo(48,55,56,60);g.quadraticCurveTo(48,58.5,40,60);g.fill();g.strokeStyle=hair;g.lineWidth=2.4;g.beginPath();g.moveTo(41,59.5);g.quadraticCurveTo(48,56,55,59.5);g.stroke();}
+ // hair on top, or a helmet
+ if(o.helm){g.fillStyle='#8a9098';g.beginPath();g.ellipse(48,36,19,17,0,Math.PI,0);g.lineTo(67,40);g.lineTo(29,40);g.closePath();g.fill();g.fillStyle='#6a7078';g.fillRect(29,36,38,4.5);
+  g.strokeStyle='#5a6068';g.lineWidth=1.6;g.beginPath();g.moveTo(48,19);g.lineTo(48,36);g.stroke();
+  g.strokeStyle='#7a8088';g.lineWidth=2;g.beginPath();g.ellipse(41,46.5,5,4,0,Math.PI*1.05,Math.PI*1.95);g.ellipse(55,46.5,5,4,0,Math.PI*1.05,Math.PI*1.95);g.moveTo(48,40);g.lineTo(48,52);g.stroke();}
+ else if(male){g.fillStyle=hair;g.beginPath();g.ellipse(48,36,18.5,14,0,Math.PI,0);g.quadraticCurveTo(62,32,48,31);g.quadraticCurveTo(36,32,29.5,40);g.closePath();g.fill();if(R()<.4){g.fillStyle=shade(skin,-.04);g.beginPath();g.ellipse(48,33,9,5,0,0,6.28);g.fill();}}
+ else{g.fillStyle=hair;g.beginPath();g.ellipse(48,35,19,15,0,Math.PI,0);g.quadraticCurveTo(40,36,30,42);g.closePath();g.fill();g.beginPath();g.ellipse(48,35,19,15,0,Math.PI,0);g.quadraticCurveTo(56,36,66,42);g.closePath();g.fill();
+  if(age>35){g.fillStyle=pick2(['#e8e0d0','#c8b890','#8a6a4a']);g.beginPath();g.ellipse(48,32,21,15,0,Math.PI*1.02,Math.PI*1.98);g.lineTo(69,52);g.lineTo(27,52);g.closePath();g.fill();}
+  else{g.strokeStyle=shade(hair,-.2);g.lineWidth=5;g.lineCap='round';for(const x of[31,65]){g.beginPath();g.moveTo(x,46);g.lineTo(x+(x<48?-2:2),88);g.stroke();}}}
+ // circlet of rank
+ if(o.rank>=2&&!o.helm){g.strokeStyle='#e0b840';g.lineWidth=2.2;g.beginPath();g.ellipse(48,35,18.5,4,0,Math.PI*.05,Math.PI*.95,true);g.stroke();if(o.rank>=3){g.fillStyle='#e0b840';for(const x of[38,48,58]){g.beginPath();g.moveTo(x-2.5,32);g.lineTo(x,26);g.lineTo(x+2.5,32);g.fill();}}}
+ // frame
+ g.strokeStyle='rgba(0,0,0,.6)';g.lineWidth=2;g.strokeRect(1,1,W-2,H-2);
+ return c.toDataURL('image/png');}
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);let r=n>>16,gg=(n>>8)&255,b=n&255;const f=v=>Math.round(clamp(amt>=0?v+(255-v)*amt:v*(1+amt),0,255));return'#'+[f(r),f(gg),f(b)].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function mix(a,b,t){const A=parseInt(a.slice(1),16),Bn=parseInt(b.slice(1),16);const ch=s=>[(s>>16)&255,(s>>8)&255,s&255];const x=ch(A),y=ch(Bn);return'#'+x.map((v,i)=>Math.round(v+(y[i]-v)*t).toString(16).padStart(2,'0')).join('');}
 
 /* ================= BATTLE ENGINE ================= */
 let battleOn=false,B=null;const BW=1000,BH=600,SHIPX=92,VC={x:700,y:300};
@@ -1428,7 +1524,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
   for(let bi=0;bi<B.blds.length;bi++){const b=B.blds[bi];if(b.left<=0)continue;if(Math.hypot(b.x-s.x,b.y+b.h/2-s.y)<sqR(s)+38){const rate=Math.min(b.left,s.men*.0035*dt*(b.t==='hall'?.6:1));if(rate<=0)continue;b.left-=rate;const L=b.loot;
     B.taken.silver+=L.silver*rate;B.taken.food+=L.food*rate;B.taken.captives+=L.captives*rate;for(const g in L.goods)B.taken.goods[g]=(B.taken.goods[g]||0)+L.goods[g]*rate;if(!B.auto&&rnd()<dt*2)B.fx.push({sp:1,x:b.x+(rnd()-.5)*b.w,y:b.y,t:.8});break;}}}
  // apply damage
- for(const s of sq){if(s.gone)continue;if(s.hurt>0){const c=Math.min(s.men,s.hurt);s.men-=c;s.dmgTaken+=c;s.hurt=0;s.morale-=c/s.max*125;}
+ for(const s of sq){if(s.gone)continue;if(s.hurt>0){const c=Math.min(s.men,s.hurt);s.men-=c;s.dmgTaken+=c;s.hurt=0;if(!B.auto){B.fallen=B.fallen||[];s.lostAcc=(s.lostAcc||0)+c;while(s.lostAcc>=1){s.lostAcc--;if(B.fallen.length<600)B.fallen.push({x:s.x+(rnd()-.5)*sqR(s)*1.5,y:s.y+(rnd()-.5)*sqR(s)*1.5,a:rnd()*6.28,m:s.side===B.ps});}}s.morale-=c/s.max*125;}
   if(s.men<.6){s.gone=true;s.men=0;continue;}
   if(!s.cont.length&&!s.rout)s.morale=Math.min(s.base,s.morale+dt*3);
   if(!s.rout&&s.morale<=0&&s.type!=='berserk'){s.rout=true;s.wall=false;for(const o of sq)if(!o.gone&&o!==s&&o.side===s.side&&Math.hypot(o.x-s.x,o.y-s.y)<130)o.morale-=10;if(!B.auto&&s.side===B.ps)bmsg(`${UT[s.type].n} break and run!`);}
@@ -1580,13 +1676,16 @@ function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bc
   if(b.t==='hall'||b.t==='shrine'){g.strokeStyle='#2a1a0c';g.lineWidth=2;g.beginPath();g.moveTo(b.x-6,b.y-b.h/2-16);g.lineTo(b.x,b.y-b.h/2-10);g.lineTo(b.x+6,b.y-b.h/2-16);g.stroke();}
   if(burnt>.15){g.fillStyle=`rgba(60,55,50,${burnt*.5})`;for(let i=0;i<3;i++){g.beginPath();g.arc(b.x-10+i*10+Math.sin(B.t*2+i)*4,b.y-b.h/2-20-i*12-(B.t*8%20),8+i*3,0,6.28);g.fill();}}
   g.fillStyle='rgba(0,0,0,.5)';g.fillRect(b.x-b.w/2,b.y+b.h/2+2,b.w,3);g.fillStyle='#e0c060';g.fillRect(b.x-b.w/2,b.y+b.h/2+2,b.w*b.left,3);}
+ // the fallen
+ if(B.fallen)for(const f of B.fallen){g.save();g.translate(f.x,f.y);g.rotate(f.a);g.fillStyle='rgba(110,20,14,.35)';g.beginPath();g.ellipse(1,1,4,2.4,0,0,6.28);g.fill();g.fillStyle=f.m?'#6a4a2a':'#3a3a4a';g.beginPath();g.ellipse(0,0,3.4,1.6,0,0,6.28);g.fill();g.fillStyle='#d8b898';g.beginPath();g.arc(3.4,0,1.2,0,6.28);g.fill();g.restore();}
  // squads
- for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;const U=UT[s.type];const n=Math.max(1,Math.round(s.men));const cols=Math.ceil(Math.sqrt(n*1.6));const sp=5.6;const face=s.face??(s.side==='A'?0:Math.PI);
+ for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;const U=UT[s.type];const n=Math.max(1,Math.round(s.men));const cols=Math.ceil(Math.sqrt(n*1.6));const sp=6.6;const face=s.face??(s.side==='A'?0:Math.PI);
   g.save();g.translate(s.x,s.y);g.globalAlpha=s.rout?.5:1;
   if(s.id===B.sel){g.strokeStyle='#ffd36a';g.lineWidth=2;g.beginPath();g.arc(0,0,sqR(s)+5,0,6.28);g.stroke();}
   g.fillStyle=mine?'rgba(240,198,74,.18)':'rgba(200,60,40,.16)';g.beginPath();g.arc(0,0,sqR(s)+1,0,6.28);g.fill();
   g.rotate(face+Math.PI/2);const rows=Math.ceil(n/cols);
-  for(let i=0;i<n;i++){const c=i%cols,r=Math.floor(i/cols);const x=(c-(cols-1)/2)*sp+(r%2)*1.2,y=(r-(rows-1)/2)*sp;g.fillStyle='#1a120a';g.beginPath();g.arc(x,y,2.9,0,6.28);g.fill();g.fillStyle=U.col;g.beginPath();g.arc(x,y,2.2,0,6.28);g.fill();if(s.wall&&r===0){g.fillStyle=mine?'#d8b45a':'#8a2a1a';g.fillRect(x-2.8,y-4,5.6,2.2);}}
+  const spr=soldierSprite(s.type,mine);const SZ=s.type==='frank'?11:7.4;
+  for(let i=0;i<n;i++){const c=i%cols,r=Math.floor(i/cols);const x=(c-(cols-1)/2)*sp+(r%2)*1.2,y=(r-(rows-1)/2)*sp;const bob=s.cont&&s.cont.length&&!s.rout?Math.sin(B.t*13+i*1.9)*.6:0;g.drawImage(spr,x-SZ/2,y-SZ/2+bob,SZ,SZ);if(s.wall&&r===0){g.fillStyle=mine?'rgba(216,180,90,.85)':'rgba(138,42,26,.85)';g.fillRect(x-3,y-4.6,6,1.6);}}
   g.restore();g.globalAlpha=1;
   g.fillStyle='rgba(0,0,0,.55)';g.fillRect(s.x-14,s.y-sqR(s)-9,28,4);g.fillStyle=mine?'#e8c050':'#d0503a';g.fillRect(s.x-14,s.y-sqR(s)-9,28*clamp(s.morale/s.base,0,1),4);
   if(mine){g.fillStyle='#fff';g.font='bold 11px EB Garamond';g.textAlign='center';g.fillText(String(B.sq.filter(q=>q.side===B.ps).indexOf(s)+1),s.x,s.y-sqR(s)-12);}
