@@ -25,6 +25,9 @@ main{display:grid;grid-template-columns:1fr 350px;min-height:0}
 #mapwrap{position:relative;min-width:0;min-height:0;background:#1a2a36}
 #map{width:100%;height:100%;display:block;cursor:grab}
 #maphint{position:absolute;left:10px;bottom:8px;font-size:13px;color:#d9ccb0;background:#000a;padding:3px 8px;border-radius:4px;pointer-events:none}
+#maplegend{position:absolute;left:10px;top:8px;font-size:12.5px;color:#e9dcc0;background:#000a;padding:3px 8px;border-radius:4px;pointer-events:none;max-width:calc(100% - 20px)}#maplegend .lk{color:#cdbb92}
+.townpic{display:block;width:100%;height:auto;border-radius:4px;margin:-2px 0 6px;border:1px solid #8a7550}
+.tstats{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;font-size:13px;margin:2px 0 4px}.tstats b{color:var(--ink)}
 #pausedTag{position:absolute;left:50%;top:8px;transform:translateX(-50%);font-family:Cinzel;color:#ffe2a0;background:#000a;padding:2px 12px;border-radius:4px;pointer-events:none;display:none}
 aside{background:var(--wood2);border-left:2px solid var(--line);overflow-y:auto;padding:10px}
 .card{background:var(--parch);color:var(--ink);border-radius:6px;padding:9px 12px;margin-bottom:10px;box-shadow:0 2px 0 #0007;border:1px solid #b9a273}
@@ -130,7 +133,7 @@ input[type=text]{font-family:inherit;font-size:16px;padding:4px 8px;border:1px s
  <div class="speed" id="speed"><button data-act="pause" title="Pause (Space)">❚❚</button><button data-act="speed" data-arg="1" title="Normal (1)">▶</button><button data-act="speed" data-arg="2" title="Fast (2)">▶▶</button><button data-act="speed" data-arg="4" title="Fastest (3)">▶▶▶</button></div>
  <div class="row"><button data-act="hall">Hall</button><button data-act="peoples">Peoples</button><button data-act="saga">Saga</button><button data-act="codex">Codex</button><button data-act="menu" class="alt">Menu</button></div>
 </header>
-<main><div id="mapwrap"><canvas id="map"></canvas><div id="pausedTag">Paused</div><div id="maphint">Drag to pan · wheel to zoom · click to select · right-click to sail the selected fleet</div></div><aside id="side"></aside></main>
+<main><div id="mapwrap"><canvas id="map"></canvas><div id="pausedTag">Paused</div><div id="maplegend"><span class="lk">■</span> market town <b style="color:#ffd36a">◈</b> trade here · <span class="lk">●</span> village or hall · <span class="lk">▲</span> cult site · <span class="lk">⬢</span> hillfort · <span class="lk">?</span> rumour · colour = owner</div><div id="maphint">Drag to pan · wheel to zoom · click to select · right-click to sail the selected fleet</div></div><aside id="side"></aside></main>
 <footer id="log"></footer>
 </div>
 <div id="modal" class="hidden"><div class="box" id="mbox"></div></div>
@@ -502,6 +505,7 @@ function drawMap(){
   if(!st.known){ctx.globalAlpha=.75;ctx.fillStyle='#d8c9a0';ctx.font='italic 600 13px EB Garamond';ctx.fillText('?',p.x,p.y-8);ctx.font='italic 12px EB Garamond';ctx.fillText(s.name,p.x,p.y+6);ctx.globalAlpha=1;continue;}
   ctx.beginPath();if(s.kind==='market'){ctx.rect(p.x-r,p.y-r,r*2,r*2);}else if(s.kind==='sacred'){ctx.moveTo(p.x,p.y-r-2);ctx.lineTo(p.x+r+1,p.y+r);ctx.lineTo(p.x-r-1,p.y+r);ctx.closePath();}else if(s.kind==='fort'){for(let k=0;k<6;k++){const a=k*Math.PI/3;ctx.lineTo(p.x+Math.cos(a)*(r+1),p.y+Math.sin(a)*(r+1));}ctx.closePath();}else ctx.arc(p.x,p.y,r,0,Math.PI*2);
   ctx.fillStyle=col;ctx.fill();ctx.lineWidth=sel?3:1.5;ctx.strokeStyle=sel?'#fff2b0':(ownr==='player'?'#fff':'#1b140e');ctx.stroke();
+  if(s.kind==='market'){ctx.font='bold 13px EB Garamond';ctx.textBaseline='middle';ctx.lineWidth=3;ctx.strokeStyle='#1b140e';ctx.strokeText('◈',p.x+r+6,p.y-r-1);ctx.fillStyle='#ffd36a';ctx.fillText('◈',p.x+r+6,p.y-r-1);ctx.textBaseline='top';}
   if(s.id===S.home){ctx.fillStyle='#1b140e';ctx.font='bold 10px Cinzel';ctx.textBaseline='middle';ctx.fillText('ᚺ',p.x,p.y+.5);ctx.textBaseline='top';}
   if(st.trib){ctx.strokeStyle='#f0c64a';ctx.setLineDash([2,2]);ctx.beginPath();ctx.arc(p.x,p.y,r+4,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
   const showLbl=cam.z>.62||s.size>=2||ownr==='player'||sel;if(showLbl){ctx.font=(s.size>=3?'600 14px':'13px')+' EB Garamond';ctx.lineWidth=3;ctx.strokeStyle='rgba(15,12,8,.85)';ctx.strokeText(s.name,p.x,p.y+r+2);ctx.fillStyle=ownr==='player'?'#ffe39a':'#f1e6cc';ctx.fillText(s.name,p.x,p.y+r+2);}
@@ -604,7 +608,7 @@ let lastDay=-1;
 function dayTick(){
  const d=doy(),B=S.bld,season=isSailSeason(d);
  let food=0.035*S.pop+(season?[0,3,5,8][B.fish]:0);
- S.res.food+=food-mouths()*.1;S.res.timber+=[0,.8,1.4,2.2][B.wood];S.res.iron+=[0,.12,.25,.4][B.smith];
+ S.res.food+=food-mouths()*.1;S.res.timber+=[0,.8,1.4,2.2][B.wood];S.res.iron+=[.05,.15,.28,.45][B.smith];
  if(season){S.res.silver+=[0,.3,.8][B.market];if(S.home==='avald')S.res.silver+=.4;}
  const up=totalMen('hird')*UPKEEP.hird+totalMen('bow')*UPKEEP.bow+totalMen('berserk')*UPKEEP.berserk;S.res.silver-=up;
  if(S.res.silver<0){S.res.silver=0;S.loyalty-=.6;if(d%15===0)log('Your hird grumbles: there is no silver left for rings and gifts.','war');}
@@ -655,7 +659,7 @@ function newYear(){
  const mus=holdings().filter(id=>hasSpec(id,'muster')).length;if(mus){const n=Math.min(mus*2,hirdCap()-totalMen('hird'));if(n>0){S.hird+=n;log(`${n} young men from your muster grounds join the hird.`,'good');}}
  captYearly();rivalYearly();
  // family
- const age=ageOf(S.ruler);if(S.spouse&&age<52&&S.kids.length<7&&rnd()<.32){const m=rnd()<.5;const k={name:pick(m?NAMES_M:NAMES_F),born:year(),sex:m?'m':'f'};S.kids.push(k);log(`${S.spouse.name} bears ${rulerName(S.ruler)} a ${m?'son':'daughter'}, ${k.name}.`,'good');}
+ const age=ageOf(S.ruler);if(S.spouse&&age<52&&S.kids.length<8&&rnd()<(S.kids.length?.45:.65)){const m=rnd()<.5;const k={name:pick(m?NAMES_M:NAMES_F),born:year(),sex:m?'m':'f'};S.kids.push(k);log(`${S.spouse.name} bears ${rulerName(S.ruler)} a ${m?'son':'daughter'}, ${k.name}.`,'good');}
  for(const k of S.kids.slice()){if(year()-k.born<6&&rnd()<.06){S.kids=S.kids.filter(x=>x!==k);log(`The child ${k.name} sickens and dies.`,'war');}}
  const pd=age<40?.006:age<50?.02:age<60?.05:age<70?.12:.25;if(rnd()<pd)queueEvent(()=>rulerDies('of sickness in the dark of winter'));
  if(age>=30&&!S.spouse&&!S.flags.marryNag){S.flags.marryNag=1;queueEvent(evMarryNag);}
@@ -736,10 +740,11 @@ function seaFight(f,a){const P0=fleetPower(f),E0=a.men*(a.kind==='trade'?.55:a.f
 
 /* ================= UI CORE ================= */
 const ACT={};
-document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b||b.disabled)return;const f=ACT[b.dataset.act];if(f){e.preventDefault();f(b.dataset.arg,b);}});
+let modalT=0;
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b||b.disabled)return;if(performance.now()-modalT<350&&b.closest('#modal'))return;const f=ACT[b.dataset.act];if(f){e.preventDefault();f(b.dataset.arg,b);}});
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;$('toasts').appendChild(t);t.onclick=()=>t.remove();setTimeout(()=>t.remove(),7000);while($('toasts').children.length>5)$('toasts').firstChild.remove();}
 let modalOpen=false,modalOnClose=null;const EVQ=[];
-function showModal(html,onClose){$('mbox').innerHTML=html;$('modal').classList.remove('hidden');modalOpen=true;modalOnClose=onClose||null;$('mbox').scrollTop=0;}
+function showModal(html,onClose){if(!modalOpen)modalT=performance.now();$('mbox').innerHTML=html;$('modal').classList.remove('hidden');modalOpen=true;modalOnClose=onClose||null;$('mbox').scrollTop=0;}
 function closeModal(){$('modal').classList.add('hidden');modalOpen=false;const c=modalOnClose;modalOnClose=null;if(c)c();sideDirty=true;setTimeout(runQueue,0);}
 function queueEvent(fn){EVQ.push(fn);if(!modalOpen&&!battleOn)runQueue();}
 function runQueue(){if(modalOpen||battleOn||!S)return;const fn=EVQ.shift();if(fn){try{fn();}catch(err){console.error(err);}}}
@@ -804,7 +809,7 @@ ACT.selset=a=>{if(SET[a]){select({t:'set',id:a});centerOn(SG[a].x,SG[a].y);}};
 function selCard(){if(!SEL)return`<div class="card small">Click a place or a ship on the map. Your home is marked ᚺ.</div>`;
  if(SEL.t==='set'){const s=SET[SEL.id],st=S.sets[s.id];if(!s)return'';const f=SEL.prevFleet?fleetById(SEL.prevFleet):null;
   if(!st.known)return`<div class="card"><h3>${esc(s.name)}?</h3><p class="small">Known only from traders' tales: ${esc(KIND_N[s.kind]).toLowerCase()} of the ${esc(FACS[s.fac].people)}. Sail there to learn more.</p>${sailBtns(s.id)}</div>`;
-  const ownr=st.own;const isHome=s.id===S.home;let h=`<div class="card"><h3>${esc(s.name)}</h3><div class="small">${esc(KIND_N[s.kind])} · ${isHome?'your home':ownr==='player'?(st.trib?'pays you tribute':'your holding'):esc(FACS[ownr].n)}${ownr!=='player'&&ownr!=='ind'?' · '+esc(facRuler(ownr)):''}</div>`;
+  const ownr=st.own;const isHome=s.id===S.home;let h=`<div class="card"><img class="townpic" alt="" src="${townPic(s.id)}"><h3>${esc(s.name)}</h3>${townStats(s.id)}<div class="small">${esc(KIND_N[s.kind])} · ${isHome?'your home':ownr==='player'?(st.trib?'pays you tribute':'your holding'):esc(FACS[ownr].n)}${ownr!=='player'&&ownr!=='ind'?' · '+esc(facRuler(ownr)):''}</div>`;
   if(isHome)h+=`<p class="small">${Math.round(S.pop)} free folk, ${S.thralls} thralls. Defence strength about ${Math.round(homeDefense())}.</p><button class="sm" data-act="hall">Open hall</button>`;
   else if(ownr==='player')h+=`<p class="small">${st.trib?'Tributary: pays half its yield each autumn; keeps its own chief.':`Garrison: ${st.gar} hirdmen and local levy.`} Wealth ${Math.round(st.wealth*100)}%.</p>`;
   else{const r=relOf(s.id);h+=`<p class="small">Mood toward you: <b>${relWord(r)}</b> (${Math.round(r)}). Fighting men: about ${Math.round(st.men/5)*5}. Wealth: ${st.wealth>.8?'rich':st.wealth>.45?'recovering':'stripped bare'}.${S.t-st.raided<365?' Raided this past year.':''}${SG[s.id].inland>12?` Lies ${Math.round(SG[s.id].inland)} km inland: a march gives warning.`:''}</p>`;}
@@ -837,7 +842,7 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
  let h=`<div id="hallbox"><button class="x" data-act="close">✕</button><h2>The hall at ${esc(SET[S.home].name)}</h2><div class="small">${Math.round(S.pop)}/${popCap()} free folk · ${S.thralls} thralls · food ${Math.round(S.res.food)} · silver ${Math.round(S.res.silver)} · timber ${Math.round(S.res.timber)} · iron ${Math.round(S.res.iron)}</div><div class="tabs">${tabs.map(([k,n])=>`<button class="${hallTab===k?'on':''}" data-act="htab" data-arg="${k}">${n}</button>`).join('')}</div>`;
  if(hallTab==='bld'){h+=S.building?`<p class="story">Builders are at work on the ${esc(BLD[S.building.k].n)}: ${S.building.left} days left.</p>`:'<p class="small">One building project at a time. Timber comes from your woodlot; silver from trade, tribute and plunder.</p>';
   h+=`<div class="grid3">${BLD_ORDER.map(k=>{const B=BLD[k],l=S.bld[k],nx=l<B.max?B.cost[l+1]:null;const rk=nx&&nx.rank&&rank()<nx.rank;return`<div class="bld"><h4>${esc(B.n)} <span class="lv">level ${l}/${B.max}</span></h4><div class="small">${esc(B.eff(l))}</div>${nx?`<div class="small" style="margin-top:3px">Next: ${esc(B.eff(l+1))}<br><b>${esc(costStr(nx))}</b>${rk?`<br><i>needs rank ${RANKS[nx.rank].n}</i>`:''}</div><button class="sm" data-act="build" data-arg="${k}" ${S.building||!canAfford(nx)||rk?'disabled':''}>${l?'Improve':'Build'}</button>`:'<div class="small"><i>Fully built</i></div>'}</div>`;}).join('')}</div>`;}
- if(hallTab==='war'){const cap=hirdCap();h+=`<p class="small">Warriors are chosen from your free folk and given arms and rings. Hird cap: <b>${totalMen('hird')}/${cap}</b> (longhouse and rank). Each costs silver to keep: hirdmen about 5 a year, bowmen 2, berserkers 8. Loyalty: <b>${Math.round(S.loyalty)}</b>.</p>
+ if(hallTab==='war'){const cap=hirdCap();h+=`<p class="small">Warriors are chosen from your free folk and given arms and rings. Hird cap: <b>${totalMen('hird')}/${cap}</b> (longhouse and rank). Each costs silver to keep: hirdmen about 5 a year, bowmen 2, berserkers 8. Loyalty: <b>${Math.round(S.loyalty)}</b>.</p><p class="small" style="background:#0000000f;padding:4px 6px;border-radius:4px">Hirdmen you could recruit right now: <b>${Math.max(0,Math.min(hirdCap()-totalMen('hird'),Math.floor(S.res.silver/8),Math.floor(S.res.iron),Math.floor(S.pop-15)))}</b>. Limits: room in the hird ${Math.max(0,hirdCap()-totalMen('hird'))} · silver for ${Math.floor(S.res.silver/8)} · iron for ${Math.floor(S.res.iron)} · spare folk ${Math.max(0,Math.floor(S.pop-15))}. Men away in fleets and garrisons count toward the cap.</p>
   <table class="t"><tr><th>Warriors</th><th>At home</th><th>Everywhere</th><th>Recruit</th><th></th></tr>
   ${['hird','bow','berserk'].map(k=>{const c=RECRUIT[k];const lock=k==='berserk'&&(S.bld.hof<2||S.renown<300);return`<tr><td><b>${UT[k].n}</b><div class="small">${esc(UT[k].d)}</div></td><td>${S[k]}</td><td>${totalMen(k)}</td><td class="small">${c.silver} silver${c.iron?', '+c.iron+' iron':''} each${lock?'<br><i>needs hof level 2 and 300 renown</i>':''}</td><td><button class="sm" data-act="recruit" data-arg="${k}:1" ${lock?'disabled':''}>+1</button><button class="sm" data-act="recruit" data-arg="${k}:5" ${lock?'disabled':''}>+5</button><button class="sm alt" data-act="dismiss" data-arg="${k}:1">−1</button></td></tr>`;}).join('')}</table>
   <h3>Ring-giving</h3><p class="small">A lord is judged by his open hand. Gifts raise loyalty and spread your name.</p><button data-act="rings" data-arg="30" ${S.res.silver<30?'disabled':''}>Give arm-rings (30 silver): +12 loyalty</button> <button data-act="rings" data-arg="80" ${S.res.silver<80?'disabled':''}>Great gift-giving (80 silver): +30 loyalty, +6 renown</button>
@@ -853,12 +858,12 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
   ${S.kids.length?`<table class="t"><tr><th>Children</th><th>Age</th></tr>${S.kids.map(k=>`<tr><td>${esc(k.name)} (${k.sex==='m'?'son':'daughter'})</td><td>${year()-k.born}</td></tr>`).join('')}</table>`:'<p class="small">No children yet.</p>'}
   <p class="small">Heir: <b>${heir?esc(heir.name)+(year()-heir.born<14?' (a child: there would be a regency)':''):'none; a kinsman would claim the hall'}</b></p>
   ${S.spouse?'':`<button data-act="localmatch" ${S.res.silver<40?'disabled':''}>Marry a daughter of a local farmer (40 silver bride-price)</button>`}`;}
- if(hallTab==='hold'){const hs=holdings();h+=hs.length?`<p class="small">Each holding has one plot per size. Shape each place for one purpose: fields, trade, defence, warriors, ships or worship. A steward (one of your captains) rules it in your name.</p><table class="t"><tr><th>Place</th><th>Status</th><th>Plots</th><th>Steward</th><th>Yield each harvest</th><th></th></tr>${hs.map(id=>{const s=SET[id],st=S.sets[id];const Y=holdYield(id);const sc=captById(st.stew);return`<tr><td><a href="#" data-act="selset" data-arg="${id}">${esc(s.name)}</a><div class="small">${st.trib?'':'garrison '+st.gar}</div></td><td>${st.trib?'Tributary':st.fief?'Jarldom':'Held'}</td><td class="small">${st.trib?'—':specOf(id).map(k=>SPEC[k].icon+' '+esc(SPEC[k].n)).join('<br>')+(specOf(id).length<specSlots(id)?`<br><button class="sm" data-act="specpick" data-arg="${id}">Develop (${specSlots(id)-specOf(id).length} free)</button>`:'')}</td><td class="small">${st.trib?'—':sc?esc(captName(sc))+(st.fief?'':` <button class="sm alt" data-act="captrecall" data-arg="${id}">Recall</button>`):`<button class="sm" data-act="stewpick" data-arg="${id}">Appoint</button>`}</td><td class="small">${Math.round(Y.food)} food, ${Math.round(Y.silver)} silver${Y.timber?', '+Math.round(Y.timber)+' timber':''}</td><td>${st.trib?`<button class="sm alt" data-act="release" data-arg="${id}">Release</button>`:''}</td></tr>`;}).join('')}</table><p class="small">To change a garrison, bring a fleet there and go ashore.</p>`:'<p><i>You hold no land beyond your own. Conquer a village, or frighten one into paying tribute.</i></p>';}
+ if(hallTab==='hold'){const hs=holdings();h+=hs.length?`<p class="small">Each holding has one plot per size. Shape each place for one purpose: fields, trade, defence, warriors, ships or worship. A steward (one of your captains) rules it in your name.</p><table class="t"><tr><th>Place</th><th>Status</th><th>Plots</th><th>Steward</th><th>Yield each harvest</th><th></th></tr>${hs.map(id=>{const s=SET[id],st=S.sets[id];const Y=holdYield(id);const sc=captById(st.stew);return`<tr><td><a href="#" data-act="selset" data-arg="${id}">${esc(s.name)}</a><div class="small">${st.trib?'':'garrison '+st.gar}</div></td><td>${st.trib?'Tributary':st.fief?'Jarldom':'Held'}</td><td class="small">${st.trib?'—':specOf(id).map(k=>SPEC[k].icon+' '+esc(SPEC[k].n)).join('<br>')+(specOf(id).length<specSlots(id)?`<br><button class="sm" data-act="specpick" data-arg="${id}">Develop (${specSlots(id)-specOf(id).length} free)</button>`:'')}</td><td class="small">${st.trib?'—':sc?esc(captName(sc))+(st.fief?'':` <button class="sm alt" data-act="captrecall" data-arg="${id}">Recall</button>`):`<button class="sm" data-act="stewpick" data-arg="${id}">Appoint</button>`}</td><td class="small">${Math.round(Y.food)} food, ${Math.round(Y.silver)} silver${Y.timber?', '+Math.round(Y.timber)+' timber':''}</td><td>${st.trib?`<button class="sm alt" data-act="release" data-arg="${id}">Release</button>`:st.fief?'':`<button class="sm alt" data-act="maketrib" data-arg="${id}">Make tributary</button>`}</td></tr>`;}).join('')}</table><p class="small">To change a garrison, or to turn a tributary into a holding you rule directly, bring a fleet there and go ashore.</p>`:'<p><i>You hold no land beyond your own. Conquer a village, or frighten one into paying tribute.</i></p>';}
  return h+'</div>';}
-ACT.build=k=>{const l=S.bld[k],c=BLD[k].cost[l+1];if(!c||S.building||!canAfford(c))return;pay(c);S.building={k,left:c.days};log(`Work begins on the ${BLD[k].n}.`);rerenderHall();};
+ACT.build=k=>{const l=S.bld[k],c=BLD[k].cost[l+1];if(!c||S.building||!canAfford(c))return;pay(c);S.building={k,left:c.days};log(`Work begins on the ${BLD[k].n}.`);toast(`You ordered: ${BLD[k].n}, level ${l+1} (${c.days} days).`);rerenderHall();};
 ACT.buildship=k=>{const T=SHIPS[k];if(S.yardJob||!canAfford(T.cost)||S.bld.yard<T.yard)return;pay(T.cost);const used=S.ships.map(s=>s.name);const nm=SHIP_NAMES.find(n=>!used.includes(n))||('Ship '+S.nextId);S.yardJob={type:k,left:T.days,name:nm};log(`The shipwrights lay the keel of a ${T.n}.`);rerenderHall();};
 ACT.recruit=a=>{const[k,n0]=a.split(':');const c=RECRUIT[k];let n=+n0;if(k==='hird')n=Math.min(n,hirdCap()-totalMen('hird'));if(k==='bow')n=Math.min(n,Math.floor(hirdCap()/2)+5-totalMen('bow'));if(k==='berserk')n=Math.min(n,12-totalMen('berserk'));
- n=Math.min(n,Math.floor(S.res.silver/c.silver),c.iron?Math.floor(S.res.iron/c.iron):99,Math.floor(S.pop-15));if(n<=0){toast(k==='hird'&&totalMen('hird')>=hirdCap()?'Your hall can feed no more hirdmen: enlarge the longhouse or rise in rank.':'You cannot recruit more of these now.');return;}
+ const lim={cap:n,silver:Math.floor(S.res.silver/c.silver),iron:c.iron?Math.floor(S.res.iron/c.iron):99,folk:Math.floor(S.pop-15)};n=Math.min(lim.cap,lim.silver,lim.iron,lim.folk);if(n<=0){const why=lim.cap<=0?(k==='hird'?`Your hird is full (${totalMen('hird')}/${hirdCap()}, counting men in fleets and garrisons). Enlarge the longhouse, rise in rank, or build a muster ground.`:'You have as many of these as your hall can keep.'):lim.iron<=0?`Each warrior needs 1 iron for his weapons and you have ${Math.floor(S.res.iron)}. Build a smithy, buy iron at a market, or raid for it.`:lim.silver<=0?`Not enough silver: each costs ${c.silver}.`:'Too few free folk at home: at least 15 must stay to work the land.';toast(why);return;}
  S.pop-=n;S[k]+=n;S.res.silver-=c.silver*n;S.res.iron-=(c.iron||0)*n;rerenderHall();};
 ACT.dismiss=a=>{const[k,n0]=a.split(':');const n=Math.min(+n0,S[k]);if(n<=0)return;S[k]-=n;S.pop+=n;rerenderHall();};
 ACT.rings=a=>{const n=+a;if(S.res.silver<n)return;S.res.silver-=n;S.loyalty=clamp(S.loyalty+(n>=80?30:12),0,100);if(n>=80)addRenown(6,'a great gift-giving');else log('You hand out arm-rings in the hall.');rerenderHall();};
@@ -868,6 +873,8 @@ function homeSellGrain(){return mprice('kaupang','grain')*.7;}
 ACT.homesell=()=>{if(S.res.food<700)return;S.res.food-=400;S.res.silver+=homeSellGrain()*20;rerenderHall();};
 ACT.homebuy=a=>{const[k,n]=a.split(':');const c=homePrice(k)*n;if(S.res.silver<c)return;S.res.silver-=c;if(k==='grain')S.res.food+=GOODS.grain.food*n;else if(k==='iron')S.res.iron+=+n;else S.store[k]=(S.store[k]||0)+ +n;rerenderHall();};
 ACT.localmatch=()=>{if(S.spouse||S.res.silver<40)return;S.res.silver-=40;const m=S.ruler.sex==='m';S.spouse={name:pick(m?NAMES_F:NAMES_M),from:''};log(`${rulerName(S.ruler)} marries ${S.spouse.name}, child of a wealthy farmer.`,'good');rerenderHall();};
+ACT.directrule=a=>{const[fid,id,n0]=a.split(':');const f=fleetById(+fid),st=S.sets[id],n=+n0;if(!f||!st||!st.trib||st.own!=='player'||f.men.hird<n)return;f.men.hird-=n;st.trib=false;st.gar=n;st.men=Math.round(baseMen(SET[id])*.3);addRenown(4,`direct rule over ${SET[id].name}`);log(`You take direct rule of ${SET[id].name}. ${n} hirdmen stay as its garrison.`,'good');openArrival(f,id);};
+ACT.maketrib=id=>{const st=S.sets[id];if(!st||st.own!=='player'||st.trib||st.fief)return;S.hird+=st.gar;st.gar=0;st.stew=0;st.trib=true;st.men=Math.max(st.men,Math.round(baseMen(SET[id])*.4));log(`${SET[id].name} becomes a tributary under its own chief. The garrison comes home.`);rerenderHall();};
 ACT.release=id=>{const st=S.sets[id];if(!st||st.own!=='player')return;st.own=st.orig==='player'?'ind':st.orig;st.trib=false;st.rel=10;if(S.facs[st.own])S.facs[st.own].rel+=10;log(`You release ${SET[id].name} from tribute.`);rerenderHall();};
 function heirOf(){const k=S.kids.slice().sort((a,b)=>a.born-b.born);return k.find(x=>x.sex==='m')||k[0]||null;}
 
@@ -909,6 +916,7 @@ ACT.felaunch=()=>{let f=FE.fid?fleetById(FE.fid):null;const g=SG[S.home].dock;
 function openArrival(f,id){const s=SET[id],st=S.sets[id];st.known=true;const r=relOf(id);let h=`<button class="x" data-act="close">✕</button><h2>${esc(f.name)} at ${esc(s.name)}</h2>`;
  if(st.own==='player'){h+=`<p>${esc(s.name)} is ${st.trib?'your tributary':'your holding'}.</p>`;
   if(!st.trib)h+=`<h3>Garrison: ${st.gar} hirdmen</h3><p class="small">A garrison keeps the place loyal and guards it against raiders. Hirdmen left here are still paid from your treasury.</p><div class="row"><button data-act="gar" data-arg="${f.id}:${id}:5" ${f.men.hird<5?'disabled':''}>Leave 5 hirdmen</button><button data-act="gar" data-arg="${f.id}:${id}:-5" ${st.gar<5||fleetMen(f)+5>fleetSeats(f)?'disabled':''}>Take 5 aboard</button></div>`;
+  if(st.trib)h+=`<h3>Tributary</h3><p class="small">Their own chief rules and pays you half the yield. Leave a garrison to rule it directly: full yield and plots you can develop, but you must defend it.</p><div class="row">${[5,10,20].map(n=>`<button data-act="directrule" data-arg="${f.id}:${id}:${n}" ${f.men.hird<n?'disabled':''}>Rule directly (leave ${n} hirdmen)</button>`).join('')}</div>`;
   if(s.kind==='market')h+=`<div class="row" style="margin-top:8px"><button data-act="market" data-arg="${f.id}:${id}">Trade at the market</button></div>`;
   h+=`<div class="row" style="margin-top:12px"><button class="alt" data-act="close">Back to the map</button></div>`;showModal(h);return;}
  const fp=Math.round(fleetPower(f)),dp=Math.round(setDefense(id));
@@ -974,7 +982,7 @@ ACT.codex=a=>{if(a)codexTab=a;let h=`<button class="x" data-act="close">✕</but
  if(codexTab==='hist')h+=S.hist.length?S.hist.map(e=>`<p><b>${e.y}: ${esc(e.title)}</b><br><span class="small">${esc(e.text)}</span></p>`).join(''):'<p><i>Nothing has happened yet.</i></p>';
  showModal(h);};
 ACT.codexgo=id=>{closeModal();ACT.selset(id);};
-const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another.</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
+const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another. A palisade can only be crossed at its gates, and men fighting across the stakes do little harm. <b>Fall back (F)</b> pulls a warband out of a fight in good order (it takes some blows as it goes). A warband whose morale breaks is <b>routed</b>: it runs for the ships or the edge of the field. If no enemy is near after a few seconds it may rally. Warbands standing beside a house loot it; the bar under each house shows what is left.</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
 <p><b>Time.</b> Days pass while unpaused (Space; speeds 1–3). Ships sail from April to October; winter voyages risk gales. Grain is harvested in mid-September; feasts come at Winter Nights and Yule.</p>
 <p><b>Food.</b> Your people, warriors and crews all eat. Fishing feeds you in summer and the harvest must last the winter. Raids, trade (grain, stockfish) and tribute fill the gap. Hunger kills folk and loyalty.</p>
 <p><b>Fleets.</b> In the hall, <i>Muster a fleet</i>: choose ships, warriors and cargo. Select the fleet and right-click a place on the map to sail. Bondi (farmers) can row and fight, but harvests suffer when they are away.</p>
@@ -1102,6 +1110,69 @@ function warArrive(a){const id=a.target,st=S.sets[id];if(!st||st.own===a.fac)ret
 function coalitionHelp(f){if(!S.flags.coalition||!f||!f.startsWith||!f.startsWith('rv'))return 0;const o=rivalIds().find(x=>x!==f);return o?Math.round(facPower(o)*.25):0;}
 function rivalsCard(){const ids=rivalIds();if(!ids.length)return'';return`<div class="card"><h3>Rival jarls</h3>${ids.map(f=>{const R=S.rivals[f];const pl=rivalPlaces(f);return`<div class="fleetrow" data-act="selset" data-arg="${R.seat}"><span><b style="color:${FACS[f].c}">■</b> Jarl ${esc(R.name)} ${esc(R.nick)}</span><span class="small">${pl.length} ${pl.length===1?'hall':'halls'} · ${facPower(f)} men · ${relWord(S.facs[f].rel)}${R.friend?` · friend of the ${esc(FACS[R.friend].n)}`:''}</span></div>`;}).join('')}${S.flags.coalition?'<div class="small" style="color:#9b2a1a">Sworn together against you.</div>':''}</div>`;}
 
+/* ================= TOWN PICTURES ================= */
+// A small painted scene for each place, drawn from what we know about it:
+// size, kind, walls, owner, wealth, ships, and (for your home) your buildings.
+const TOWNPIC={};
+function seeded(seed){let s=seed>>>0||1;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+function strHash(t){let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function townKey(id){const s=SET[id],st=S.sets[id];const home=id===S.home;const d=doy();const season=d<79||d>=320?'w':'s';
+ return[id,st.own,home?S.bld.hall:s.size,home?S.bld.wall:wallOf(s),home?S.bld.hof:0,home?S.bld.market:0,home?Math.min(5,S.ships.filter(x=>x.loc==='home').length):0,st.wealth>.8?2:st.wealth>.45?1:0,S.t-st.raided<200?1:0,season,specOf(id).join('')].join('|');}
+function townPic(id){const key=townKey(id);if(TOWNPIC[id]&&TOWNPIC[id].key===key)return TOWNPIC[id].url;const url=drawTown(id);TOWNPIC[id]={key,url};return url;}
+function drawTown(id){const s=SET[id],st=S.sets[id];const home=id===S.home;const W=320,H=128,K=2;const c=document.createElement('canvas');c.width=W*K;c.height=H*K;const g=c.getContext('2d');g.scale(K,K);
+ const R=seeded(strHash(id));const d=doy();const winter=d<79||d>=320;const burnt=S.t-st.raided<200;const wealth=st.wealth;
+ const ownCol=st.own==='player'?'#f0c64a':(FACS[st.own]?FACS[st.own].c:'#999');
+ // sky
+ const sky=g.createLinearGradient(0,0,0,H);if(winter){sky.addColorStop(0,'#9aa6b0');sky.addColorStop(1,'#d9dde0');}else{sky.addColorStop(0,'#7fa6c4');sky.addColorStop(1,'#e6dcc0');}g.fillStyle=sky;g.fillRect(0,0,W,H);
+ // far hills / mountains
+ const mount=['halog','sogn','firdir','borgund','nordmore','lade','alrek','avald','hogom','angr'].includes(id);
+ g.fillStyle=winter?'#c9d0d6':'#7d8a74';g.beginPath();g.moveTo(0,70);for(let x=0;x<=W;x+=20){g.lineTo(x,(mount?38:56)+Math.sin(x*.03+R()*2)*(mount?16:7)+R()*6);}g.lineTo(W,H);g.lineTo(0,H);g.fill();
+ if(mount&&!winter){g.fillStyle='rgba(240,244,246,.8)';for(let x=10;x<W;x+=60+R()*40){g.beginPath();g.moveTo(x,40);g.lineTo(x+10,30+R()*6);g.lineTo(x+20,42);g.fill();}}
+ // water in front (left) and ground
+ const coastal=!(SG[id]&&SG[id].inland>12);
+ g.fillStyle=winter?'#e8ece9':'#6f8a4a';g.beginPath();g.moveTo(coastal?96:0,H);g.lineTo(coastal?120:0,84);g.quadraticCurveTo(200,74,W,80);g.lineTo(W,H);g.fill();
+ if(coastal){g.fillStyle='#3e6a82';g.beginPath();g.moveTo(0,84);g.lineTo(124,84);g.quadraticCurveTo(110,104,96,H);g.lineTo(0,H);g.fill();g.strokeStyle='rgba(220,235,240,.45)';g.lineWidth=1;for(let i=0;i<7;i++){const y=90+i*5;g.beginPath();g.moveTo(6+R()*30,y);g.lineTo(30+R()*60,y);g.stroke();}
+  const ships=home?Math.min(5,S.ships.filter(x=>x.loc==='home').length):s.kind==='market'?3+s.size:s.kind==='seat'?s.size:1;for(let i=0;i<ships;i++){const x=14+i*19+R()*5,y=94+(i%2)*10;longship(g,x,y,s.kind==='market'&&i%2?'#c9b88a':'#a8362a');}}
+ // the place itself
+ const fort=s.kind==='fort';const baseY=fort?78:88;
+ if(fort){g.fillStyle=winter?'#dfe3e2':'#7a8a52';g.beginPath();g.ellipse(225,90,95,26,0,Math.PI,0);g.fill();g.strokeStyle='#5a4a30';g.lineWidth=4;g.beginPath();g.ellipse(225,80,82,12,0,Math.PI*1.05,Math.PI*1.95);g.stroke();}
+ const n=home?3+S.bld.hall*3:[0,4,7,11][s.size];const spots=[];for(let i=0;i<n;i++)spots.push({x:140+R()*165,y:baseY-6+R()*24,w:16+R()*10});spots.sort((a,b)=>a.y-b.y);
+ const hallW=home?30+S.bld.hall*10:s.kind==='seat'||s.size>=2?36+s.size*6:26;
+ // shrine / hof
+ const sacred=s.kind==='sacred'||(home&&S.bld.hof>0)||hasSpec(id,'hof');
+ for(const p of spots)longhouse(g,p.x,p.y,p.w,R()<.5,winter,burnt&&R()<.5,false);
+ longhouse(g,212,baseY+2,hallW,true,winter,false,true);
+ if(sacred)hof(g,272,baseY-2,winter);
+ if(s.kind==='market'||(home&&S.bld.market)||hasSpec(id,'post'))for(let i=0;i<3+s.size;i++)stall(g,138+i*12,baseY+20+((i%2)*4),['#b23a2a','#d8b04a','#3a6a9a','#e8e0c8'][i%4]);
+ // smoke
+ if(!burnt||R()<.5)for(let i=0;i<3;i++){const x=180+R()*110,y=baseY-14;g.fillStyle=`rgba(225,225,225,${.35-i*.08})`;for(let k=0;k<4;k++){g.beginPath();g.arc(x+k*4+Math.sin(k)*3,y-k*7,4+k*1.6,0,6.28);g.fill();}}
+ if(burnt){g.fillStyle='rgba(40,35,30,.5)';for(let k=0;k<6;k++){g.beginPath();g.arc(200+R()*90,baseY-18-k*6,7+k*2,0,6.28);g.fill();}}
+ // palisade
+ const wall=home?S.bld.wall:wallOf(s)||(hasSpec(id,'fort')?1:0);
+ if(wall>0){g.fillStyle='#5a3e22';for(let x=134;x<W-4;x+=4){const h=7+wall*3+(x%8?0:2);g.fillRect(x,baseY+26-h,3,h);g.beginPath();g.moveTo(x,baseY+26-h);g.lineTo(x+1.5,baseY+23-h);g.lineTo(x+3,baseY+26-h);g.fill();}}
+ // wealth: haystacks and cattle
+ const extra=Math.round(wealth*4);for(let i=0;i<extra;i++){const x=150+R()*160,y=112+R()*10;g.fillStyle=winter?'#bfa76a':'#c9a24a';g.beginPath();g.ellipse(x,y,5,4,0,Math.PI,0);g.fill();}
+ for(let i=0;i<extra;i++){const x=130+R()*170,y=116+R()*8;g.fillStyle=R()<.5?'#5a3a24':'#e8e0d0';g.fillRect(x,y,5,3);g.fillRect(x+4,y-1,2,2);}
+ // banner
+ g.strokeStyle='#2a1a10';g.lineWidth=1.5;g.beginPath();g.moveTo(212,baseY-24);g.lineTo(212,baseY-46);g.stroke();g.fillStyle=ownCol;g.beginPath();g.moveTo(212,baseY-46);g.lineTo(228,baseY-42);g.lineTo(212,baseY-37);g.fill();
+ // vignette
+ const vg=g.createLinearGradient(0,0,0,H);vg.addColorStop(.7,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.25)');g.fillStyle=vg;g.fillRect(0,0,W,H);
+ return c.toDataURL('image/png');}
+function longhouse(g,x,y,w,big,winter,burnt,hall){const h=hall?13:8+(big?2:0);g.fillStyle='#6b4a2c';g.fillRect(x-w/2,y-h*.55,w,h*.55);
+ g.fillStyle=burnt?'#2c2622':winter?'#eef1f1':'#7a6a3a';g.beginPath();g.moveTo(x-w/2-3,y-h*.5);g.quadraticCurveTo(x,y-h*1.55,x+w/2+3,y-h*.5);g.closePath();g.fill();
+ if(!winter&&!burnt){g.strokeStyle='rgba(60,50,25,.5)';g.lineWidth=.8;g.beginPath();g.moveTo(x-w/2+2,y-h*.7);g.quadraticCurveTo(x,y-h*1.35,x+w/2-2,y-h*.7);g.stroke();}
+ if(hall&&!burnt){g.strokeStyle='#3a2414';g.lineWidth=1.5;for(const sx of[-1,1]){g.beginPath();g.moveTo(x+sx*(w/2-1),y-h*.62);g.lineTo(x+sx*(w/2+3),y-h*1.05);g.stroke();}}
+ g.fillStyle='#2a1a0e';g.fillRect(x-2,y-h*.4,4,h*.4);}
+function hof(g,x,y,winter){g.fillStyle='#5a3a20';g.fillRect(x-9,y-10,18,12);g.fillStyle=winter?'#e8ecec':'#3a2a1a';for(let i=0;i<3;i++){const w=24-i*7,yy=y-10-i*7;g.beginPath();g.moveTo(x-w/2,yy);g.lineTo(x,yy-8);g.lineTo(x+w/2,yy);g.fill();}g.strokeStyle='#3a2414';g.lineWidth=1.3;g.beginPath();g.moveTo(x,y-31);g.lineTo(x,y-37);g.stroke();
+ g.fillStyle='#8a8a84';for(let i=0;i<4;i++)g.fillRect(x+14+i*5,y-6-((i%2)*2),3,8+((i%2)*2));}
+function stall(g,x,y,col){g.fillStyle='#5a3e22';g.fillRect(x,y-6,1,6);g.fillRect(x+9,y-6,1,6);g.fillStyle=col;g.beginPath();g.moveTo(x-1,y-6);g.lineTo(x+5,y-10);g.lineTo(x+11,y-6);g.fill();g.fillStyle='#c9a86a';g.fillRect(x+1,y-3,8,2);}
+function longship(g,x,y,sail){g.fillStyle='#3a2414';g.beginPath();g.moveTo(x-9,y);g.quadraticCurveTo(x,y+5,x+9,y);g.lineTo(x+11,y-4);g.lineTo(x+7,y-1);g.lineTo(x-7,y-1);g.lineTo(x-11,y-4);g.closePath();g.fill();g.fillStyle='#2a1a10';g.fillRect(x-.5,y-14,1,13);g.fillStyle=sail;g.fillRect(x-5,y-13,10,8);g.strokeStyle='rgba(255,240,210,.5)';g.lineWidth=.6;for(let k=-3;k<=3;k+=3){g.beginPath();g.moveTo(x+k,y-13);g.lineTo(x+k,y-5);g.stroke();}}
+function townStats(id){const s=SET[id],st=S.sets[id];const home=id===S.home;const SZ=['','Hamlet','Village','Town'];
+ const goods=s.prod.map(g=>GOODS[g]?GOODS[g].n:g).join(', ');const wall=home?S.bld.wall:wallOf(s);
+ const rows=home?[['Folk',`${Math.round(S.pop)} free, ${S.thralls} thralls`],['Warriors',`${S.hird} hird, ${S.bow} bowmen at home`],['Longhouse',`level ${S.bld.hall}`],['Walls',S.bld.wall?`palisade level ${S.bld.wall}`:'none'],['Market',S.bld.market?'trading place':'none'],['Ships home',String(S.ships.filter(x=>x.loc==='home').length)]]
+  :[['Size',`${SZ[s.size]} (${s.size} of 3)`],['Fighting men',st.own==='player'?(st.trib?`about ${Math.round(st.men/5)*5} (their own)`:`${st.gar} of your hird`):`about ${Math.round(st.men/5)*5}`],['Wealth',st.wealth>.8?'rich':st.wealth>.45?'recovering':'stripped bare'],['Walls',wall?(wall>1?'strong walls':'palisade'):'none'],['Market',s.kind==='market'?'<b style="color:#8a5a00">yes, trade here</b>':'no'],['Produces',esc(goods)]];
+ return`<div class="tstats">${rows.map(([k,v])=>`<span>${k}: <b>${k==='Market'?v:esc(v)}</b></span>`).join('')}</div>`;}
+
 /* ================= BATTLE ENGINE ================= */
 let battleOn=false,B=null;const BW=1000,BH=600,SHIPX=92,VC={x:700,y:300};
 const bcv=$('bcv'),bctx=bcv.getContext('2d');
@@ -1137,10 +1208,18 @@ function makeTerrain(id){const s=SET[id];const T={hills:[],woods:[],river:null};
 const rivX=y=>B.ter.river.x+Math.sin(y/80+B.ter.river.ph)*B.ter.river.amp;
 function terAt(x,y){const T=B&&B.ter;const o={hill:false,wood:false,water:false,ford:false};if(!T)return o;for(const h of T.hills)if(Math.hypot(x-h.x,y-h.y)<h.r)o.hill=true;for(const w of T.woods)if(Math.hypot(x-w.x,y-w.y)<w.r)o.wood=true;
  if(T.river&&Math.abs(x-rivX(y))<17){if(T.river.fords.some(f=>Math.abs(y-f)<34))o.ford=true;else o.water=true;}return o;}
-function terMult(a,e){const A=a.ter||{},E=e.ter||{};return(A.hill&&!E.hill?1.2:1)*(E.hill&&!A.hill?.82:1)*(E.water?1.35:1)*(A.water?.7:1);}
+function terMult(a,e){const A=a.ter||{},E=e.ter||{};let m=(A.hill&&!E.hill?1.2:1)*(E.hill&&!A.hill?.82:1)*(E.water?1.35:1)*(A.water?.7:1);if(wallBlocks(a.x,a.y,e.x,e.y))m*=wallR(e.x,e.y)<1?.35:.8;if(e.dis)m*=1.25;return m;}
 function hitAngle(att,def){const a=Math.atan2(att.y-def.y,att.x-def.x);const f=def.face??(def.side==='A'?0:Math.PI);return Math.abs((((a-f)%(2*Math.PI))+3*Math.PI)%(2*Math.PI)-Math.PI);}
 function steer(s,tx,ty){const R=B.ter&&B.ter.river;if(!R)return{tx,ty};const side=s.x<rivX(s.y)?-1:1,tside=tx<rivX(ty)?-1:1;if(side===tside)return{tx,ty};
  let f=R.fords[0];for(const q of R.fords)if(Math.abs(q-(s.y+ty)/2)<Math.abs(f-(s.y+ty)/2))f=q;if(Math.abs(s.y-f)>30)return{tx:rivX(f)+side*40,ty:f};return{tx:rivX(f)-side*40,ty:f};}
+const WRX=215,WRY=180,GATE=.21;
+function wallR(x,y){return Math.hypot((x-VC.x)/WRX,(y-VC.y)/WRY);}
+function atGate(x,y){const a=Math.atan2((y-VC.y)/WRY,(x-VC.x)/WRX);return(Math.abs(a)<GATE||Math.abs(Math.abs(a)-Math.PI)<GATE)&&Math.abs(wallR(x,y)-1)<.22;}
+function wallSteer(s,tx,ty){if(!B.wall)return{tx,ty};const ins=wallR(s.x,s.y)<1,tin=wallR(tx,ty)<1;if(ins===tin)return{tx,ty};
+ const gx=(s.x+tx)/2<VC.x?-1:1;const out={x:VC.x+gx*WRX*1.16,y:VC.y},inn={x:VC.x+gx*WRX*.82,y:VC.y};const from=ins?inn:out,to=ins?out:inn;
+ if(Math.hypot(s.x-from.x,s.y-from.y)>16&&!atGate(s.x,s.y))return{tx:from.x,ty:from.y};return{tx:to.x,ty:to.y};}
+function wallBlocks(x0,y0,x1,y1){if(!B.wall)return false;return(wallR(x0,y0)<1)!==(wallR(x1,y1)<1)&&!atGate(x0,y0)&&!atGate(x1,y1);}
+const disengaging=s=>['move','fallback','ships'].includes(s.order)&&s.tx!=null;
 function turnToward(s,ang,rate){const f=s.face??ang;let d=((ang-f)%(2*Math.PI)+3*Math.PI)%(2*Math.PI)-Math.PI;s.face=f+clamp(d,-rate,rate);}
 function deployZone(){return B.ps==='A'?{x0:SHIPX+15,x1:B.ter&&B.ter.river?Math.min(SHIPX+250,B.ter.river.x-B.ter.river.amp-30):SHIPX+250,y0:40,y1:BH-40}:{x0:VC.x-290,x1:BW-30,y0:40,y1:BH-40};}
 function inZone(x,y){const z=deployZone();return x>=z.x0&&x<=z.x1&&y>=z.y0&&y<=z.y1;}
@@ -1183,7 +1262,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  // reinforcements
  if(B.mode==='raid'&&B.pool>0&&B.t>=B.nextWave){const n=Math.min(B.pool,Math.max(8,Math.round(B.pool*.4)));B.pool-=n;const sz=Math.max(18,Math.ceil(n/3));const ws=splitSquads('D','levy',n,sz,mkSquad);ws.forEach((q,i)=>{q.x=BW-10;q.y=80+rnd()*(BH-160);B.sq.push(q);});B.nextWave=B.t+20+rnd()*8;if(!B.auto)bmsg(`${n} more farmers come running from the fields!`);}
  const sq=B.sq;
- for(const s of sq){if(s.gone)continue;s.cont=[];s.ter=terAt(s.x,s.y);if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;if(s.flankT>0)s.flankT-=dt;}
+ for(const s of sq){if(s.gone)continue;s.cont=[];s.ter=terAt(s.x,s.y);s.px=s.x;s.py=s.y;if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;if(s.flankT>0)s.flankT-=dt;}
  for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side===b.side)continue;if(Math.hypot(a.x-b.x,a.y-b.y)<sqR(a)+sqR(b)+3){a.cont.push(b);b.cont.push(a);}}}
  // AI
  const ctrl=s=>s.side!==B.ps||B.auto;
@@ -1192,18 +1271,21 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  for(const s of sq){if(s.gone||s.rout)continue;if(!ctrl(s))continue;aiSquad(s);}
  // move
  for(const s of sq){if(s.gone)continue;const U=UT[s.type];const tr=s.ter||{};let sp=U.spd*(s.wall?.42:1)*(s.charge>0?1.6:1)*(s.rout?1.25:1)*(tr.water?.35:tr.ford?.7:1)*(tr.wood?.72:1)*(tr.hill?.88:1);
-  if(s.rout){const ex=s.side==='A'?-20:BW+20;moveTo(s,ex,s.y,sp*dt);if((s.side==='A'&&s.x<SHIPX-4)||(s.side==='D'&&s.x>BW-6)){s.gone=true;s.fled=true;}continue;}
-  if(s.cont.length){const pr=(s.tgt&&s.cont.find(e=>e.id===s.tgt))||s.cont[0];turnToward(s,Math.atan2(pr.y-s.y,pr.x-s.x),dt*(s.wall?.6:2.5));continue;}let tx=s.tx,ty=s.ty;const t=s.tgt?sq.find(q=>q.id===s.tgt):null;if(t&&!t.gone){tx=t.x;ty=t.y;}else if(s.tgt){s.tgt=null;}
+  if(s.rout){s.routT=(s.routT||0)+dt;if(s.routT>3&&s.men>=3&&!nearestEnemy(s,160)){s.morale=Math.max(0,s.morale)+dt*12;if(s.morale>=s.base*.45){s.rout=false;s.routT=0;s.tgt=null;s.bld=null;s.tx=s.x;s.ty=s.y;s.order='hold';if(!B.auto&&s.side===B.ps)bmsg(`${UT[s.type].n} rally and form up again!`);continue;}}
+   const ex=s.side==='A'?SHIPX-20:BW+20;const rs=wallSteer(s,ex,s.y);moveTo(s,rs.tx,rs.ty,sp*dt);if((s.side==='A'&&s.x<SHIPX+12)||(s.side==='D'&&s.x>BW-40)){s.gone=true;s.fled=true;}continue;}
+  s.dis=!!(s.cont.length&&disengaging(s));if(s.dis)sp*=.6;
+  if(s.cont.length&&!s.dis){const pr=(s.tgt&&s.cont.find(e=>e.id===s.tgt))||s.cont[0];turnToward(s,Math.atan2(pr.y-s.y,pr.x-s.x),dt*(s.wall?.6:2.5));continue;}let tx=s.tx,ty=s.ty;const t=s.tgt?sq.find(q=>q.id===s.tgt):null;if(t&&!t.gone){tx=t.x;ty=t.y;if(t.rout&&s.side===B.ps&&!B.auto&&(t.x>BW-90||t.x<SHIPX+40)){s.tgt=null;s.tx=s.x;s.ty=s.y;tx=s.x;ty=s.y;}}else if(s.tgt){s.tgt=null;}
   if(s.bld!=null){const b=B.blds[s.bld];if(b&&b.left>0){tx=b.x;ty=b.y+b.h/2+16;}else s.bld=null;}
-  if(tx!=null){const sv=steer(s,tx,ty);tx=sv.tx;ty=sv.ty;const d=Math.hypot(tx-s.x,ty-s.y);const stop=t?0:4;if(d>stop)moveTo(s,tx,ty,Math.min(sp*dt,d));else if(!t&&s.order==='ships'&&s.side==='A'){}}
+  if(tx!=null){let sv=steer(s,tx,ty);sv=wallSteer(s,sv.tx,sv.ty);tx=sv.tx;ty=sv.ty;const d=Math.hypot(tx-s.x,ty-s.y);const stop=t?0:4;if(d>stop)moveTo(s,tx,ty,Math.min(sp*dt,d));else if(s.order==='fallback'&&tx===s.tx&&ty===s.ty)s.order='hold';else if(!t&&s.order==='ships'&&s.side==='A'){}}
   // ranged
   if(U.rng){s.shot-=dt;}
  }
  // separation between friendly squads
- for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side!==b.side)continue;const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=sqR(a)+sqR(b)-2;if(d<m){const p=(m-d)/2;a.x-=dx/d*p*.5;a.y-=dy/d*p*.5;b.x+=dx/d*p*.5;b.y+=dy/d*p*.5;}}a.x=clamp(a.x,-30,BW+30);a.y=clamp(a.y,20,BH-20);}
+ for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side!==b.side)continue;const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=sqR(a)+sqR(b)-2;if(d<m){const p=(m-d)/2;a.x-=dx/d*p*.5;a.y-=dy/d*p*.5;b.x+=dx/d*p*.5;b.y+=dy/d*p*.5;}}if(!a.rout)a.x=clamp(a.x,SHIPX-6,BW-12);a.y=clamp(a.y,20,BH-20);}
+ for(const s of sq){if(s.gone||s.px==null)continue;if(wallBlocks(s.px,s.py,s.x,s.y)){s.x=s.px;s.y=s.py;}}
  // combat
  for(const s of sq){if(s.gone)continue;const U=UT[s.type];const eq=B.eq[s.side]||0;const mf=.5+.5*clamp(s.morale/s.base,0,1);
-  if(s.cont.length&&!s.rout){const mine=s.side===B.ps;const atk=U.atk*(1+eq)*mf*(s.charge>0?(mine&&has(B.lead,'bold')?1.95:1.7):1)*(s.wall?.75:1)*(mine?B.atkM:1);const per=atk*s.men*.028/s.cont.length;
+  if(s.cont.length&&!s.rout&&!s.dis){const mine=s.side===B.ps;const atk=U.atk*(1+eq)*mf*(s.charge>0?(mine&&has(B.lead,'bold')?1.95:1.7):1)*(s.wall?.75:1)*(mine?B.atkM:1);const per=atk*s.men*.028/s.cont.length;
    for(const e of s.cont){const ang=hitAngle(s,e);const fl=ang<1.05?0:ang<2.1?1:2;e.hurt+=per*[1,1.4,1.8][fl]*terMult(s,e)*dt/defOf(e,fl===0);if(s.charge>0)e.morale-=dt*6;
     if(fl){e.morale-=dt*(fl===1?3:7);if(!B.auto&&!(e.flankT>0)){e.flankT=3;B.fx.push({txt:fl===1?'Flanked!':'From behind!',x:e.x,y:e.y-sqR(e)-16,t:1.4,c:e.side===B.ps?'#ff8a6a':'#ffe08a'});if(mine&&!B.toldFlank){B.toldFlank=1;bmsg('You hit them in the flank! Attacks from the side or rear do far more harm and break their nerve.');}if(!mine&&e.side===B.ps&&!B.toldFlanked){B.toldFlanked=1;bmsg('Your men are taken in the flank! Turn to face them or pull back.');}}}}}
   else if(U.rng&&!s.rout&&s.shot<=0){let best=null,bd=U.rng*((s.ter&&s.ter.hill)?1.25:1);for(const e of sq){if(e.gone||e.side===s.side)continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}
@@ -1228,7 +1310,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  for(const f of B.fx)f.t-=dt;B.fx=B.fx.filter(f=>f.t>0);}
 function defOf(e,front=true){const U=UT[e.type];const eq=B.eq[e.side]||0;let d=U.def*(1+eq)*(e.wall&&front?1.6:1)*(e.side===B.ps&&has(B.lead,'cautious')?1.1:1);if(e.side==='D'&&B.wall&&Math.hypot(e.x-VC.x,(e.y-VC.y)*1.2)<215)d*=1+.3*B.wall;if(e.rout)d*=.5;return d;}
 function moveTo(s,tx,ty,step){const dx=tx-s.x,dy=ty-s.y,d=Math.hypot(dx,dy);if(d<.01)return;const m=Math.min(step,d);s.x+=dx/d*m;s.y+=dy/d*m;s.face=Math.atan2(dy,dx);}
-function nearestEnemy(s,maxD,filter){let best=null,bd=maxD||1e9;for(const e of B.sq){if(e.gone||e.rout||e.side===s.side)continue;if(filter&&!filter(e))continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}return best;}
+function nearestEnemy(s,maxD,filter){let best=null,bd=maxD||1e9;for(const e of B.sq){if(e.gone||e.rout||e.side===s.side)continue;if(filter&&!filter(e))continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(e.side===B.ps&&s.side!==B.ps&&(e.order==='fallback'||e.order==='ships')&&d>sqR(e)+sqR(s)+20)continue;if(d<bd){bd=d;best=e;}}return best;}
 function aiSquad(s){const U=UT[s.type];s.bld=s.bld??null;
  if(s.side==='A'){
   if(B.withdrawA||(B.auto&&B.mode==='raid'&&aWithdrawCheck())){s.tgt=null;s.bld=null;s.tx=SHIPX+10;s.ty=clamp(s.y,60,BH-60);s.order='ships';s.wall=false;return;}
@@ -1320,8 +1402,8 @@ function renderBattleUI(){if(!B)return;const mine=B.sq.filter(s=>s.side===B.ps);
  <button data-act="bpause">${B.paused?'▶ Resume':'❚❚ Pause'}</button><button data-act="bspeed">${B.speed}× speed</button><button class="${B.auto?'gold':''}" data-act="bauto">${B.auto?'Auto: on':'Auto: off'}</button>${B.mode==='raid'?`<button class="alt" data-act="bships">⛵ Back to the ships</button><button class="red" data-act="bsail">Sail away</button>`:''}`;
  const sel=B.sq.find(s=>s.id===B.sel);
  if(B.deploy){$('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}</div>`).join('')+`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px"><button data-act="bform" data-arg="line">Line</button><button data-act="bform" data-arg="wedge">Wedge (svínfylking)</button><button class="gold" data-act="bgo">⚔ Begin the fight</button><div class="small" style="color:#d9c79a">Deploy: pick a warband, then click inside the bright area to place it. ${esc(B.ter?B.ter.txt:'')}${B.lead?' Led by '+esc(captName(B.lead))+'.':''}</div></div>`;return;}
- $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (fleeing)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
- +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break shield wall':'Shield wall (W)'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge (C)${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot (L)</button>':''}<button data-act="bhold">Hold (H)</button><div class="small" style="color:#b9a682">Click ground to move · click an enemy to attack${B.ps==='A'?' · click a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Select a warband (click, or keys 1–8)</span>'}</div>`;}
+ $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (routed: running)':s.dis?' (falling back)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
+ +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break shield wall':'Shield wall (W)'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge (C)${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot (L)</button>':''}<button data-act="bhold">Hold (H)</button><button data-act="bfall">Fall back (F)</button><div class="small" style="color:#b9a682">Click ground to move · click an enemy to attack${B.ps==='A'?' · click a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Select a warband (click, or keys 1–8)</span>'}</div>`;}
 ACT.bsel=a=>{B.sel=+a;renderBattleUI();};
 ACT.bpause=()=>{B.paused=!B.paused;renderBattleUI();};
 ACT.bspeed=()=>{B.speed=B.speed===1?2:B.speed===2?3:1;renderBattleUI();};
@@ -1332,9 +1414,10 @@ const selSq=()=>B.sq.find(s=>s.id===B.sel&&!s.gone&&!s.rout);
 ACT.bwall=()=>{const s=selSq();if(s){s.wall=!s.wall;renderBattleUI();}};
 ACT.bcharge=()=>{const s=selSq();if(s&&s.chargeCd<=0){s.charge=3.5;s.chargeCd=25;if(!s.tgt){const e=nearestEnemy(s,300);if(e)s.tgt=e.id;}s.wall=false;renderBattleUI();}};
 ACT.bloot=()=>{const s=selSq();if(!s)return;let bb=-1,bd=1e9;B.blds.forEach((b,i)=>{if(b.left<=0)return;const d=Math.hypot(b.x-s.x,b.y-s.y);if(d<bd){bd=d;bb=i;}});if(bb>=0){s.bld=bb;s.tgt=null;s.order='loot';}renderBattleUI();};
+ACT.bfall=()=>{const s=selSq();if(!s)return;let tx,ty=s.y;if(B.ps==='A'){tx=Math.max(SHIPX+30,s.x-170);}else{const k=.6;tx=s.x+(VC.x-s.x)*k;ty=s.y+(VC.y-s.y)*k;}s.tgt=null;s.bld=null;s.tx=tx;s.ty=ty;s.order='fallback';s.wall=false;s.charge=0;B.auto=false;bmsg(`${UT[s.type].n} fall back in good order.`);renderBattleUI();};
 ACT.bhold=()=>{const s=selSq();if(s){s.tgt=null;s.bld=null;s.tx=s.x;s.ty=s.y;s.order='hold';}};
 function battleKey(e){if(e.code==='Space'){e.preventDefault();ACT.bpause();return;}const n=+e.key;if(n>=1&&n<=9){const m=B.sq.filter(s=>s.side===B.ps)[n-1];if(m){B.sel=m.id;renderBattleUI();}return;}
- const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='r'&&B.ps==='A')ACT.bships();}
+ const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='f')ACT.bfall();else if(k==='r'&&B.ps==='A')ACT.bships();}
 bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const{k,ox,oy}=fieldScale();const x=(e.clientX-r.left-ox)/k,y=(e.clientY-r.top-oy)/k;
  let hit=null,hd=1e9;for(const s of B.sq){if(s.gone)continue;const d=Math.hypot(s.x-x,s.y-y);if(d<sqR(s)+8&&d<hd){hd=d;hit=s;}}
  if(hit&&hit.side===B.ps&&e.button===0){B.sel=hit.id;renderBattleUI();return;}const s=selSq();if(!s)return;
@@ -1343,6 +1426,7 @@ bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();
  else{const bi=B.ps==='A'?B.blds.findIndex(b=>b.left>0&&Math.abs(b.x-x)<b.w/2+6&&Math.abs(b.y-y)<b.h/2+6):-1;if(bi>=0){s.bld=bi;s.tgt=null;s.order='loot';}else{s.tgt=null;s.bld=null;s.tx=x;s.ty=y;s.order='move';}}
  renderBattleUI();});
 bcv.addEventListener('contextmenu',e=>e.preventDefault());
+function terLabel(t,x,y){const g=bctx;g.font='italic 600 13px EB Garamond';g.textAlign='center';g.textBaseline='middle';g.lineWidth=3;g.strokeStyle='rgba(20,16,10,.85)';g.strokeText(t,x,y);g.fillStyle='#f5e7c2';g.fillText(t,x,y);}
 function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bcv.width/d,H=bcv.height/d;const g=bctx;g.setTransform(d,0,0,d,0,0);g.fillStyle='#14110d';g.fillRect(0,0,W,H);const{k,ox,oy}=fieldScale();g.setTransform(d*k,0,0,d*k,d*ox,d*oy);
  // ground
  const gr=g.createLinearGradient(0,0,BW,0);gr.addColorStop(0,'#2a4a5e');gr.addColorStop(SHIPX/BW,'#3a6070');gr.addColorStop((SHIPX+14)/BW,'#b8a879');gr.addColorStop((SHIPX+50)/BW,'#6f7d45');gr.addColorStop(1,'#56693a');g.fillStyle=gr;g.fillRect(0,0,BW,BH);
@@ -1352,11 +1436,14 @@ function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bc
   if(T.river){g.strokeStyle='#3d6a82';g.lineWidth=30;g.lineCap='round';g.beginPath();for(let y=0;y<=BH;y+=10){const x=rivX(y);if(y)g.lineTo(x,y);else g.moveTo(x,y);}g.stroke();g.strokeStyle='rgba(160,200,215,.35)';g.lineWidth=3;g.stroke();
    for(const f of T.river.fords){g.fillStyle='rgba(196,178,124,.85)';g.fillRect(rivX(f)-17,f-30,34,60);g.fillStyle='rgba(61,106,130,.35)';for(let k=0;k<4;k++)g.fillRect(rivX(f)-15,f-26+k*15,30,3);}}
   for(const w of T.woods){for(let k=0;k<16;k++){const a=hash2(k,w.x|0)*6.28,rr=hash2(k,w.y|0)*w.r*.85;g.fillStyle=k%3?'#2f4a24':'#3a5a2c';g.beginPath();g.arc(w.x+Math.cos(a)*rr,w.y+Math.sin(a)*rr,9+hash2(k,7)*8,0,6.28);g.fill();}}}
+ if(B.ter){const T=B.ter;for(const h of T.hills)terLabel(h.town?'Rise (higher ground)':'Hill (higher ground)',h.x,h.y-h.r+16);if(T.river){terLabel('Stream: cross at the fords',rivX(28),24);for(const f of T.river.fords)terLabel('Ford',rivX(f)+30,f-6);}for(const w of T.woods)terLabel('Woods',w.x,w.y-w.r-6);}
  if(B.deploy){const z=deployZone();g.fillStyle='rgba(255,224,140,.13)';g.fillRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.strokeStyle='rgba(255,224,140,.7)';g.setLineDash([8,6]);g.lineWidth=2;g.strokeRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.setLineDash([]);}
  // ships
  for(let i=0;i<5;i++){const y=90+i*105;g.fillStyle='#3a2414';g.beginPath();g.moveTo(SHIPX-6,y-28);g.quadraticCurveTo(SHIPX+10,y,SHIPX-6,y+28);g.lineTo(SHIPX-22,y+24);g.quadraticCurveTo(SHIPX-10,y,SHIPX-22,y-24);g.closePath();g.fill();}
  // palisade
- if(B.wall){g.strokeStyle='#5a3e22';g.lineWidth=5+B.wall*2;g.setLineDash([10,4]);g.beginPath();g.ellipse(VC.x,VC.y,215,180,0,0.25,6.03);g.stroke();g.setLineDash([]);}
+ if(B.wall){g.strokeStyle='#5a3e22';g.lineWidth=5+B.wall*2;g.setLineDash([10,4]);for(const[a0,a1]of[[GATE,Math.PI-GATE],[Math.PI+GATE,2*Math.PI-GATE]]){g.beginPath();g.ellipse(VC.x,VC.y,WRX,WRY,0,a0,a1);g.stroke();}g.setLineDash([]);
+  for(const gx of[-1,1])for(const sy of[-1,1]){const a=gx<0?Math.PI-sy*GATE:sy*GATE;const x=VC.x+Math.cos(a)*WRX,y=VC.y+Math.sin(a)*WRY;g.fillStyle='#3a2410';g.fillRect(x-4,y-4,8,8);}
+  terLabel('Gate',VC.x-WRX-2,VC.y-30);terLabel('Gate',VC.x+WRX+2,VC.y-30);}
  // buildings
  for(const b of B.blds){const burnt=1-b.left;g.fillStyle=b.t==='shrine'?'#6a4a2a':'#7a5a34';g.fillRect(b.x-b.w/2,b.y-b.h/2,b.w,b.h);g.fillStyle=`rgb(${120-burnt*80},${95-burnt*70},${50-burnt*30})`;g.beginPath();g.moveTo(b.x-b.w/2-4,b.y-b.h/2+4);g.lineTo(b.x,b.y-b.h/2-12);g.lineTo(b.x+b.w/2+4,b.y-b.h/2+4);g.closePath();g.fill();
   if(b.t==='hall'||b.t==='shrine'){g.strokeStyle='#2a1a0c';g.lineWidth=2;g.beginPath();g.moveTo(b.x-6,b.y-b.h/2-16);g.lineTo(b.x,b.y-b.h/2-10);g.lineTo(b.x+6,b.y-b.h/2-16);g.stroke();}
@@ -1375,8 +1462,10 @@ function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bc
   if(mine&&s.id===B.sel&&(s.tx!=null)&&!s.tgt&&s.bld==null&&!s.cont.length&&Math.hypot(s.tx-s.x,s.ty-s.y)>8){g.strokeStyle='rgba(255,211,106,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(s.x,s.y);g.lineTo(s.tx,s.ty);g.stroke();g.setLineDash([]);}}
  for(const f of B.fx){if(f.txt){g.globalAlpha=clamp(f.t,0,1);g.font='bold 14px EB Garamond';g.textAlign='center';g.lineWidth=3;g.strokeStyle='#000';g.strokeText(f.txt,f.x,f.y-(1.4-f.t)*14);g.fillStyle=f.c;g.fillText(f.txt,f.x,f.y-(1.4-f.t)*14);g.globalAlpha=1;continue;}if(f.sp){g.fillStyle=`rgba(255,220,120,${f.t})`;g.beginPath();g.arc(f.x,f.y-(1-f.t)*20,2.5,0,6.28);g.fill();}else{g.strokeStyle=`rgba(230,220,190,${f.t*2})`;g.lineWidth=1;g.beginPath();const t=1-f.t/.35;g.moveTo(f.x0+(f.x1-f.x0)*t,f.y0+(f.y1-f.y0)*t);g.lineTo(f.x0+(f.x1-f.x0)*Math.min(1,t+.15),f.y0+(f.y1-f.y0)*Math.min(1,t+.15));g.stroke();}}
  $('bmsg').style.display=B.msgT>0&&B.msg?'block':'none';$('bmsg').textContent=B.msg;}
-let bUiT=0;
-function battleFrame(now){if(!battleOn||!B)return;const dt=Math.min(.05,(now-B.last)/1000);B.last=now;if(!B.paused&&!B.deploy){for(let i=0;i<B.speed;i++){battleStep(dt);if(B.over)return;}}B.msgT-=dt;drawBattle();bUiT-=dt;if(bUiT<=0){bUiT=.25;renderBattleUI();}}
+let bUiT=0,bPress=0;
+['mousedown','touchstart'].forEach(ev=>{$('btop').addEventListener(ev,()=>{bPress=performance.now();},{passive:true});$('bbot').addEventListener(ev,()=>{bPress=performance.now();},{passive:true});});
+['mouseup','touchend','touchcancel'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{bPress=0;},0),{passive:true}));
+function battleFrame(now){if(!battleOn||!B)return;const dt=Math.min(.05,(now-B.last)/1000);B.last=now;if(!B.paused&&!B.deploy){for(let i=0;i<B.speed;i++){battleStep(dt);if(B.over)return;}}B.msgT-=dt;drawBattle();bUiT-=dt;if(bUiT<=0&&!(bPress&&now-bPress<1500)){bUiT=.25;renderBattleUI();}}
 
 /* ================= EVENTS ================= */
 let EVC=[];
