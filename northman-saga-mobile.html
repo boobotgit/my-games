@@ -402,12 +402,13 @@ const GOODS={
  salt:{n:'Salt',b:5,d:'For preserving fish and meat.'},
  wax:{n:'Wax & honey',b:8,d:'From the Slavic and Baltic forests.'},
  wine:{n:'Wine & glass',b:18,d:'Rhineland luxuries for feasts.'},
+ timber:{n:'Timber',b:6,d:'Logs and planks from your woodlot, 5 timber to a load. Dear in treeless Denmark and Frisia; unloaded at home it goes back to your building store.'},
  swords:{n:'Frankish blades',b:40,d:'Pattern-welded swords. Unloaded at home they arm your hird.'},
 };
 const MKT={
- kaupang:{soap:.6,iron:.7,fish:.85,fur:1.05,ivory:.95,wine:1.3,swords:1.2,salt:1.2,amber:1.2,grain:1.05,wax:1.25},
- hedeby:{wine:.8,swords:.9,salt:.8,grain:.8,fur:1.3,ivory:1.4,amber:1.0,soap:1.2,iron:1.0,fish:1.25,wax:1.0},
- ribe:{wine:.75,swords:.85,salt:.9,grain:.85,fur:1.3,ivory:1.3,amber:1.1,soap:1.3,iron:1.1,fish:1.2,wax:1.1},
+ kaupang:{timber:.8,soap:.6,iron:.7,fish:.85,fur:1.05,ivory:.95,wine:1.3,swords:1.2,salt:1.2,amber:1.2,grain:1.05,wax:1.25},
+ hedeby:{timber:1.5,wine:.8,swords:.9,salt:.8,grain:.8,fur:1.3,ivory:1.4,amber:1.0,soap:1.2,iron:1.0,fish:1.25,wax:1.0},
+ ribe:{timber:1.6,wine:.75,swords:.85,salt:.9,grain:.85,fur:1.3,ivory:1.3,amber:1.1,soap:1.3,iron:1.1,fish:1.2,wax:1.1},
  birka:{fur:.7,iron:.8,wax:1.0,amber:1.0,wine:1.4,swords:1.3,salt:1.3,grain:1.0,ivory:1.2,soap:1.1,fish:1.0},
  paviken:{amber:.9,fur:.95,wine:1.2,grain:.9,salt:1.1,wax:.95,iron:1.0,swords:1.25,soap:1.1,fish:1.0,ivory:1.2},
  truso:{amber:.5,wax:.7,fur:.9,wine:1.4,swords:1.5,salt:1.0,grain:.8,iron:1.2,soap:1.3,ivory:1.5,fish:1.2},
@@ -788,7 +789,7 @@ function moveFleets(dd){
 }
 function arrive(f,id){sideDirty=true;if(id===S.home){unloadHome(f);return;}if(S.settings.autoPauseArrive)setPaused(true);SEL={t:'fleet',id:f.id};openArrival(f,id);}
 function unloadHome(f){const parts=[];if(f.silver){S.res.silver+=f.silver;parts.push(`${Math.round(f.silver)} silver`);f.silver=0;}
- for(const g in f.cargo){const q=f.cargo[g];if(!q)continue;if(GOODS[g].food){S.res.food+=q*GOODS[g].food;parts.push(`${q*GOODS[g].food} food`);}else if(g==='iron'){S.res.iron+=q;parts.push(`${q} iron`);}else if(g==='swords'){S.swords+=q;parts.push(`${q} swords for the hird`);}else{S.store[g]=(S.store[g]||0)+q;parts.push(`${q} ${GOODS[g].n.toLowerCase()}`);}}
+ for(const g in f.cargo){const q=f.cargo[g];if(!q)continue;if(GOODS[g].food){S.res.food+=q*GOODS[g].food;parts.push(`${q*GOODS[g].food} food`);}else if(g==='iron'){S.res.iron+=q;parts.push(`${q} iron`);}else if(g==='timber'){S.res.timber+=q*5;parts.push(`${q*5} timber`);}else if(g==='swords'){S.swords+=q;parts.push(`${q} swords for the hird`);}else{S.store[g]=(S.store[g]||0)+q;parts.push(`${q} ${GOODS[g].n.toLowerCase()}`);}}
  f.cargo={};if(f.food){S.res.food+=f.food;parts.push(`${Math.round(f.food)} food`);f.food=0;}
  if(f.captives){S.thralls+=f.captives;parts.push(`${f.captives} captives as thralls`);f.captives=0;}
  if(f.men.bondi){S.pop+=f.men.bondi;f.men.bondi=0;}
@@ -897,6 +898,7 @@ function counselTips(){const t=[];const d=doy(),sail=isSailSeason(d);const atHom
  if(t.length<2&&S.capts.some(c=>c.loy<30))t.push(`${captName(S.capts.find(c=>c.loy<30))} grows restless. Give him a gift (Hall → Warband) before he turns on you.`);
  if(t.length<2&&holdings().some(id=>!S.sets[id].trib&&specOf(id).length<specSlots(id))&&S.res.timber>=40)t.push('A holding has empty plots. Hall → Holdings → Develop: choose fields, a trading post, a ringfort and so on.');
  if(t.length<2&&S.ai.some(a=>a.kind==='war'&&aiVisible(a)))t.push('A rival war fleet is at sea. Catch it before it lands and you weaken its jarl; or let him bleed against the free chieftains.');
+ if(t.length<2&&!S.spouse&&ageOf(S.ruler)>=20)t.push('You are unmarried. Hall → Kin lists the halls where you could seek a match and what each one needs.');
  return t.slice(0,2);}
 function counselCard(){const t=counselTips();if(!t.length||S.settings.noCounsel)return'';return`<div class="card counsel"><h3>Counsel</h3>${t.map(x=>`<p class="small">${esc(x)}</p>`).join('')}</div>`;}
 function newsCard(){const L=S.log.filter(l=>l.c).slice(-3).reverse();if(!L.length)return'';return`<div class="card newscard"><h3>Latest news</h3>${L.map(l=>`<div class="small ${esc(l.c)}"><span class="d">${esc(dateStr(l.t))}</span> ${esc(l.s)}</div>`).join('')}<div class="row"><button class="sm alt" data-act="chron">Full chronicle</button></div></div>`;}
@@ -952,7 +954,7 @@ function hallHTML(){const tabs=[['bld','Buildings'],['war','Warband'],['ships','
   <h3>Thralls</h3><p class="small">${S.thralls} unfree workers labour in your fields (each counts a little more than a free worker at harvest). Freeing thralls was a pious and honoured act.</p><button data-act="freethralls" ${S.thralls<5?'disabled':''}>Free 5 thralls (+3 renown; they join your free folk)</button>
   ${S.bld.market?`<h3>Your trading place</h3><p class="small">Merchants who stop at your beach sell a few staples.</p><table class="t">${['grain','iron','salt'].map(k=>`<tr><td>${GOODS[k].n}</td><td>${homePrice(k).toFixed(1)} silver</td><td><button class="sm" data-act="homebuy" data-arg="${k}:10" ${S.res.silver<homePrice(k)*10?'disabled':''}>Buy 10</button></td></tr>`).join('')}</table><p class="small">Passing traders will also buy your surplus grain, though cheaply.</p><button data-act="homesell" ${S.res.food<700?'disabled':''}>Sell 400 food (${Math.round(homeSellGrain()*20)} silver)</button>`:''}`;}
  if(hallTab==='kin'){const R=S.ruler;const heir=heirOf();h+=`<div class="kinrow">${pimg(portraitOf('ruler',R),'big')}${S.spouse?pimg(portraitOf('spouse',S.spouse),'big'):''}</div><h3>${esc(rulerName(R))}</h3><p>${RANKS[rank()].n} of ${esc(SET[S.home].name)}, ${ageOf(R)} winters old. Generation ${S.generation} of ${esc(S.kin)}.</p>
-  <p>${S.spouse?`Married to <b>${esc(S.spouse.name)}</b>${S.spouse.from?' of the '+esc(FACS[S.spouse.from]?FACS[S.spouse.from].n:S.spouse.from):''}.`:'Unmarried. A marriage brings heirs and allies. Seek a match at a lord\'s seat (with good relations), or among your own people below.'}</p>
+  <p>${S.spouse?`Married to <b>${esc(S.spouse.name)}</b>${S.spouse.from?' of the '+esc(FACS[S.spouse.from]?FACS[S.spouse.from].n:S.spouse.from):''}.`:'Unmarried. A marriage brings heirs and allies.'+marryListHTML()}</p>
   ${S.kids.length?`<table class="t"><tr><th>Children</th><th>Age</th></tr>${S.kids.map(k=>`<tr><td>${esc(k.name)} (${k.sex==='m'?'son':'daughter'})</td><td>${year()-k.born}</td></tr>`).join('')}</table>`:'<p class="small">No children yet.</p>'}
   <p class="small">Heir: <b>${heir?esc(heir.name)+(year()-heir.born<14?' (a child: there would be a regency)':''):'none; a kinsman would claim the hall'}</b></p>
   ${S.spouse?'':`<button data-act="localmatch" ${S.res.silver<40?'disabled':''}>Marry a daughter of a local farmer (40 silver bride-price)</button>`}`;}
@@ -981,7 +983,7 @@ let FE=null;
 ACT.muster=()=>{if(!S.ships.some(s=>s.loc==='home')){toast('No ships are drawn up at home.');return;}FE={fid:null,ships:new Set(),men:{hird:0,bow:0,berserk:0,bondi:0},cargo:{},chief:!chiefFleet(),lead:chiefFleet()?((S.capts.find(captFree)||{}).id||null):'chief'};
  const sh=S.ships.filter(s=>s.loc==='home'&&s.hp>30);if(sh[0])FE.ships.add(sh[0].id);autoCrew();showModal(feHTML());};
 ACT.editfleet=a=>{const f=fleetById(+a);if(!f||f.at!==S.home)return;unloadHome(f);FE={fid:f.id,ships:new Set(fleetShips(f).map(s=>s.id)),men:Object.assign({hird:0,bow:0,berserk:0,bondi:0},f.men),cargo:Object.assign({},f.cargo),chief:f.chief,lead:f.chief?'chief':(f.capt||null)};showModal(feHTML());};
-function feAvail(){const f=FE.fid?fleetById(FE.fid):null;const m=f?f.men:{};const c=f?f.cargo:{};return{hird:S.hird+(m.hird||0),bow:S.bow+(m.bow||0),berserk:S.berserk+(m.berserk||0),bondi:Math.max(0,Math.floor(S.pop-25))+(m.bondi||0),cargo:k=>k==='grain'?Math.floor(Math.max(0,S.res.food-300)/20)+(c[k]||0):(S.store[k]||0)+(c[k]||0)};}
+function feAvail(){const f=FE.fid?fleetById(FE.fid):null;const m=f?f.men:{};const c=f?f.cargo:{};return{hird:S.hird+(m.hird||0),bow:S.bow+(m.bow||0),berserk:S.berserk+(m.berserk||0),bondi:Math.max(0,Math.floor(S.pop-25))+(m.bondi||0),cargo:k=>k==='grain'?Math.floor(Math.max(0,S.res.food-300)/20)+(c[k]||0):k==='timber'?Math.floor(Math.max(0,S.res.timber-20)/5)+(c[k]||0):(S.store[k]||0)+(c[k]||0)};}
 function feSeats(){let n=0,c=0;for(const id of FE.ships){const s=S.ships.find(x=>x.id===id);if(s){n+=SHIPS[s.type].seats;c+=SHIPS[s.type].cargo;}}return{seats:n,cargo:c};}
 function feMen(){return FE.men.hird+FE.men.bow+FE.men.berserk+FE.men.bondi;}
 function autoCrew(){const av=feAvail(),cap=feSeats().seats;FE.men={hird:0,bow:0,berserk:0,bondi:0};let left=cap;for(const k of['berserk','hird','bow']){const n=Math.min(av[k],left);FE.men[k]=n;left-=n;}}
@@ -992,7 +994,7 @@ function feHTML(){const av=feAvail(),cap=feSeats();const f=FE.fid?fleetById(FE.f
  <h3>Ships</h3><div class="row">${shipsAvail.map(s=>`<button class="${FE.ships.has(s.id)?'gold':'alt'}" data-act="feship" data-arg="${s.id}">${FE.ships.has(s.id)?'✔ ':''}${esc(s.name)} · ${SHIPS[s.type].n} (${SHIPS[s.type].seats}/${SHIPS[s.type].cargo})${s.hp<100?' '+Math.round(s.hp)+'%':''}</button>`).join('')}</div>
  <h3>Crew: ${feMen()}/${cap.seats} seats</h3><table class="t">${['hird','berserk','bow','bondi'].map(k=>`<tr><td><b>${UT[k].n}</b><div class="small">${esc(UT[k].d)}</div></td><td>${step(k,FE.men[k],av[k])}</td></tr>`).join('')}</table>
  <div class="row"><button class="sm" data-act="feauto">Fill seats with warriors</button></div>
- <h3>Cargo: ${cu}/${cap.cargo}</h3><p class="small">Surplus food can be loaded as grain (20 food a load) to sell abroad; 300 food always stays home.</p>${Object.keys(GOODS).filter(k=>av.cargo(k)>0).length?`<table class="t">${Object.keys(GOODS).filter(k=>av.cargo(k)>0).map(k=>`<tr><td>${GOODS[k].n}</td><td><span class="stepper"><button class="sm alt" data-act="fec" data-arg="${k}:-10">−10</button><button class="sm alt" data-act="fec" data-arg="${k}:-1">−</button><b>${FE.cargo[k]||0}</b><button class="sm alt" data-act="fec" data-arg="${k}:1">+</button><button class="sm alt" data-act="fec" data-arg="${k}:10">+10</button></span> <span class="small">of ${av.cargo(k)}</span></td></tr>`).join('')}</table>`:'<p class="small">Nothing in the storehouse to load.</p>'}
+ <h3>Cargo: ${cu}/${cap.cargo}</h3><p class="small">Surplus food can be loaded as grain (20 food a load) and timber as logs (5 timber a load) to sell abroad; 300 food and 20 timber always stay home.</p>${Object.keys(GOODS).filter(k=>av.cargo(k)>0).length?`<table class="t">${Object.keys(GOODS).filter(k=>av.cargo(k)>0).map(k=>`<tr><td>${GOODS[k].n}</td><td><span class="stepper"><button class="sm alt" data-act="fec" data-arg="${k}:-10">−10</button><button class="sm alt" data-act="fec" data-arg="${k}:-1">−</button><b>${FE.cargo[k]||0}</b><button class="sm alt" data-act="fec" data-arg="${k}:1">+</button><button class="sm alt" data-act="fec" data-arg="${k}:10">+10</button></span> <span class="small">of ${av.cargo(k)}</span></td></tr>`).join('')}</table>`:'<p class="small">Nothing in the storehouse to load.</p>'}
  <h3>Leader</h3><p class="small">Who commands this fleet? With you aboard, men fight hardest and the glory is all yours, but chieftains can fall. A captain's traits shape how his men fight.</p><div class="row"><button class="${FE.lead==='chief'?'gold':'alt'}" data-act="felead" data-arg="chief" ${chiefOk?'':'disabled'}>★ ${esc(rulerName(S.ruler))}${chiefOk?'':' (leads another fleet)'}</button>${S.capts.filter(c=>captFree(c)||(f&&f.capt===c.id)).map(c=>`<button class="${FE.lead===c.id?'gold':'alt'}" data-act="felead" data-arg="${c.id}">${esc(captName(c))} <small>${'★'.repeat(captLvl(c))} ${c.traits.map(t=>esc(TRAITS[t].n)).join(', ')}</small></button>`).join('')}<button class="${FE.lead==null?'gold':'alt'}" data-act="felead" data-arg="none">No captain (−10 morale)</button></div>
  <div class="row" style="margin-top:12px"><button class="big gold" data-act="felaunch" ${FE.ships.size&&feMen()>0?'':'disabled'}>${f?'Done':'Launch'}</button><button class="big alt" data-act="close">Cancel</button></div>`;}
 ACT.feship=a=>{const id=+a;if(FE.ships.has(id))FE.ships.delete(id);else FE.ships.add(id);const cap=feSeats();while(feMen()>cap.seats){for(const k of['bondi','bow','hird','berserk']){if(feMen()>cap.seats&&FE.men[k]>0)FE.men[k]=Math.max(0,FE.men[k]-(feMen()-cap.seats));}}$('mbox').innerHTML=feHTML();};
@@ -1005,7 +1007,7 @@ ACT.felaunch=()=>{let f=FE.fid?fleetById(FE.fid):null;const g=SG[S.home].dock;
  else{f={id:S.nextId++,name:'',x:g.x,y:g.y,path:[],dest:null,at:S.home,men:{},cargo:{},silver:0,captives:0,chief:false,heading:0};S.fleets.push(f);}
  for(const id of FE.ships){const s=S.ships.find(x=>x.id===id);if(s)s.loc=f.id;}
  f.men={hird:Math.min(FE.men.hird,S.hird),bow:Math.min(FE.men.bow,S.bow),berserk:Math.min(FE.men.berserk,S.berserk),bondi:Math.min(FE.men.bondi,Math.max(0,Math.floor(S.pop-5)))};S.hird-=f.men.hird;S.bow-=f.men.bow;S.berserk-=f.men.berserk;S.pop-=f.men.bondi;
- f.cargo={};for(const k in FE.cargo){if(k==='grain'){const q=Math.min(FE.cargo.grain,Math.floor(Math.max(0,S.res.food-300)/20));if(q>0){f.cargo.grain=q;S.res.food-=q*20;}continue;}const q=Math.min(FE.cargo[k],S.store[k]||0);if(q>0){f.cargo[k]=q;S.store[k]-=q;}}
+ f.cargo={};for(const k in FE.cargo){if(k==='timber'){const q=Math.min(FE.cargo.timber,Math.floor(Math.max(0,S.res.timber-20)/5));if(q>0){f.cargo.timber=q;S.res.timber-=q*5;}continue;}if(k==='grain'){const q=Math.min(FE.cargo.grain,Math.floor(Math.max(0,S.res.food-300)/20));if(q>0){f.cargo.grain=q;S.res.food-=q*20;}continue;}const q=Math.min(FE.cargo[k],S.store[k]||0);if(q>0){f.cargo[k]=q;S.store[k]-=q;}}
  f.chief=FE.lead==='chief'&&(!chiefFleet()||chiefFleet()===f);const cpt=!f.chief&&FE.lead?captById(FE.lead):null;f.capt=cpt&&(captFree(cpt)||f.capt===cpt.id)?cpt.id:null;const lead=fleetShips(f)[0];f.name=(f.chief?rulerName(S.ruler).split(' ')[0]+"'s fleet":f.capt?captById(f.capt).name+"'s fleet":'Fleet of the '+(lead?lead.name:'North'));
  if(!fleetShips(f).length){S.fleets=S.fleets.filter(x=>x!==f);closeModal();return;}
  SEL={t:'fleet',id:f.id};FE=null;closeModal();toast(`${f.name} is ready. Tap a place on the map, then "Send a fleet".`);};
@@ -1027,7 +1029,7 @@ function openArrival(f,id){const s=SET[id],st=S.sets[id];st.known=true;const r=r
  h+=`<button class="choice" data-act="demand" data-arg="${f.id}:${id}">Demand tribute<small>Show your shields and ask for silver. If they fear you enough they pay, or even submit for good. If not, they will be ready for you.</small></button>`;
  h+=`<button class="choice" data-act="gift" data-arg="${f.id}:${id}" ${S.res.silver+f.silver<20?'disabled':''}>Offer gifts (20 silver)<small>Feast with them and give gifts: better relations.</small></button>`;
  if(s.kind==='market'||s.kind==='seat')h+=`<button class="choice" data-act="hire" data-arg="${f.id}:${id}" ${S.res.silver+f.silver<12||fleetMen(f)>=fleetSeats(f)?'disabled':''}>Hire landless warriors (12 silver each)<small>Young men without land look for a lord with a ship. They join this fleet as hirdmen if your hall has room.</small></button>`;
- if(!S.spouse&&st.own!=='ind'&&FACS[st.own].seat===id)h+=`<button class="choice" data-act="marry" data-arg="${f.id}:${id}" ${r<20||rank()<1?'disabled':''}>Seek a marriage with ${esc(facRuler(st.own))}'s kin<small>${r<20||rank()<1?'Needs friendly relations and the rank of hersir or higher.':'An alliance by marriage: heirs, and a powerful friend.'}</small></button>`;
+ if(!S.spouse&&marrySeat(id)){const why=marryBlock(id);h+=`<button class="choice" data-act="marry" data-arg="${f.id}:${id}" ${why?'disabled':''}>Seek a marriage with ${esc(st.own==='ind'?'the chieftain of '+s.name:facRuler(st.own))}'s kin<small>${why?esc(why):'An alliance by marriage: heirs, and a friend who will not raid you.'}</small></button>`;}
  h+=`<button class="choice alt" data-act="close">Stay aboard<small>Stay at anchor here.</small></button>`;showModal(h);}
 function arrivalFlavor(s,st,r){if(S.t-st.raided<200)return'Burnt thatch and fresh graves. They remember you, and they watch your sails with hatred.';if(r<-50)return'Horns sound along the shore. Armed men gather on the beach before your keels touch sand.';if(s.kind==='market')return'Dozens of ships are drawn up on the strand. Smoke rises from the workshops; merchants weigh silver on folding scales.';if(s.kind==='sacred')return'Above the bay stands a hall of the gods, its gables carved with beasts. Offerings hang from the trees nearby.';if(s.kind==='fort')return'A ring of earth and timber crowns the hill. Watchers on the wall follow your ships.';if(s.kind==='seat')return'A great hall stands among the farms, smoke curling from its roof-hole. The chieftain\'s men watch you land.';return'A cluster of farms by the shore: longhouses, byres and fishing boats pulled up on the shingle.';}
 ACT.gar=a=>{const[fid,id,n]=a.split(':');const f=fleetById(+fid),st=S.sets[id];const k=+n;if(k>0){const m=Math.min(k,f.men.hird);f.men.hird-=m;st.gar+=m;}else{const m=Math.min(-k,st.gar,fleetSeats(f)-fleetMen(f));st.gar-=m;f.men.hird+=m;}openArrival(f,id);};
@@ -1035,7 +1037,7 @@ ACT.gift=a=>{const[fid,id]=a.split(':');const f=fleetById(+fid);spend(f,20);chan
 function spend(f,n){const a=Math.min(f?f.silver:0,n);if(f)f.silver-=a;S.res.silver-=n-a;}
 const purse=f=>S.res.silver+(f?f.silver:0);
 ACT.hire=a=>{const[fid,id]=a.split(':');const f=fleetById(+fid);const n=Math.min(10,fleetSeats(f)-fleetMen(f),hirdCap()-totalMen('hird'),Math.floor(purse(f)/12),Math.max(0,Math.round(S.renown/15)+3));if(n<=0){toast(hirdCap()<=totalMen('hird')?'Your hall cannot keep more hirdmen.':'No one here will follow you yet; your name is not known well enough.');return;}spend(f,n*12);f.men.hird+=n;log(`${n} landless warriors at ${SET[id].name} swear themselves to you.`,'good');openArrival(f,id);};
-ACT.marry=a=>{const[fid,id]=a.split(':');const st=S.sets[id];const fac=st.own;if(S.spouse||!S.facs[fac])return;const m=S.ruler.sex==='m';S.spouse={name:pick(m?NAMES_F:NAMES_M),from:fac};S.facs[fac].rel=Math.min(100,S.facs[fac].rel+40);S.facs[fac].ally=true;addRenown(25,`a marriage alliance with ${facRuler(fac)}`);log(`${rulerName(S.ruler)} marries ${S.spouse.name}, kin of ${facRuler(fac)}. The ${FACS[fac].n} are now your allies.`,'hist');closeModal();};
+ACT.marry=a=>{const[fid,id]=a.split(':');const st=S.sets[id];const fac=st.own;if(S.spouse||!marrySeat(id)||marryBlock(id))return;if(fac==='ind'){const m=S.ruler.sex==='m';S.spouse={name:pick(m?NAMES_F:NAMES_M),from:''};st.rel=Math.min(100,st.rel+40);addRenown(10,`a marriage with the chieftain's kin at ${SET[id].name}`);log(`${rulerName(S.ruler)} marries ${S.spouse.name}, kin of the chieftain of ${SET[id].name}.`,'hist');closeModal();return;}if(!S.facs[fac])return;const m=S.ruler.sex==='m';S.spouse={name:pick(m?NAMES_F:NAMES_M),from:fac};S.facs[fac].rel=Math.min(100,S.facs[fac].rel+40);S.facs[fac].ally=true;addRenown(25,`a marriage alliance with ${facRuler(fac)}`);log(`${rulerName(S.ruler)} marries ${S.spouse.name}, kin of ${facRuler(fac)}. The ${FACS[fac].n} are now your allies.`,'hist');closeModal();};
 ACT.demand=a=>{const[fid,id]=a.split(':');const f=fleetById(+fid);const s=SET[id],st=S.sets[id];const ratio=fleetPower(f)*(1+S.renown/700)*(f.chief?1.1:1)/Math.max(5,setDefense(id));const bigSeat=st.own!=='ind'&&FACS[st.own].seat===id;
  let h=`<h2>${esc(s.name)} answers</h2>`;
  if(ratio>=2.3&&!bigSeat&&!(st.own!=='ind'&&FACS[st.own].big&&s.size>=2)){st.orig=st.own;st.own='player';st.trib=true;st.men=Math.round(st.men*.8);if(S.facs[st.orig])S.facs[st.orig].rel-=20,S.facs[st.orig].griev+=1;addRenown(10+s.size*5,`${s.name} submits to you`);S.stats.tribs=(S.stats.tribs||0)+1;h+=`<p class="story">The elders look long at your ships and your warriors. Then they bring out the silver and swear to pay you tribute each autumn.</p><p><b>${esc(s.name)} is now your tributary.</b></p>`;log(`${s.name} submits and becomes your tributary.`,'good');}
@@ -1080,7 +1082,7 @@ ACT.codex=a=>{if(a)codexTab=a;let h=`<button class="x" data-act="close">✕</but
  if(codexTab==='hist')h+=S.hist.length?S.hist.map(e=>`<p><b>${e.y}: ${esc(e.title)}</b><br><span class="small">${esc(e.text)}</span></p>`).join(''):'<p><i>Nothing has happened yet.</i></p>';
  showModal(h);};
 ACT.codexgo=id=>{closeModal();ACT.selset(id);};
-const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another. A palisade can only be crossed at its gates, and men fighting across the stakes do little harm. <b>Fall back (F)</b> pulls a warband out of a fight in good order (it takes some blows as it goes). A warband whose morale breaks is <b>routed</b>: it runs for the ships or the edge of the field. If no enemy is near after a few seconds it may rally. Warbands standing beside a house loot it; the bar under each house shows what is left.</p><p><b>Unit matchups.</b> Every warband has a job. Hirdmen hook and break shield walls (ability: throw spears just before the clash). Bondi and levies with spears stop horsemen, and when braced, any charge into their front fails (ability: brace spears). Bowmen and archers cut down unarmoured men, above all berserkers (ability: volley). Berserkers terrify farmers and levies (ability: war cry), but arrows cut them down. Frankish horse rides down archers and farmers in the open. Select a warband and press its gold ability button (Q).</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
+const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Raids begin as your warriors leap from the ships. When raiders come to your own hall, you first place your defenders (or pick Line or Wedge); which gate you guard matters. Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another. A palisade can only be crossed at its gates, and men fighting across the stakes do little harm. <b>Fall back (F)</b> pulls a warband out of a fight in good order (it takes some blows as it goes). A warband whose morale breaks is <b>routed</b>: it runs for the ships or the edge of the field. If no enemy is near after a few seconds it may rally. Warbands standing beside a house loot it; the bar under each house shows what is left.</p><p><b>Unit matchups.</b> Every warband has a job. Hirdmen hook and break shield walls (ability: throw spears just before the clash). Bondi and levies with spears stop horsemen, and when braced, any charge into their front fails (ability: brace spears). Bowmen and archers cut down unarmoured men, above all berserkers (ability: volley). Berserkers terrify farmers and levies (ability: war cry), but arrows cut them down. Frankish horse rides down archers and farmers in the open. Select a warband and press its gold ability button (Q).</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
 <p><b>Time.</b> Days pass while unpaused (the ▶ buttons set the speed). Ships sail from April to October; winter voyages risk gales. Grain is harvested in mid-September; feasts come at Winter Nights and Yule.</p>
 <p><b>Food.</b> Your people, warriors and crews all eat. Fishing feeds you in summer and the harvest must last the winter. Raids, trade (grain, stockfish) and tribute fill the gap. Hunger kills folk and loyalty.</p>
 <p><b>Fleets.</b> In the hall, <i>Muster a fleet</i>: choose ships, warriors and cargo. Tap a place on the map and use its <i>Send a fleet</i> buttons (or hold your finger on the sea). Bondi (farmers) can row and fight, but harvests suffer when they are away.</p>
@@ -1207,6 +1209,17 @@ function warArrive(a){const id=a.target,st=S.sets[id];if(!st||st.own===a.fac)ret
  else{st.men=Math.max(4,Math.round(st.men-a.men*.45));const back=Math.round(a.men*.4);if(a.src&&S.sets[a.src]&&S.sets[a.src].own===a.fac)S.sets[a.src].men+=back;if(known)log(`${raidName(a)} attack ${SET[id].name} but are thrown back.`,'');}}
 function coalitionHelp(f){if(!S.flags.coalition||!f||!f.startsWith||!f.startsWith('rv'))return 0;const o=rivalIds().find(x=>x!==f);return o?Math.round(facPower(o)*.25):0;}
 function rivalsCard(){const ids=rivalIds();if(!ids.length)return'';return`<div class="card"><h3>Rival jarls</h3>${ids.map(f=>{const R=S.rivals[f];const pl=rivalPlaces(f);return`<div class="fleetrow" data-act="selset" data-arg="${R.seat}"><span>${pimg(portraitOf('rival',Object.assign({col:FACS[f].c},R)),'xs')}<b style="color:${FACS[f].c}">■</b> Jarl ${esc(R.name)} ${esc(R.nick)}</span><span class="small">${pl.length} ${pl.length===1?'hall':'halls'} · ${facPower(f)} men · ${relWord(S.facs[f].rel)}${R.friend?` · friend of the ${esc(FACS[R.friend].n)}`:''}</span></div>`;}).join('')}${S.flags.coalition?'<div class="small" style="color:#9b2a1a">Sworn together against you.</div>':''}</div>`;}
+
+/* ================= MARRIAGE ================= */
+// Where a match can be sought: a kingdom's royal seat, a rival jarl's hall, or a free chieftain's seat.
+function marrySeat(id){const st=S.sets[id];if(!st||id===S.home)return false;const o=st.own;if(o==='player')return false;
+ if(o==='ind')return SET[id].kind==='seat';if(FACS[o]&&FACS[o].seat===id)return true;return!!(S.rivals&&S.rivals[o]&&S.rivals[o].alive&&S.rivals[o].seat===id);}
+function marryBlock(id){const st=S.sets[id],o=st.own;const r=relOf(id);const king=o!=='ind'&&!String(o).startsWith('rv');
+ if(king&&rank()<1)return'A king marries his kin only to a hersir or greater (150 renown).';
+ if(r<20)return`Their mood toward you is ${relWord(r)} (${Math.round(r)}). It must be Friendly (20 or more): send gifts from the Peoples screen, feast them when you visit, and do not raid them.`;return'';}
+function marryListHTML(){const L=SETS.filter(s=>marrySeat(s.id)&&(S.sets[s.id].known||S.sets[s.id].rumor));
+ if(!L.length)return'<div class="small">Explore to find lords\' halls where you could seek a match.</div>';
+ return`<div class="small" style="margin:6px 0 2px">Sail a fleet to one of these halls, go ashore and choose <b>Seek a marriage</b>. A match with a king\'s kin makes his people your allies; with a rival jarl, it ends his feud with you.</div><table class="t"><tr><th>Hall</th><th>Who</th><th>Mood</th><th></th></tr>${L.map(s=>{const st=S.sets[s.id];const why=marryBlock(s.id);return`<tr><td>${esc(s.name)}</td><td class="small">${esc(st.own==='ind'?'a free chieftain':facRuler(st.own))}</td><td class="small">${relWord(relOf(s.id))}${why?'<br><i>'+esc(why)+'</i>':' · <b>ready</b>'}</td><td><button class="sm alt" data-act="codexgo" data-arg="${s.id}">Show</button></td></tr>`;}).join('')}</table>`;}
 
 /* ================= TOWN PICTURES ================= */
 // A small painted scene for each place, drawn from what we know about it:
@@ -1477,11 +1490,10 @@ function initBattle(o,auto){B=Object.assign({t:0,nextWave:22,taken:{silver:0,foo
  B.lead=o.mode==='raid'&&o.f?fleetLeader(o.f):null;B.atkM=(B.chief?1.08:1)*(has(B.lead,'fierce')?1.12:1);for(const s of B.sq)s.face=s.side==='A'?0:Math.PI;
  const pm=(o.mode==='raid'&&o.f?captainMorale(o.f):10)+[0,5,10][S.bld.hof]+(S.loyalty-50)/5;for(const s of B.sq)if(s.side===B.ps&&s.type!=='levy'){s.base+=pm;s.morale=s.base;}
  if(auto){B.auto=true;let n=0;while(!B.over&&n<2400){battleStep(.2);n++;}if(!B.over)endBattle(B.ps==='A'?'withdraw':'victory');return;}
- battleOn=true;setPaused(true);$('battle').classList.remove('hidden');B.sel=(B.sq.find(s=>s.side===B.ps)||{}).id;B.deploy=true;resizeBattle();renderBattleUI();B.last=performance.now();
- bmsg('Deploy your warbands: '+(B.ter?B.ter.txt:''));B.msgT=8;}
+ battleOn=true;setPaused(true);$('battle').classList.remove('hidden');B.sel=(B.sq.find(s=>s.side===B.ps)||{}).id;B.deploy=o.mode==='defend';resizeBattle();renderBattleUI();B.last=performance.now();
+ bmsg((B.deploy?'Place your defenders (which gate you guard matters), then begin the fight. ':'Your warriors leap from the ships! ')+(B.ter?B.ter.txt:''));B.msgT=8;}
 function resizeBattle(){const r=bcv.getBoundingClientRect();const d=window.devicePixelRatio||1;bcv.width=Math.max(10,r.width*d);bcv.height=Math.max(10,r.height*d);}
 function bmsg(m){B.msg=m;B.msgT=4;}
-function fieldScale(){const d=window.devicePixelRatio||1;const W=bcv.width/d,H=bcv.height/d;const k=Math.min(W/BW,H/BH);return{k,ox:(W-BW*k)/2,oy:(H-BH*k)/2};}
 const alive=s=>!s.gone;
 const onField=s=>!s.gone&&!s.rout;
 
@@ -1630,7 +1642,7 @@ function renderBattleUI(){if(!B)return;const mine=B.sq.filter(s=>s.side===B.ps);
  const sel=B.sq.find(s=>s.id===B.sel);
  if(B.deploy){$('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}</div>`).join('')+`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px"><button data-act="bform" data-arg="line">Line</button><button data-act="bform" data-arg="wedge">Wedge (svínfylking)</button><button class="gold" data-act="bgo">⚔ Begin the fight</button><div class="small" style="color:#d9c79a">Deploy: pick a warband, then click inside the bright area to place it. <b>Matchups:</b> ${esc(MATCHUPS)} ${esc(B.ter?B.ter.txt:'')}${B.lead?' Led by '+esc(captName(B.lead))+'.':''}</div></div>`;return;}
  $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (routed: running)':s.dis?' (falling back)':s.brace>0?' (braced)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
- +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break wall':'Shield wall'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot</button>':''}<button data-act="bhold">Hold</button><button data-act="bfall">Fall back</button>${ABIL[sel.type]?`<button class="gold" data-act="babil" ${sel.abCd>0?'disabled':''} title="${esc(ABIL[sel.type].d||'')}">${esc(ABIL[sel.type].n)}${sel.abCd>0?' '+Math.ceil(sel.abCd):''}</button>`:''}<div class="small" style="color:#b9a682">Tap ground to move · tap an enemy to attack${B.ps==='A'?' · tap a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Tap a warband to command it</span>'}</div>`;}
+ +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break wall':'Shield wall'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot</button>':''}<button data-act="bhold">Hold</button><button data-act="bfall">Fall back</button>${ABIL[sel.type]?`<button class="gold" data-act="babil" ${sel.abCd>0?'disabled':''} title="${esc(ABIL[sel.type].d||'')}">${esc(ABIL[sel.type].n)}${sel.abCd>0?' '+Math.ceil(sel.abCd):''}</button>`:''}<div class="small" style="color:#b9a682">Tap ground to move · tap an enemy to attack${B.ps==='A'?' · tap a house to loot':''} · two fingers to zoom and pan</div>`:'<span class="small" style="color:#b9a682">Tap a warband to command it</span>'}</div>`;}
 ACT.bsel=a=>{B.sel=+a;renderBattleUI();};
 ACT.bpause=()=>{B.paused=!B.paused;renderBattleUI();};
 ACT.bspeed=()=>{B.speed=B.speed===1?2:B.speed===2?3:1;renderBattleUI();};
@@ -1645,8 +1657,8 @@ ACT.bfall=()=>{const s=selSq();if(!s)return;let tx,ty=s.y;if(B.ps==='A'){tx=Math
 ACT.bhold=()=>{const s=selSq();if(s){s.tgt=null;s.bld=null;s.tx=s.x;s.ty=s.y;s.order='hold';}};
 function battleKey(e){if(e.code==='Space'){e.preventDefault();ACT.bpause();return;}const n=+e.key;if(n>=1&&n<=9){const m=B.sq.filter(s=>s.side===B.ps)[n-1];if(m){B.sel=m.id;renderBattleUI();}return;}
  const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='f')ACT.bfall();else if(k==='q')ACT.babil();else if(k==='r'&&B.ps==='A')ACT.bships();}
-bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const{k,ox,oy}=fieldScale();const x=(e.clientX-r.left-ox)/k,y=(e.clientY-r.top-oy)/k;
- let hit=null,hd=1e9;for(const s of B.sq){if(s.gone)continue;const d=Math.hypot(s.x-x,s.y-y);if(d<sqR(s)+18&&d<hd){hd=d;hit=s;}}
+bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const P0=screenToField(e.clientX-r.left,e.clientY-r.top),P1=screenToField(e.clientX-r.left,e.clientY-r.top+9);const x=P0.x,y=P0.y;
+ let hit=null,hd=1e9;for(const s of B.sq){if(s.gone)continue;const d=Math.min(Math.hypot(s.x-x,s.y-y),Math.hypot(s.x-P1.x,s.y-P1.y));if(d<sqR(s)+18&&d<hd){hd=d;hit=s;}}
  if(hit&&hit.side===B.ps&&e.button===0){B.sel=hit.id;renderBattleUI();return;}const s=selSq();if(!s)return;
  if(B.deploy){const p=clampZone(x,y);s.x=p.x;s.y=p.y;renderBattleUI();return;}B.auto=false;
  if(hit&&hit.side!==B.ps){s.tgt=hit.id;s.bld=null;s.order='attack';}
@@ -1654,48 +1666,181 @@ bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();
  renderBattleUI();});
 bcv.addEventListener('contextmenu',e=>e.preventDefault());
 function terLabel(t,x,y){const g=bctx;g.font='italic 600 13px EB Garamond';g.textAlign='center';g.textBaseline='middle';g.lineWidth=3;g.strokeStyle='rgba(20,16,10,.85)';g.strokeText(t,x,y);g.fillStyle='#f5e7c2';g.fillText(t,x,y);}
-function drawBattle(){if(!B)return;const d=window.devicePixelRatio||1;const W=bcv.width/d,H=bcv.height/d;const g=bctx;g.setTransform(d,0,0,d,0,0);g.fillStyle='#14110d';g.fillRect(0,0,W,H);const{k,ox,oy}=fieldScale();g.setTransform(d*k,0,0,d*k,d*ox,d*oy);
- // ground
- const gr=g.createLinearGradient(0,0,BW,0);gr.addColorStop(0,'#2a4a5e');gr.addColorStop(SHIPX/BW,'#3a6070');gr.addColorStop((SHIPX+14)/BW,'#b8a879');gr.addColorStop((SHIPX+50)/BW,'#6f7d45');gr.addColorStop(1,'#56693a');g.fillStyle=gr;g.fillRect(0,0,BW,BH);
- for(let i=0;i<70;i++){const x=hash2(i,3)*BW,y=hash2(i,7)*BH;if(x<SHIPX+40)continue;g.fillStyle='rgba(40,60,25,.35)';g.beginPath();g.ellipse(x,y,20+hash2(i,9)*40,10+hash2(i,5)*16,0,0,6.28);g.fill();}
- if(B.ter){const T=B.ter;
-  for(const h of T.hills){const gg=g.createRadialGradient(h.x,h.y,h.r*.1,h.x,h.y,h.r);gg.addColorStop(0,'rgba(170,165,95,.55)');gg.addColorStop(1,'rgba(120,130,70,0)');g.fillStyle=gg;g.beginPath();g.arc(h.x,h.y,h.r,0,6.28);g.fill();g.strokeStyle='rgba(60,55,30,.35)';g.setLineDash([3,5]);for(const k of[.55,.85]){g.beginPath();g.arc(h.x,h.y,h.r*k,0,6.28);g.stroke();}g.setLineDash([]);}
-  if(T.river){g.strokeStyle='#3d6a82';g.lineWidth=30;g.lineCap='round';g.beginPath();for(let y=0;y<=BH;y+=10){const x=rivX(y);if(y)g.lineTo(x,y);else g.moveTo(x,y);}g.stroke();g.strokeStyle='rgba(160,200,215,.35)';g.lineWidth=3;g.stroke();
-   for(const f of T.river.fords){g.fillStyle='rgba(196,178,124,.85)';g.fillRect(rivX(f)-17,f-30,34,60);g.fillStyle='rgba(61,106,130,.35)';for(let k=0;k<4;k++)g.fillRect(rivX(f)-15,f-26+k*15,30,3);}}
-  for(const w of T.woods){for(let k=0;k<16;k++){const a=hash2(k,w.x|0)*6.28,rr=hash2(k,w.y|0)*w.r*.85;g.fillStyle=k%3?'#2f4a24':'#3a5a2c';g.beginPath();g.arc(w.x+Math.cos(a)*rr,w.y+Math.sin(a)*rr,9+hash2(k,7)*8,0,6.28);g.fill();}}}
- if(B.ter){const T=B.ter;for(const h of T.hills)terLabel(h.town?'Rise (higher ground)':'Hill (higher ground)',h.x,h.y-h.r+16);if(T.river){terLabel('Stream: cross at the fords',rivX(28),24);for(const f of T.river.fords)terLabel('Ford',rivX(f)+30,f-6);}for(const w of T.woods)terLabel('Woods',w.x,w.y-w.r-6);}
- if(B.deploy){const z=deployZone();g.fillStyle='rgba(255,224,140,.13)';g.fillRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.strokeStyle='rgba(255,224,140,.7)';g.setLineDash([8,6]);g.lineWidth=2;g.strokeRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.setLineDash([]);}
- // ships
- for(let i=0;i<5;i++){const y=90+i*105;g.fillStyle='#3a2414';g.beginPath();g.moveTo(SHIPX-6,y-28);g.quadraticCurveTo(SHIPX+10,y,SHIPX-6,y+28);g.lineTo(SHIPX-22,y+24);g.quadraticCurveTo(SHIPX-10,y,SHIPX-22,y-24);g.closePath();g.fill();}
- // palisade
- if(B.wall){g.strokeStyle='#5a3e22';g.lineWidth=5+B.wall*2;g.setLineDash([10,4]);for(const[a0,a1]of[[GATE,Math.PI-GATE],[Math.PI+GATE,2*Math.PI-GATE]]){g.beginPath();g.ellipse(VC.x,VC.y,WRX,WRY,0,a0,a1);g.stroke();}g.setLineDash([]);
-  for(const gx of[-1,1])for(const sy of[-1,1]){const a=gx<0?Math.PI-sy*GATE:sy*GATE;const x=VC.x+Math.cos(a)*WRX,y=VC.y+Math.sin(a)*WRY;g.fillStyle='#3a2410';g.fillRect(x-4,y-4,8,8);}
-  terLabel('Gate',VC.x-WRX-2,VC.y-30);terLabel('Gate',VC.x+WRX+2,VC.y-30);}
- // buildings
- for(const b of B.blds){const burnt=1-b.left;g.fillStyle=b.t==='shrine'?'#6a4a2a':'#7a5a34';g.fillRect(b.x-b.w/2,b.y-b.h/2,b.w,b.h);g.fillStyle=`rgb(${120-burnt*80},${95-burnt*70},${50-burnt*30})`;g.beginPath();g.moveTo(b.x-b.w/2-4,b.y-b.h/2+4);g.lineTo(b.x,b.y-b.h/2-12);g.lineTo(b.x+b.w/2+4,b.y-b.h/2+4);g.closePath();g.fill();
-  if(b.t==='hall'||b.t==='shrine'){g.strokeStyle='#2a1a0c';g.lineWidth=2;g.beginPath();g.moveTo(b.x-6,b.y-b.h/2-16);g.lineTo(b.x,b.y-b.h/2-10);g.lineTo(b.x+6,b.y-b.h/2-16);g.stroke();}
-  if(burnt>.15){g.fillStyle=`rgba(60,55,50,${burnt*.5})`;for(let i=0;i<3;i++){g.beginPath();g.arc(b.x-10+i*10+Math.sin(B.t*2+i)*4,b.y-b.h/2-20-i*12-(B.t*8%20),8+i*3,0,6.28);g.fill();}}
-  g.fillStyle='rgba(0,0,0,.5)';g.fillRect(b.x-b.w/2,b.y+b.h/2+2,b.w,3);g.fillStyle='#e0c060';g.fillRect(b.x-b.w/2,b.y+b.h/2+2,b.w*b.left,3);}
- // the fallen
- if(B.fallen)for(const f of B.fallen){g.save();g.translate(f.x,f.y);g.rotate(f.a);g.fillStyle='rgba(110,20,14,.35)';g.beginPath();g.ellipse(1,1,4,2.4,0,0,6.28);g.fill();g.fillStyle=f.m?'#6a4a2a':'#3a3a4a';g.beginPath();g.ellipse(0,0,3.4,1.6,0,0,6.28);g.fill();g.fillStyle='#d8b898';g.beginPath();g.arc(3.4,0,1.2,0,6.28);g.fill();g.restore();}
- // squads
- for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;const U=UT[s.type];const n=Math.max(1,Math.round(s.men));const cols=Math.ceil(Math.sqrt(n*1.6));const sp=6.6;const face=s.face??(s.side==='A'?0:Math.PI);
-  g.save();g.translate(s.x,s.y);g.globalAlpha=s.rout?.5:1;
-  if(s.id===B.sel){g.strokeStyle='#ffd36a';g.lineWidth=2;g.beginPath();g.arc(0,0,sqR(s)+5,0,6.28);g.stroke();}
-  g.fillStyle=mine?'rgba(240,198,74,.18)':'rgba(200,60,40,.16)';g.beginPath();g.arc(0,0,sqR(s)+1,0,6.28);g.fill();
-  g.rotate(face+Math.PI/2);const rows=Math.ceil(n/cols);
-  const spr=soldierSprite(s.type,mine);const SZ=s.type==='frank'?11:7.4;
-  for(let i=0;i<n;i++){const c=i%cols,r=Math.floor(i/cols);const x=(c-(cols-1)/2)*sp+(r%2)*1.2,y=(r-(rows-1)/2)*sp;const bob=s.cont&&s.cont.length&&!s.rout?Math.sin(B.t*13+i*1.9)*.6:0;g.drawImage(spr,x-SZ/2,y-SZ/2+bob,SZ,SZ);if(s.wall&&r===0){g.fillStyle=mine?'rgba(216,180,90,.85)':'rgba(138,42,26,.85)';g.fillRect(x-3,y-4.6,6,1.6);}}
-  g.restore();g.globalAlpha=1;
-  g.fillStyle='rgba(0,0,0,.55)';g.fillRect(s.x-14,s.y-sqR(s)-9,28,4);g.fillStyle=mine?'#e8c050':'#d0503a';g.fillRect(s.x-14,s.y-sqR(s)-9,28*clamp(s.morale/s.base,0,1),4);
-  if(mine){g.fillStyle='#fff';g.font='bold 11px EB Garamond';g.textAlign='center';g.fillText(String(B.sq.filter(q=>q.side===B.ps).indexOf(s)+1),s.x,s.y-sqR(s)-12);}
-  if(mine&&s.id===B.sel&&(s.tx!=null)&&!s.tgt&&s.bld==null&&!s.cont.length&&Math.hypot(s.tx-s.x,s.ty-s.y)>8){g.strokeStyle='rgba(255,211,106,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(s.x,s.y);g.lineTo(s.tx,s.ty);g.stroke();g.setLineDash([]);}}
- for(const f of B.fx){if(f.txt){g.globalAlpha=clamp(f.t,0,1);g.font='bold 14px EB Garamond';g.textAlign='center';g.lineWidth=3;g.strokeStyle='#000';g.strokeText(f.txt,f.x,f.y-(1.4-f.t)*14);g.fillStyle=f.c;g.fillText(f.txt,f.x,f.y-(1.4-f.t)*14);g.globalAlpha=1;continue;}if(f.sp){g.fillStyle=`rgba(255,220,120,${f.t})`;g.beginPath();g.arc(f.x,f.y-(1-f.t)*20,2.5,0,6.28);g.fill();}else{g.strokeStyle=`rgba(230,220,190,${f.t*2})`;g.lineWidth=1;g.beginPath();const t=1-f.t/.35;g.moveTo(f.x0+(f.x1-f.x0)*t,f.y0+(f.y1-f.y0)*t);g.lineTo(f.x0+(f.x1-f.x0)*Math.min(1,t+.15),f.y0+(f.y1-f.y0)*Math.min(1,t+.15));g.stroke();}}
- $('bmsg').style.display=B.msgT>0&&B.msg?'block':'none';$('bmsg').textContent=B.msg;}
 let bUiT=0,bPress=0;
 ['mousedown','touchstart'].forEach(ev=>{$('btop').addEventListener(ev,()=>{bPress=performance.now();},{passive:true});$('bbot').addEventListener(ev,()=>{bPress=performance.now();},{passive:true});});
 ['mouseup','touchend','touchcancel'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{bPress=0;},0),{passive:true}));
 function battleFrame(now){if(!battleOn||!B)return;const dt=Math.min(.05,(now-B.last)/1000);B.last=now;if(!B.paused&&!B.deploy){for(let i=0;i<B.speed;i++){battleStep(dt);if(B.over)return;}}B.msgT-=dt;drawBattle();bUiT-=dt;if(bUiT<=0&&!(bPress&&now-bPress<1500)){bUiT=.25;renderBattleUI();}}
+
+/* ================= ISOMETRIC BATTLEFIELD ================= */
+// The battle simulation still runs on the flat 1000×600 field. Only the drawing changes:
+// the field is seen from a 45° isometric camera (like the classic RTS games), with the
+// ground painted under a skewed transform and upright things (people, houses, trees,
+// stakes, ships) stamped in depth order so nearer ones cover farther ones.
+const ISO_C=Math.SQRT1_2,ISO_W=(BW+BH)*ISO_C,ISO_H=(BW+BH)*ISO_C*.5,ISO_TOP=44;
+// battle camera: zoom and pan like an RTS; the screen centre looks at field point (cx,cy)
+function bcam(){if(!B.cam)B.cam={z:1.45,cx:(SHIPX+VC.x)/2+30,cy:BH/2};return B.cam;}
+function isoFit(){const d=window.devicePixelRatio||1;const W=bcv.width/d,H=bcv.height/d;const base=Math.min(W/(ISO_W*.96),H/(ISO_H+ISO_TOP+8));const C=B?bcam():{z:1,cx:BW/2,cy:BH/2};const k=base*C.z;
+ return{k,ox:W/2-(C.cx-C.cy)*ISO_C*k,oy:H/2-(C.cx+C.cy)*ISO_C*.5*k+ISO_TOP*k*.3,W,H,d};}
+function clampBcam(){const C=bcam();C.z=clamp(C.z,1,3.2);C.cx=clamp(C.cx,SHIPX-40,BW-40);C.cy=clamp(C.cy,40,BH-40);}
+function battleZoomAt(sx,sy,f){const before=screenToField(sx,sy);const C=bcam();C.z*=f;clampBcam();const after=screenToField(sx,sy);C.cx+=before.x-after.x;C.cy+=before.y-after.y;clampBcam();}
+function battlePan(dx,dy){const F=isoFit();const X=dx/F.k/ISO_C,Y=dy/F.k/(ISO_C*.5);const C=bcam();C.cx-=(X+Y)/2;C.cy-=(Y-X)/2;clampBcam();}
+bcv.addEventListener('wheel',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const zoom=e.ctrlKey||e.deltaMode===1||(Math.abs(e.deltaY)>=50&&!e.deltaX);
+ if(zoom){let dy=e.deltaMode===1?e.deltaY*33:e.deltaY;if(e.ctrlKey)dy*=3;battleZoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-clamp(dy,-240,240)*.0016));}else battlePan(-e.deltaX,-e.deltaY);},{passive:false});
+let bDrag=null;bcv.addEventListener('mousedown',e=>{if(e.button===1&&B&&battleOn){e.preventDefault();e.stopImmediatePropagation();bDrag={x:e.clientX,y:e.clientY};}},true);
+window.addEventListener('mousemove',e=>{if(!bDrag)return;if(!(e.buttons&4)){bDrag=null;return;}battlePan(e.clientX-bDrag.x,e.clientY-bDrag.y);bDrag={x:e.clientX,y:e.clientY};});
+window.addEventListener('mouseup',()=>{bDrag=null;});
+window.addEventListener('keydown',e=>{if(!battleOn||!B||modalOpen)return;const m={ArrowLeft:[40,0],ArrowRight:[-40,0],ArrowUp:[0,40],ArrowDown:[0,-40]}[e.key];if(m){e.preventDefault();battlePan(m[0],m[1]);}else if(e.key==='+'||e.key==='='){battleZoomAt(bcv.clientWidth/2,bcv.clientHeight/2,1.15);}else if(e.key==='-'){battleZoomAt(bcv.clientWidth/2,bcv.clientHeight/2,1/1.15);}});
+let ISO=null;
+function iso(x,y,h){return{x:ISO.ox+(x-y)*ISO_C*ISO.k,y:ISO.oy+((x+y)*ISO_C*.5-(h||0))*ISO.k};}
+function screenToField(sx,sy){const F=isoFit();const X=(sx-F.ox)/F.k/ISO_C,Y=(sy-F.oy)/F.k/(ISO_C*.5);return{x:(X+Y)/2,y:(Y-X)/2};}
+function fieldScale(){const F=isoFit();return{k:F.k,ox:F.ox,oy:F.oy};}
+function groundTransform(){const{k,ox,oy,d}=ISO;bctx.setTransform(d*k*ISO_C,d*k*ISO_C*.5,-d*k*ISO_C,d*k*ISO_C*.5,d*ox,d*oy);}
+function screenTransform(){bctx.setTransform(ISO.d,0,0,ISO.d,0,0);}
+
+/* ---- standing soldier sprites (feet at the bottom centre, facing right) ---- */
+const STAND={};
+function standSprite(type,mine,left){const key=type+(mine?'m':'e')+(left?'L':'R');if(STAND[key])return STAND[key];
+ const horse=type==='frank';const UW=horse?30:18,UH=horse?30:24,K=4;const c=document.createElement('canvas');c.width=UW*K;c.height=UH*K;const g=c.getContext('2d');g.scale(K,K);
+ if(left){g.translate(UW,0);g.scale(-1,1);}
+ const cx=UW/2,fy=UH-1.2;
+ const shA=mine?'#d9b44a':'#8c2e22',shB=mine?'#9b3520':'#2f4f7a';
+ const tunic={hird:mine?'#7a2e22':'#3c4a6a',bondi:'#8a7a58',bow:'#5a6a3a',berserk:'#5a3c22',levy:'#7a7464',guard:'#3a4a7a',archer:'#4a6a4a',frank:'#8a7a3a'}[type]||'#777';
+ const mail=['hird','guard','frank'].includes(type);
+ g.fillStyle='rgba(0,0,0,.3)';g.beginPath();g.ellipse(cx,fy,horse?11:5,horse?2.6:1.8,0,0,6.28);g.fill();
+ let base=fy;
+ if(horse){// horse in profile, rider on top
+  g.fillStyle='#5a3a22';g.beginPath();g.ellipse(cx,fy-9,9,4.2,0,0,6.28);g.fill();
+  g.strokeStyle='#4a2e18';g.lineWidth=1.6;for(const lx of[-6,-3,4,7]){g.beginPath();g.moveTo(cx+lx,fy-7);g.lineTo(cx+lx+(lx<0?-.5:.5),fy);g.stroke();}
+  g.fillStyle='#5a3a22';g.beginPath();g.moveTo(cx+6,fy-11);g.lineTo(cx+11,fy-17);g.lineTo(cx+13.5,fy-15.5);g.lineTo(cx+9,fy-9);g.fill();g.fillStyle='#2a1a10';g.beginPath();g.moveTo(cx+7,fy-13);g.lineTo(cx+10,fy-17);g.lineTo(cx+8.5,fy-12);g.fill();
+  g.strokeStyle='#2a1a10';g.lineWidth=1.2;g.beginPath();g.moveTo(cx-9,fy-10);g.quadraticCurveTo(cx-12,fy-7,cx-11,fy-3);g.stroke();
+  g.fillStyle='#b8a050';g.fillRect(cx-3,fy-13.5,6,2);base=fy-11;}
+ // legs
+ if(!horse){g.fillStyle='#4a3a2a';g.fillRect(cx-2.6,base-6,2,6);g.fillRect(cx+.6,base-6,2,6);g.fillStyle='#2a1a10';g.fillRect(cx-3,base-1,2.6,1);g.fillRect(cx+.4,base-1,2.6,1);}
+ const top=horse?base-8:base-14;// shoulders
+ // body
+ g.fillStyle='#1a120a';g.beginPath();g.moveTo(cx-4.2,top+1);g.lineTo(cx+4.2,top+1);g.lineTo(cx+3.6,top+(horse?8:9));g.lineTo(cx-3.6,top+(horse?8:9));g.closePath();g.fill();
+ g.fillStyle=tunic;g.beginPath();g.moveTo(cx-3.6,top+1.5);g.lineTo(cx+3.6,top+1.5);g.lineTo(cx+3.1,top+(horse?7.6:8.6));g.lineTo(cx-3.1,top+(horse?7.6:8.6));g.closePath();g.fill();
+ if(mail){g.fillStyle='rgba(185,190,200,.6)';g.fillRect(cx-3.4,top+1.6,6.8,4.4);}
+ g.fillStyle='#3a2a18';g.fillRect(cx-3.3,top+5.6,6.6,1);
+ // back weapon / arm
+ const handle=(x0,y0,x1,y1)=>{g.strokeStyle='#5a3e22';g.lineWidth=.9;g.beginPath();g.moveTo(x0,y0);g.lineTo(x1,y1);g.stroke();};
+ if(type==='hird'){handle(cx-2,top+4,cx-5,top-5);g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(cx-5,top-5);g.quadraticCurveTo(cx-9,top-5.5,cx-8.4,top-1.5);g.lineTo(cx-5.4,top-2.6);g.fill();}
+ if(type==='berserk'){for(const s of[-1,1]){handle(cx+s*2,top+4,cx+s*5,top-4);g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(cx+s*5,top-4);g.quadraticCurveTo(cx+s*8.6,top-4.6,cx+s*8,top-.8);g.lineTo(cx+s*5.2,top-1.8);g.fill();}}
+ // head
+ g.fillStyle='#e8c4a0';g.beginPath();g.arc(cx+.4,top-2.4,2.5,0,6.28);g.fill();
+ if(mail){g.fillStyle='#9aa0a8';g.beginPath();g.arc(cx+.4,top-2.8,2.7,Math.PI,0);g.fill();g.fillRect(cx-2.3,top-3,5.4,.9);g.fillStyle='#6a7078';g.fillRect(cx+2.2,top-3,.8,2.8);}
+ else if(type==='berserk'){g.fillStyle='#5a3c22';g.beginPath();g.arc(cx+.2,top-2.6,3.2,Math.PI*.9,Math.PI*2.1);g.fill();g.beginPath();g.arc(cx-2,top-5.4,1,0,6.28);g.arc(cx+2.2,top-5.4,1,0,6.28);g.fill();}
+ else if(type==='bow'||type==='archer'){g.fillStyle='#4f5f30';g.beginPath();g.arc(cx+.2,top-2.6,2.9,Math.PI*.85,Math.PI*2.05);g.fill();}
+ else{g.fillStyle=type==='guard'?'#9aa0a8':'#7a5a34';g.beginPath();g.arc(cx+.4,top-2.9,2.6,Math.PI,0);g.fill();}
+ if(!mail&&type!=='berserk'){g.fillStyle='#c8a060';g.beginPath();g.moveTo(cx-1.6,top-1.4);g.quadraticCurveTo(cx+.6,top+1.8,cx+2.6,top-1.4);g.fill();}
+ // front weapon
+ if(['bondi','levy','guard'].includes(type)){handle(cx+4.4,base-1,cx+4.4,top-9);g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(cx+4.4,top-12);g.lineTo(cx+3.5,top-8.6);g.lineTo(cx+5.3,top-8.6);g.fill();}
+ if(type==='frank'){handle(cx-2,top+3,cx+13,top-3);g.fillStyle='#c8ccd2';g.beginPath();g.moveTo(cx+15.5,top-4);g.lineTo(cx+12.4,top-4.2);g.lineTo(cx+12.8,top-2.4);g.fill();}
+ if(type==='bow'||type==='archer'){g.strokeStyle='#7a5a2a';g.lineWidth=1;g.beginPath();g.arc(cx+2,top+3,6.4,-1.15,1.15);g.stroke();g.strokeStyle='rgba(240,230,200,.8)';g.lineWidth=.4;g.beginPath();g.moveTo(cx+2+6.4*Math.cos(-1.15),top+3+6.4*Math.sin(-1.15));g.lineTo(cx+2+6.4*Math.cos(1.15),top+3+6.4*Math.sin(1.15));g.stroke();}
+ // shield, carried in front
+ if(!['bow','archer','berserk'].includes(type)){const sx=cx+2.4,sy=top+4.4,rx=2.8,ry=4.2;g.fillStyle='#1a120a';g.beginPath();g.ellipse(sx,sy,rx+.6,ry+.6,0,0,6.28);g.fill();g.fillStyle=shA;g.beginPath();g.ellipse(sx,sy,rx,ry,0,0,6.28);g.fill();
+  g.fillStyle=shB;g.beginPath();g.moveTo(sx,sy);g.ellipse(sx,sy,rx,ry,0,0,Math.PI/2);g.closePath();g.fill();g.beginPath();g.moveTo(sx,sy);g.ellipse(sx,sy,rx,ry,0,Math.PI,Math.PI*1.5);g.closePath();g.fill();g.fillStyle='#c8c8c0';g.beginPath();g.ellipse(sx,sy,.9,1.2,0,0,6.28);g.fill();}
+ STAND[key]={c,w:UW,h:UH};return STAND[key];}
+
+/* ---- buildings, trees, stakes, ships ---- */
+function quad(g,pts,fill,stroke){g.beginPath();g.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)g.lineTo(pts[i].x,pts[i].y);g.closePath();if(fill){g.fillStyle=fill;g.fill();}if(stroke){g.strokeStyle=stroke;g.lineWidth=.8;g.stroke();}}
+function drawLonghouse(g,b){const burnt=1-b.left;const L=b.w,Dp=b.h*.95,x0=b.x-L/2,x1=b.x+L/2,y0=b.y-Dp/2,y1=b.y+Dp/2,ym=b.y;
+ const H=b.t==='hall'?13:b.t==='stalls'?6:10,R=b.t==='shrine'?20:b.t==='hall'?15:b.t==='stalls'?5:11;
+ const dark=(c,f)=>shade(c,-f);const wall=dark(b.t==='shrine'?'#6a4a2a':'#7a5a34',burnt*.55),roofCol=b.t==='stalls'?['#b23a2a','#d8b04a','#3a6a9a'][Math.abs((b.x*7+b.y)|0)%3]:dark(b.t==='hall'?'#7a6a3a':'#6f7a40',burnt*.6);
+ const P=(x,y,h)=>iso(x,y,h);
+ quad(g,[P(x0,y0,H),P(x1,y0,H),P(x1,ym,H+R),P(x0,ym,H+R)],dark(roofCol,.25));
+ quad(g,[P(x0,y1,0),P(x1,y1,0),P(x1,y1,H),P(x0,y1,H)],wall,'rgba(30,18,8,.6)');
+ quad(g,[P(x1,y0,0),P(x1,y1,0),P(x1,y1,H),P(x1,y0,H)],dark(wall,.18),'rgba(30,18,8,.6)');
+ quad(g,[P(x1,y0,H),P(x1,y1,H),P(x1,ym,H+R)],dark(wall,.08),'rgba(30,18,8,.6)');
+ const d=P((x0+x1)/2,y1,0);g.fillStyle='#2a1a0e';g.fillRect(d.x-2*ISO.k,d.y-7*ISO.k,4*ISO.k,7*ISO.k);
+ quad(g,[P(x0,y1,H),P(x1,y1,H),P(x1,ym,H+R),P(x0,ym,H+R)],roofCol,'rgba(30,20,10,.5)');
+ if(b.t==='hall'||b.t==='shrine'){const r=P(x1,ym,H+R),l=P(x0,ym,H+R);g.strokeStyle='#2a1a0c';g.lineWidth=1.6*ISO.k;for(const q of[r,l]){g.beginPath();g.moveTo(q.x-3*ISO.k,q.y-5*ISO.k);g.lineTo(q.x,q.y);g.lineTo(q.x+3*ISO.k,q.y-5*ISO.k);g.stroke();}}
+ if(b.t==='shrine'){const r=P(b.x,ym,H+R+2);g.fillStyle='#3a2a1a';g.beginPath();g.moveTo(r.x-6*ISO.k,r.y+4*ISO.k);g.lineTo(r.x,r.y-6*ISO.k);g.lineTo(r.x+6*ISO.k,r.y+4*ISO.k);g.fill();}}
+function drawTree(g,t){const p=iso(t.x,t.y,0),k=ISO.k;g.fillStyle='rgba(0,0,0,.25)';g.beginPath();g.ellipse(p.x+3*k,p.y,7*k*t.s,2.6*k*t.s,0,0,6.28);g.fill();g.fillStyle='#4a3020';g.fillRect(p.x-1*k,p.y-6*k*t.s,2*k,6*k*t.s);
+ if(t.pine){for(let i=0;i<3;i++){const w=(9-i*2.4)*k*t.s,yb=p.y-(5+i*6)*k*t.s;g.fillStyle=i%2?'#2f4a24':'#284020';g.beginPath();g.moveTo(p.x-w,yb);g.lineTo(p.x,yb-10*k*t.s);g.lineTo(p.x+w,yb);g.fill();}}
+ else{g.fillStyle='#3a5a2c';g.beginPath();g.arc(p.x,p.y-14*k*t.s,8*k*t.s,0,6.28);g.fill();g.fillStyle='#4a6a34';g.beginPath();g.arc(p.x-2.5*k*t.s,p.y-16*k*t.s,4.5*k*t.s,0,6.28);g.fill();}}
+function drawStake(g,st){const a=iso(st.x,st.y,0),b=iso(st.x,st.y,st.h);g.strokeStyle=st.gate?'#3a2410':'#5a3e22';g.lineWidth=(st.gate?3.2:2.3)*ISO.k;g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke();g.fillStyle='#3a2a18';g.beginPath();g.moveTo(b.x-1.2*ISO.k,b.y);g.lineTo(b.x,b.y-2.6*ISO.k);g.lineTo(b.x+1.2*ISO.k,b.y);g.fill();}
+function drawLongship(g,sh,sail){const cx=sh.x,cy=sh.y,Lh=36,Bm=9,G=7;const side=[],top=[];
+ for(let i=0;i<=16;i++){const t=-1+i/8;const bw=Bm*Math.pow(Math.max(0,1-t*t),.7);top.push({x:cx+t*Lh,y:cy+bw});}
+ for(let i=16;i>=0;i--){const t=-1+i/8;const bw=Bm*Math.pow(Math.max(0,1-t*t),.7);top.push({x:cx+t*Lh,y:cy-bw});}
+ const P=(q,h)=>iso(q.x,q.y,h);const k=ISO.k;
+ // shadow and hull
+ g.fillStyle='rgba(0,0,0,.25)';g.beginPath();top.forEach((q,i)=>{const p=P({x:q.x+3,y:q.y+3},0);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});g.fill();
+ g.fillStyle='#3a2414';g.beginPath();top.forEach((q,i)=>{const p=P(q,G);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});g.fill();
+ g.fillStyle='#5a3a20';g.beginPath();top.forEach((q,i)=>{const p=P({x:cx+(q.x-cx)*.88,y:cy+(q.y-cy)*.7},G-1.2);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});g.fill();
+ const near=top.slice(0,17);g.fillStyle='#4a2e18';g.beginPath();near.forEach((q,i)=>{const p=P(q,G);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});for(let i=near.length-1;i>=0;i--){const q=near[i];const t=(q.x-cx)/Lh;const p=P({x:q.x,y:cy+(q.y-cy)*.25},Math.abs(t)>.85?G*.6:0);g.lineTo(p.x,p.y);}g.closePath();g.fill();
+ g.strokeStyle='rgba(20,12,6,.65)';g.lineWidth=.7*k;for(const f of[.35,.65]){g.beginPath();near.forEach((q,i)=>{const p=P(q,G*f);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});g.stroke();}
+ // shields along the near gunwale
+ for(let i=2;i<=14;i+=1.5){const t=-1+i/8;const bw=Bm*Math.pow(Math.max(0,1-t*t),.7);const p=P({x:cx+t*Lh,y:cy+bw},G-1.4);g.fillStyle=(i|0)%2?sail[0]:sail[1];g.beginPath();g.ellipse(p.x,p.y,2.1*k,1.8*k,0,0,6.28);g.fill();g.fillStyle='#c8c8c0';g.beginPath();g.arc(p.x,p.y,.5*k,0,6.28);g.fill();}
+ // stem and stern posts
+ for(const s of[-1,1]){const b0=P({x:cx+s*Lh,y:cy},G*.6);const b1=P({x:cx+s*(Lh+4),y:cy},G+12);g.strokeStyle='#3a2414';g.lineWidth=2.4*k;g.beginPath();g.moveTo(b0.x,b0.y);g.quadraticCurveTo(b1.x+s*4*k,b0.y,b1.x,b1.y);g.stroke();g.beginPath();g.arc(b1.x-s*1.6*k,b1.y+1.6*k,1.8*k,0,6.28);g.stroke();}
+ // mast, yard, striped sail (half-furled)
+ const m0=P({x:cx,y:cy},G),m1=P({x:cx,y:cy},G+30);g.strokeStyle='#4a2e18';g.lineWidth=1.8*k;g.beginPath();g.moveTo(m0.x,m0.y);g.lineTo(m1.x,m1.y);g.stroke();
+ const a=P({x:cx,y:cy-13},G+28),b=P({x:cx,y:cy+13},G+28),c2=P({x:cx,y:cy+13},G+17),d=P({x:cx,y:cy-13},G+17);
+ for(let i=0;i<6;i++){const f0=i/6,f1=(i+1)/6;const L=(u,v,f)=>({x:u.x+(v.x-u.x)*f,y:u.y+(v.y-u.y)*f});quad(g,[L(a,b,f0),L(a,b,f1),L(d,c2,f1),L(d,c2,f0)],i%2?sail[0]:'#e8e0c8');}
+ g.strokeStyle='#3a2414';g.lineWidth=1.2*k;g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke();}
+
+/* ---- scene cache: trees, stakes, ships ---- */
+function isoScene(){if(B.scene)return B.scene;const sc={trees:[],stakes:[],ships:[]};const T=B.ter||{};
+ for(const w of(T.woods||[])){const n=10+Math.round(w.r/6);for(let i=0;i<n;i++){const a=hash2(i,w.x|0)*6.28,r=Math.sqrt(hash2(i,w.y|0))*w.r*.9;sc.trees.push({x:w.x+Math.cos(a)*r,y:w.y+Math.sin(a)*r,s:.8+hash2(i,11)*.5,pine:hash2(i,5)<.65});}}
+ for(let i=0;i<34;i++){const x=SHIPX+260+hash2(i,21)*(BW-SHIPX-280),y=30+hash2(i,23)*(BH-60);if(Math.hypot(x-VC.x,(y-VC.y)*1.2)<250)continue;if(T.river&&Math.abs(x-rivX(y))<30)continue;if(hash2(i,29)<.55)sc.trees.push({x,y,s:.7+hash2(i,31)*.4,pine:hash2(i,37)<.5});}
+ if(B.wall){const n=120;for(let i=0;i<n;i++){const a=i/n*6.283;const gateA=Math.abs(Math.atan2(Math.sin(a),Math.cos(a)));if(gateA<GATE||Math.abs(gateA-Math.PI)<GATE)continue;sc.stakes.push({x:VC.x+Math.cos(a)*WRX,y:VC.y+Math.sin(a)*WRY,h:9+B.wall*3});}
+  for(const gx of[-1,1])for(const sy of[-1,1]){const a=gx<0?Math.PI-sy*GATE:sy*GATE;sc.stakes.push({x:VC.x+Math.cos(a)*WRX,y:VC.y+Math.sin(a)*WRY,h:16+B.wall*3,gate:true});}}
+ const nShips=B.mode==='raid'&&B.f?Math.max(1,Math.min(6,fleetShips(B.f).length)):B.raid?Math.max(1,Math.min(6,B.raid.ships||3)):3;
+ for(let i=0;i<nShips;i++)sc.ships.push({x:SHIPX-30,y:BH/2+(i-(nShips-1)/2)*Math.min(105,520/nShips)});
+ B.scene=sc;return sc;}
+
+/* ---- the frame ---- */
+function drawBattle(){if(!B)return;ISO=isoFit();const g=bctx;const k=ISO.k;screenTransform();g.fillStyle='#14110d';g.fillRect(0,0,ISO.W,ISO.H);const sc=isoScene();
+ // ground (flat) under the iso transform: reuse field coordinates directly
+ groundTransform();
+ g.fillStyle='#244456';g.fillRect(-500,-500,SHIPX+500,BH+1000);
+ g.fillStyle='#4f6236';g.fillRect(SHIPX,-500,BW+500,BH+1000);
+ const gr=g.createLinearGradient(SHIPX-10,0,SHIPX+120,0);gr.addColorStop(0,'#c8b888');gr.addColorStop(.25,'#b8a879');gr.addColorStop(.6,'#7a8a4a');gr.addColorStop(1,'#62763e');g.fillStyle=gr;g.fillRect(SHIPX-10,-500,130,BH+1000);
+ g.fillStyle='rgba(255,255,255,.06)';g.fillRect(SHIPX+120,0,BW-SHIPX-120,BH);
+ g.strokeStyle='rgba(200,225,235,.35)';g.lineWidth=1.5;for(let i=0;i<26;i++){const y=hash2(i,41)*BH,x=SHIPX-20-hash2(i,43)*120;g.beginPath();g.moveTo(x,y);g.lineTo(x,y+12+hash2(i,47)*18);g.stroke();}
+ g.strokeStyle='rgba(230,240,240,.5)';g.lineWidth=2;g.beginPath();for(let y=-100;y<=BH+100;y+=12){const x=SHIPX-12+Math.sin(y/20+B.t*1.5)*2;y>-100?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();
+ for(let i=0;i<70;i++){const x=hash2(i,3)*BW,y=hash2(i,7)*BH;if(x<SHIPX+60)continue;g.fillStyle='rgba(40,60,25,.3)';g.beginPath();g.ellipse(x,y,20+hash2(i,9)*40,10+hash2(i,5)*16,0,0,6.28);g.fill();}
+ const T=B.ter||{};
+ for(const h of(T.hills||[])){const gg=g.createRadialGradient(h.x-h.r*.28,h.y-h.r*.28,h.r*.05,h.x,h.y,h.r);gg.addColorStop(0,'rgba(215,205,130,.6)');gg.addColorStop(.55,'rgba(150,150,80,.35)');gg.addColorStop(1,'rgba(60,70,30,0)');g.fillStyle=gg;g.beginPath();g.arc(h.x,h.y,h.r,0,6.28);g.fill();
+  const sh=g.createRadialGradient(h.x+h.r*.35,h.y+h.r*.35,h.r*.1,h.x+h.r*.2,h.y+h.r*.2,h.r*.9);sh.addColorStop(0,'rgba(20,30,10,.28)');sh.addColorStop(1,'rgba(20,30,10,0)');g.fillStyle=sh;g.beginPath();g.arc(h.x,h.y,h.r,0,6.28);g.fill();
+  g.strokeStyle='rgba(60,55,30,.35)';g.setLineDash([3,5]);for(const q of[.55,.85]){g.beginPath();g.arc(h.x,h.y,h.r*q,0,6.28);g.stroke();}g.setLineDash([]);}
+ if(T.river){g.strokeStyle='#3d6a82';g.lineWidth=30;g.lineCap='round';g.beginPath();for(let y=-60;y<=BH+60;y+=10){const x=rivX(y);y>-60?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();g.strokeStyle='rgba(160,200,215,.35)';g.lineWidth=3;g.stroke();
+  for(const f of T.river.fords){g.fillStyle='rgba(196,178,124,.9)';g.fillRect(rivX(f)-17,f-30,34,60);g.fillStyle='rgba(61,106,130,.35)';for(let q=0;q<4;q++)g.fillRect(rivX(f)-15,f-26+q*15,30,3);}}
+ for(const w of(T.woods||[])){g.fillStyle='rgba(30,45,20,.45)';g.beginPath();g.arc(w.x,w.y,w.r,0,6.28);g.fill();}
+ if(B.wall){g.strokeStyle='rgba(60,40,20,.5)';g.lineWidth=6;for(const[a0,a1]of[[GATE,Math.PI-GATE],[Math.PI+GATE,2*Math.PI-GATE]]){g.beginPath();g.ellipse(VC.x,VC.y,WRX,WRY,0,a0,a1);g.stroke();}}
+ if(B.deploy){const z=deployZone();g.fillStyle='rgba(255,224,140,.16)';g.fillRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.strokeStyle='rgba(255,224,140,.8)';g.setLineDash([8,6]);g.lineWidth=2;g.strokeRect(z.x0,z.y0,z.x1-z.x0,z.y1-z.y0);g.setLineDash([]);}
+ for(const b of B.blds){g.fillStyle='rgba(0,0,0,.22)';g.fillRect(b.x-b.w/2+4,b.y-b.h*.47+5,b.w,b.h*.95);}
+ if(B.fallen)for(const f of B.fallen){g.save();g.translate(f.x,f.y);g.rotate(f.a);g.fillStyle='rgba(110,20,14,.35)';g.beginPath();g.ellipse(1,1,4,2.4,0,0,6.28);g.fill();g.fillStyle=f.m?'#6a4a2a':'#3a3a4a';g.beginPath();g.ellipse(0,0,3.4,1.6,0,0,6.28);g.fill();g.fillStyle='#d8b898';g.beginPath();g.arc(3.4,0,1.2,0,6.28);g.fill();g.restore();}
+ for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;g.fillStyle=mine?'rgba(240,198,74,.16)':'rgba(200,60,40,.15)';g.beginPath();g.arc(s.x,s.y,sqR(s)+1,0,6.28);g.fill();
+  if(s.id===B.sel){g.strokeStyle='#ffd36a';g.lineWidth=2.4;g.beginPath();g.arc(s.x,s.y,sqR(s)+5,0,6.28);g.stroke();}
+  if(mine&&s.id===B.sel&&(s.tx!=null)&&!s.tgt&&s.bld==null&&!s.cont.length&&Math.hypot(s.tx-s.x,s.ty-s.y)>8){g.strokeStyle='rgba(255,211,106,.7)';g.setLineDash([5,5]);g.lineWidth=2;g.beginPath();g.moveTo(s.x,s.y);g.lineTo(s.tx,s.ty);g.stroke();g.setLineDash([]);}}
+ // upright things, far to near
+ screenTransform();const items=[];
+ const shipCols=B.ps==='A'||B.mode==='raid'?['#a8362a','#d9b44a']:['#2f4f7a','#8c2e22'];
+ for(const sh of sc.ships)items.push({z:sh.x+sh.y-30,f:()=>drawLongship(g,sh,shipCols)});
+ for(const t of sc.trees)items.push({z:t.x+t.y,f:()=>drawTree(g,t)});
+ for(const st of sc.stakes)items.push({z:st.x+st.y,f:()=>drawStake(g,st)});
+ for(const b of B.blds)items.push({z:b.x+b.y+b.h*.3,f:()=>drawLonghouse(g,b)});
+ for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;const n=Math.max(1,Math.round(s.men));const cols=Math.ceil(Math.sqrt(n*1.6)),rows=Math.ceil(n/cols);const sp=6.6;const face=s.face??(s.side==='A'?0:Math.PI);const th=face+Math.PI/2,cs=Math.cos(th),sn=Math.sin(th);
+  const left=(Math.cos(face)-Math.sin(face))<0;const spr=standSprite(s.type,mine,left);const hU=s.type==='frank'?15:12.5,wU=hU*spr.w/spr.h;const fight=s.cont&&s.cont.length&&!s.rout;
+  for(let i=0;i<n;i++){const c=i%cols,r=Math.floor(i/cols);const lx=(c-(cols-1)/2)*sp+(r%2)*1.2,ly=(r-(rows-1)/2)*sp;const x=s.x+lx*cs-ly*sn,y=s.y+lx*sn+ly*cs;const bob=fight?Math.abs(Math.sin(B.t*12+i*1.9))*1.2:0;
+   items.push({z:x+y,f:()=>{const p=iso(x,y,bob);g.globalAlpha=s.rout?.55:1;g.drawImage(spr.c,p.x-wU*k/2,p.y-hU*k,wU*k,hU*k);g.globalAlpha=1;}});}}
+ items.sort((a,b)=>a.z-b.z);for(const it of items)it.f();
+ // overlays: loot bars, smoke, squad bars, numbers, labels, effects
+ for(const b of B.blds){const p=iso(b.x,b.y+b.h*.48+6,0);g.fillStyle='rgba(0,0,0,.55)';g.fillRect(p.x-b.w*.4*k,p.y,b.w*.8*k,3*k);g.fillStyle='#e0c060';g.fillRect(p.x-b.w*.4*k,p.y,b.w*.8*k*b.left,3*k);
+  const burnt=1-b.left;if(burnt>.15){const q=iso(b.x,b.y,30);g.fillStyle=`rgba(60,55,50,${burnt*.45})`;for(let i=0;i<3;i++){g.beginPath();g.arc(q.x-6*k+i*6*k+Math.sin(B.t*2+i)*3*k,q.y-i*10*k-(B.t*8%16)*k,(6+i*3)*k,0,6.28);g.fill();}}}
+ for(const s of B.sq){if(s.gone)continue;const mine=s.side===B.ps;const p=iso(s.x,s.y,0);const top=p.y-(sqR(s)*.45+18)*k;
+  g.fillStyle='rgba(0,0,0,.6)';g.fillRect(p.x-14*k,top,28*k,4*k);g.fillStyle=mine?'#e8c050':'#d0503a';g.fillRect(p.x-14*k,top,28*k*clamp(s.morale/s.base,0,1),4*k);
+  if(mine){g.fillStyle='#fff';g.font=`bold ${Math.round(12*Math.max(.8,k))}px EB Garamond`;g.textAlign='center';g.textBaseline='bottom';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.7)';const lab=String(B.sq.filter(q=>q.side===B.ps).indexOf(s)+1)+(s.brace>0?' 🛡':'');g.strokeText(lab,p.x,top-1);g.fillText(lab,p.x,top-1);}}
+ if(T.hills)for(const h of T.hills){const p=iso(h.x,h.y-h.r*.2,0);terLabel(h.town?'Rise (higher ground)':'Hill (higher ground)',p.x,p.y);}
+ if(T.river){const p=iso(rivX(40),40,0);terLabel('Stream: cross at the fords',p.x,p.y);for(const f of T.river.fords){const q=iso(rivX(f),f,0);terLabel('Ford',q.x,q.y-10*k);}}
+ for(const w of(T.woods||[])){const p=iso(w.x,w.y,30);terLabel('Woods',p.x,p.y);}
+ if(B.wall){const a=iso(VC.x-WRX,VC.y,26),b=iso(VC.x+WRX,VC.y,26);terLabel('Gate',a.x,a.y);terLabel('Gate',b.x,b.y);}
+ for(const f of B.fx){if(f.txt){const p=iso(f.x,f.y,18+(1.4-f.t)*14);g.globalAlpha=clamp(f.t,0,1);g.font='bold 14px EB Garamond';g.textAlign='center';g.textBaseline='middle';g.lineWidth=3;g.strokeStyle='#000';g.strokeText(f.txt,p.x,p.y);g.fillStyle=f.c;g.fillText(f.txt,p.x,p.y);g.globalAlpha=1;continue;}
+  if(f.sp){const p=iso(f.x,f.y,10+(1-f.t)*20);g.fillStyle=`rgba(255,220,120,${f.t})`;g.beginPath();g.arc(p.x,p.y,2.5*k,0,6.28);g.fill();}
+  else{const t=1-f.t/.35,t2=Math.min(1,t+.15);const arc=u=>Math.sin(u*Math.PI)*22+6;const a=iso(f.x0+(f.x1-f.x0)*t,f.y0+(f.y1-f.y0)*t,arc(t)),b=iso(f.x0+(f.x1-f.x0)*t2,f.y0+(f.y1-f.y0)*t2,arc(t2));g.strokeStyle=`rgba(235,225,195,${Math.min(1,f.t*2.5)})`;g.lineWidth=1.2;g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke();}}
+ $('bmsg').style.display=B.msgT>0&&B.msg?'block':'none';$('bmsg').textContent=B.msg;}
 
 /* ================= EVENTS ================= */
 let EVC=[];
@@ -1976,6 +2121,7 @@ setTimeout(()=>$('maphint').classList.add('gone'),15000);
  const onMapEl=el=>el===cv||!!(el&&el.closest&&(el.closest('#mapwrap')||el.closest('#toasts')));
  function beginPinch(e){const a=pt(e.touches[0]),b=pt(e.touches[1]);pinch={prev:Math.max(24,Math.hypot(a.x-b.x,a.y-b.y)),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};mode='map';if(start)start.moved=true;clearTimeout(holdT);}
  document.addEventListener('touchstart',e=>{
+  if(e.touches.length>=2&&battleOn&&(mode==='battle'||[...e.touches].some(t=>{const p=pt(t);return document.elementFromPoint(p.x,p.y)===bcv;}))){e.preventDefault();const a=pt(e.touches[0]),b=pt(e.touches[1]);mode='bpinch';start=null;pinch={prev:Math.max(24,Math.hypot(a.x-b.x,a.y-b.y)),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};return;}
   if(e.touches.length>=2){e.preventDefault();const onMap=mode==='map'||[...e.touches].some(t=>{const p=pt(t);return onMapEl(document.elementFromPoint(p.x,p.y));});if(onMap)beginPinch(e);else{mode='none';start=null;pinch=null;}return;}
   const p=pt(e.touches[0]),el=document.elementFromPoint(p.x,p.y);start={x:p.x,y:p.y,t:performance.now(),el,moved:false,held:false};last={x:p.x,y:p.y};pinch=null;
   if(el===cv){mode='map';e.preventDefault();clearTimeout(holdT);holdT=setTimeout(()=>{if(start&&!start.moved&&mode==='map'&&S&&!modalOpen){start.held=true;fire(cv,'mousedown',start,2);fire(cv,'mouseup',start,2);}},550);return;}
@@ -1983,6 +2129,7 @@ setTimeout(()=>$('maphint').classList.add('gone'),15000);
   mode='ui';},{passive:false});
  document.addEventListener('touchmove',e=>{
   if(e.touches.length>=2)e.preventDefault();
+  if(mode==='bpinch'){e.preventDefault();if(e.touches.length>=2&&pinch){const a=pt(e.touches[0]),b=pt(e.touches[1]),d=Math.max(24,Math.hypot(a.x-b.x,a.y-b.y));const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;const r=bcv.getBoundingClientRect();battlePan(cx-pinch.cx,cy-pinch.cy);battleZoomAt(cx-r.left,cy-r.top,clamp(d/pinch.prev,.8,1.25));pinch.prev=d;pinch.cx=cx;pinch.cy=cy;}return;}
   if(mode==='battle'){e.preventDefault();return;}
   if(mode!=='map'||!start)return;e.preventDefault();
   if(e.touches.length>=2){if(!pinch)beginPinch(e);const a=pt(e.touches[0]),b=pt(e.touches[1]),d=Math.max(24,Math.hypot(a.x-b.x,a.y-b.y));const k=clamp(d/pinch.prev,.8,1.25);pinch.prev=d;
@@ -1998,6 +2145,7 @@ setTimeout(()=>$('maphint').classList.add('gone'),15000);
   if(mode==='map'){e.preventDefault();clearTimeout(holdT);
    if(e.touches.length===1){pinch=null;last=pt(e.touches[0]);return;}
    if(e.touches.length===0){if(quick&&!start.held&&S&&!modalOpen){fire(cv,'mousedown',p,0);fire(cv,'mouseup',p,0);}mode=null;start=null;pinch=null;}return;}
+  if(mode==='bpinch'){e.preventDefault();if(e.touches.length===0){mode=null;start=null;pinch=null;}return;}
   if(mode==='battle'){e.preventDefault();if(e.touches.length===0){if(quick)fire(bcv,'mousedown',p,0);mode=null;start=null;}return;}
   if(mode==='ui'&&quick&&e.touches.length===0&&start.el&&start.el.closest){const el=start.el.closest('button, a[href], [data-act], .toast');
    if(el&&!el.disabled){e.preventDefault();el.click();}}
