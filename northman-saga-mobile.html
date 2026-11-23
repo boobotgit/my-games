@@ -447,14 +447,14 @@ const BLD_ORDER=['hall','farm','fish','wood','smith','yard','hof','wall','market
 
 /* ---- warriors ---- */
 const UT={
- hird:{n:'Hirdmen',atk:1.0,def:1.0,spd:36,mor:80,col:'#c8a24a',d:'Sworn household warriors with shield, spear and axe; a few wear mail.'},
- bondi:{n:'Bondi',atk:.6,def:.62,spd:38,mor:52,col:'#9c8a64',d:'Free farmers with spear and shield. Taking them raiding leaves fewer hands at harvest.'},
- bow:{n:'Bowmen',atk:.35,def:.45,spd:40,mor:50,rng:170,shot:.55,col:'#6f9a5a',d:'Hunters with yew bows.'},
- berserk:{n:'Berserkers',atk:1.85,def:.72,spd:46,mor:200,col:'#b0402a',d:'Wild warriors sworn to Odin, who fight without fear.'},
+ hird:{n:'Hirdmen',atk:1.0,def:1.0,spd:36,mor:80,col:'#c8a24a',d:'Sworn household warriors with shield, spear and axe; a few wear mail. Axes hook and break shield walls. Ability: throw spears.'},
+ bondi:{n:'Bondi',atk:.6,def:.62,spd:38,mor:52,col:'#9c8a64',d:'Free farmers with spear and shield. Spears stop horsemen and charges. Ability: brace spears. Taking them raiding leaves fewer hands at harvest.'},
+ bow:{n:'Bowmen',atk:.35,def:.45,spd:40,mor:50,rng:170,shot:.55,col:'#6f9a5a',d:'Hunters with yew bows. Arrows cut down unarmoured men, above all berserkers; useless in a melee. Ability: volley.'},
+ berserk:{n:'Berserkers',atk:1.85,def:.72,spd:46,mor:200,col:'#b0402a',d:'Wild warriors sworn to Odin, who fight without fear. They terrify farmers and levies, but wear no mail: arrows cut them down. Ability: war cry.'},
  levy:{n:'Levy',atk:.55,def:.58,spd:38,mor:45,col:'#7a7a8a',d:'Farmers called from the fields.'},
  guard:{n:'Chief\'s guard',atk:1.0,def:1.05,spd:36,mor:75,col:'#5a6a9a',d:'A lord\'s sworn men.'},
  archer:{n:'Archers',atk:.3,def:.4,spd:40,mor:45,rng:170,shot:.5,col:'#5a7a6a',d:'Hunters and bowmen.'},
- frank:{n:'Frankish scara',atk:1.25,def:1.4,spd:52,mor:85,col:'#c9b040',d:'Mailed Frankish warriors, some mounted.'},
+ frank:{n:'Frankish scara',atk:1.25,def:1.4,spd:52,mor:85,col:'#c9b040',d:'Mailed Frankish horsemen and foot. They ride down archers and farmers in the open, but braced spears stop them.'},
 };
 const RECRUIT={hird:{silver:8,iron:1},bow:{silver:3,iron:0},berserk:{silver:15,iron:1}};
 const UPKEEP={hird:.013,bow:.006,berserk:.022,bondi:0};
@@ -1079,7 +1079,7 @@ ACT.codex=a=>{if(a)codexTab=a;let h=`<button class="x" data-act="close">✕</but
  if(codexTab==='hist')h+=S.hist.length?S.hist.map(e=>`<p><b>${e.y}: ${esc(e.title)}</b><br><span class="small">${esc(e.text)}</span></p>`).join(''):'<p><i>Nothing has happened yet.</i></p>';
  showModal(h);};
 ACT.codexgo=id=>{closeModal();ACT.selset(id);};
-const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another. A palisade can only be crossed at its gates, and men fighting across the stakes do little harm. <b>Fall back (F)</b> pulls a warband out of a fight in good order (it takes some blows as it goes). A warband whose morale breaks is <b>routed</b>: it runs for the ships or the edge of the field. If no enemy is near after a few seconds it may rally. Warbands standing beside a house loot it; the bar under each house shows what is left.</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
+const HOWTO=`<p><b>Captains.</b> Your sons (from 15) and sworn men lead your fleets and rule your holdings as stewards. Each has two traits (Bold, Cautious, Shrewd, Seafarer, Cruel, Beloved, Greedy, Ambitious, Fierce, Wise) that change how his men fight and trade. Keep their loyalty up with gifts (Hall → Warband): an ambitious captain who sinks too low may keep his holding or sail off with his fleet.</p><p><b>Rival jarls.</b> Two neighbouring jarls compete with you for the same land. They take free villages, marry into the great kingdoms, raid you, and may swear together against you once you rise. Take a jarl's last hall and he is yours to kill, exile or take into service.</p><p><b>Battle.</b> Before each fight you deploy your warbands in the bright area (or pick Line or Wedge). Ground matters: higher ground helps, streams must be crossed at a ford, woods stop arrows. Attacks from the side hit 1.4 times as hard and from behind 1.8 times, and a shield wall only protects its front. So pin them with one warband and hit the flank with another. A palisade can only be crossed at its gates, and men fighting across the stakes do little harm. <b>Fall back (F)</b> pulls a warband out of a fight in good order (it takes some blows as it goes). A warband whose morale breaks is <b>routed</b>: it runs for the ships or the edge of the field. If no enemy is near after a few seconds it may rally. Warbands standing beside a house loot it; the bar under each house shows what is left.</p><p><b>Unit matchups.</b> Every warband has a job. Hirdmen hook and break shield walls (ability: throw spears just before the clash). Bondi and levies with spears stop horsemen, and when braced, any charge into their front fails (ability: brace spears). Bowmen and archers cut down unarmoured men, above all berserkers (ability: volley). Berserkers terrify farmers and levies (ability: war cry), but arrows cut them down. Frankish horse rides down archers and farmers in the open. Select a warband and press its gold ability button (Q).</p><p><b>Holdings.</b> Each holding has one plot per size. Choose what each place is for (Hall → Holdings → Develop): fields, a trading post, a ringfort, a muster ground, ship-sheds or a hof.</p><p><b>Your aim.</b> Lead your kin from a single hall to lordship over the North, and open the East Way to Ladoga. Each chapter of the saga sets goals (see the sidebar or <i>Saga</i>).</p>
 <p><b>Time.</b> Days pass while unpaused (the ▶ buttons set the speed). Ships sail from April to October; winter voyages risk gales. Grain is harvested in mid-September; feasts come at Winter Nights and Yule.</p>
 <p><b>Food.</b> Your people, warriors and crews all eat. Fishing feeds you in summer and the harvest must last the winter. Raids, trade (grain, stockfish) and tribute fill the gap. Hunger kills folk and loyalty.</p>
 <p><b>Fleets.</b> In the hall, <i>Muster a fleet</i>: choose ships, warriors and cargo. Tap a place on the map and use its <i>Send a fleet</i> buttons (or hold your finger on the sea). Bondi (farmers) can row and fight, but harvests suffer when they are away.</p>
@@ -1294,6 +1294,40 @@ function placeLine(sqs,x0,spread){sqs.forEach((s,i)=>{s.x=x0+(rnd()-.5)*30;s.y=B
 function enemyArmy(men,setDef,fac,frac){const out=[];const size=Math.max(18,Math.ceil(men/7));const big=setDef.size>=2||setDef.kind!=='village';const gt=fac==='frank'?'frank':'guard';
  const g=big?Math.round(men*.28):Math.round(men*.12),a=Math.round(men*.15),l=men-g-a;out.push(...splitSquads('D',gt,g,size,mkSquad),...splitSquads('D','archer',a,size,mkSquad),...splitSquads('D','levy',l,size,mkSquad));return out;}
 
+/* ---- unit roles: counters & abilities ---- */
+const SPEARS=['bondi','levy','guard'];
+const ABIL={
+ hird:{n:'Throw spears',cd:20,d:'A volley of thrown spears just before the shield clash: hurts and shakes the enemy in front.'},
+ bondi:{n:'Brace spears',cd:25,d:'Plant spears and hold for 8 seconds: much harder to break from the front, and charges against them fail.'},
+ levy:{n:'Brace spears',cd:25,d:''},guard:{n:'Brace spears',cd:25,d:''},
+ bow:{n:'Volley',cd:18,d:'Loose arrows as fast as they can: the next 4 shots do double harm.'},archer:{n:'Volley',cd:18,d:''},
+ berserk:{n:'War cry',cd:30,d:'A howl to Odin: every enemy close by loses heart (farmers most of all), and the berserkers surge forward.'},
+ frank:{n:'Charge',cd:25,d:''},
+};
+const MATCHUPS='Hirdmen hook and break shield walls · spearmen stop horsemen and charges · arrows cut down berserkers · berserkers terrify farmers and levies · Frankish horse rides down archers and farmers.';
+function counterMult(a,e){const A=a.type,E=e.type;let m=1;
+ if(A==='hird'&&e.wall)m*=1.35;
+ if(A==='berserk'&&['levy','bondi','archer','bow'].includes(E))m*=1.35;
+ if(SPEARS.includes(A)&&E==='frank')m*=1.5;
+ if(A==='frank'&&['archer','bow','levy','bondi'].includes(E)&&!(e.brace>0))m*=1.4;
+ return m;}
+function rangedMult(e){return e.type==='berserk'?1.7:e.type==='frank'?.7:1;}
+function ctrText(a,e){if(a.type==='hird'&&e.wall)return'Shields hooked!';if(a.type==='berserk')return'Terror!';if(SPEARS.includes(a.type)&&e.type==='frank')return'Spears hold!';if(a.type==='frank')return'Ridden down!';return'';}
+function ctrFx(e,t){if(B.auto||!t||e.ctrT>0)return;e.ctrT=3;B.fx.push({txt:t,x:e.x,y:e.y-sqR(e)-30,t:1.4,c:'#ffd36a'});}
+function useAbility(s){if(!s||s.gone||s.rout||(s.abCd||0)>0)return false;const A=ABIL[s.type];if(!A)return false;const U=UT[s.type];const eq=B.eq[s.side]||0;
+ if(s.type==='hird'){const e=nearestEnemy(s,120);if(!e)return false;const front=hitAngle(s,e)<1.05;const dmg=s.men*.09*(1+eq)/(defOf(e,front)*(e.wall&&front?1.8:1))*rangedMult(e);e.hurt+=dmg;e.morale-=dmg*1.6+4;if(!B.auto){for(let i=0;i<6;i++)B.fx.push({x0:s.x+(rnd()-.5)*20,y0:s.y+(rnd()-.5)*20,x1:e.x+(rnd()-.5)*20,y1:e.y+(rnd()-.5)*20,t:.35});ctrFx(e,'Spears thrown!');}}
+ else if(SPEARS.includes(s.type)){s.brace=8;s.tgt=null;s.tx=s.x;s.ty=s.y;s.order='hold';if(!B.auto)B.fx.push({txt:'Braced!',x:s.x,y:s.y-sqR(s)-16,t:1.4,c:'#e8e0c8'});}
+ else if(U.rng){const e=nearestEnemy(s,U.rng*1.1);if(!e)return false;s.volley=4;s.shot=0;}
+ else if(s.type==='berserk'){let hit=0;for(const e of B.sq){if(e.gone||e.side===s.side)continue;if(Math.hypot(e.x-s.x,e.y-s.y)<140){e.morale-=['levy','bondi'].includes(e.type)?32:20;hit++;}}if(!hit)return false;s.cryT=5;if(!B.auto)B.fx.push({txt:'War cry!',x:s.x,y:s.y-sqR(s)-16,t:1.6,c:'#ff8a6a'});}
+ else if(s.type==='frank'){if(s.chargeCd>0)return false;s.charge=3.5;s.chargeCd=25;}
+ s.abCd=A.cd;return true;}
+function aiAbility(s){if((s.abCd||0)>0||rnd()>.25)return;const U=UT[s.type];
+ if(s.type==='hird'){const e=nearestEnemy(s,110);if(e&&!s.cont.length)useAbility(s);}
+ else if(SPEARS.includes(s.type)){const e=nearestEnemy(s,140,q=>q.type==='frank'||q.charge>0||q.type==='berserk');if(e)useAbility(s);}
+ else if(U.rng){if(nearestEnemy(s,U.rng))useAbility(s);}
+ else if(s.type==='berserk'){if(nearestEnemy(s,120))useAbility(s);}}
+ACT.babil=()=>{const s=selSq();if(!s)return;if(!useAbility(s)){bmsg(s.abCd>0?'Not ready yet.':'No enemy close enough.');}renderBattleUI();};
+
 /* ---- terrain ---- */
 function makeTerrain(id){const s=SET[id];const T={hills:[],woods:[],river:null};const inl=SG[id]&&SG[id].inland>12;
  if(s.kind==='fort'||s.kind==='sacred'||(s.kind==='seat'&&rnd()<.5))T.hills.push({x:VC.x-10,y:VC.y,r:165,town:true});
@@ -1359,7 +1393,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  // reinforcements
  if(B.mode==='raid'&&B.pool>0&&B.t>=B.nextWave){const n=Math.min(B.pool,Math.max(8,Math.round(B.pool*.4)));B.pool-=n;const sz=Math.max(18,Math.ceil(n/3));const ws=splitSquads('D','levy',n,sz,mkSquad);ws.forEach((q,i)=>{q.x=BW-10;q.y=80+rnd()*(BH-160);B.sq.push(q);});B.nextWave=B.t+20+rnd()*8;if(!B.auto)bmsg(`${n} more farmers come running from the fields!`);}
  const sq=B.sq;
- for(const s of sq){if(s.gone)continue;s.cont=[];s.ter=terAt(s.x,s.y);s.px=s.x;s.py=s.y;if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;if(s.flankT>0)s.flankT-=dt;}
+ for(const s of sq){if(s.gone)continue;s.cont=[];s.ter=terAt(s.x,s.y);s.px=s.x;s.py=s.y;if(s.charge>0)s.charge-=dt;if(s.chargeCd>0)s.chargeCd-=dt;if(s.flankT>0)s.flankT-=dt;if(s.abCd>0)s.abCd-=dt;if(s.brace>0)s.brace-=dt;if(s.cryT>0)s.cryT-=dt;if(s.ctrT>0)s.ctrT-=dt;}
  for(let i=0;i<sq.length;i++){const a=sq[i];if(a.gone)continue;for(let j=i+1;j<sq.length;j++){const b=sq[j];if(b.gone||a.side===b.side)continue;if(Math.hypot(a.x-b.x,a.y-b.y)<sqR(a)+sqR(b)+3){a.cont.push(b);b.cont.push(a);}}}
  // AI
  const ctrl=s=>s.side!==B.ps||B.auto;
@@ -1370,7 +1404,7 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  for(const s of sq){if(s.gone)continue;const U=UT[s.type];const tr=s.ter||{};let sp=U.spd*(s.wall?.42:1)*(s.charge>0?1.6:1)*(s.rout?1.25:1)*(tr.water?.35:tr.ford?.7:1)*(tr.wood?.72:1)*(tr.hill?.88:1);
   if(s.rout){s.routT=(s.routT||0)+dt;if(s.routT>3&&s.men>=3&&!nearestEnemy(s,160)){s.morale=Math.max(0,s.morale)+dt*12;if(s.morale>=s.base*.45){s.rout=false;s.routT=0;s.tgt=null;s.bld=null;s.tx=s.x;s.ty=s.y;s.order='hold';if(!B.auto&&s.side===B.ps)bmsg(`${UT[s.type].n} rally and form up again!`);continue;}}
    const ex=s.side==='A'?SHIPX-20:BW+20;const rs=wallSteer(s,ex,s.y);moveTo(s,rs.tx,rs.ty,sp*dt);if((s.side==='A'&&s.x<SHIPX+12)||(s.side==='D'&&s.x>BW-40)){s.gone=true;s.fled=true;}continue;}
-  s.dis=!!(s.cont.length&&disengaging(s));if(s.dis)sp*=.6;
+  s.dis=!!(s.cont.length&&disengaging(s));if(s.dis)sp*=.6;if(s.brace>0)sp=0;if(s.cryT>0)sp*=1.35;
   if(s.cont.length&&!s.dis){const pr=(s.tgt&&s.cont.find(e=>e.id===s.tgt))||s.cont[0];turnToward(s,Math.atan2(pr.y-s.y,pr.x-s.x),dt*(s.wall?.6:2.5));continue;}let tx=s.tx,ty=s.ty;const t=s.tgt?sq.find(q=>q.id===s.tgt):null;if(t&&!t.gone){tx=t.x;ty=t.y;if(t.rout&&s.side===B.ps&&!B.auto&&(t.x>BW-90||t.x<SHIPX+40)){s.tgt=null;s.tx=s.x;s.ty=s.y;tx=s.x;ty=s.y;}}else if(s.tgt){s.tgt=null;}
   if(s.bld!=null){const b=B.blds[s.bld];if(b&&b.left>0){tx=b.x;ty=b.y+b.h/2+16;}else s.bld=null;}
   if(tx!=null){let sv=steer(s,tx,ty);sv=wallSteer(s,sv.tx,sv.ty);tx=sv.tx;ty=sv.ty;const d=Math.hypot(tx-s.x,ty-s.y);const stop=t?0:4;if(d>stop)moveTo(s,tx,ty,Math.min(sp*dt,d));else if(s.order==='fallback'&&tx===s.tx&&ty===s.ty)s.order='hold';else if(!t&&s.order==='ships'&&s.side==='A'){}}
@@ -1383,10 +1417,10 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
  // combat
  for(const s of sq){if(s.gone)continue;const U=UT[s.type];const eq=B.eq[s.side]||0;const mf=.5+.5*clamp(s.morale/s.base,0,1);
   if(s.cont.length&&!s.rout&&!s.dis){const mine=s.side===B.ps;const atk=U.atk*(1+eq)*mf*(s.charge>0?(mine&&has(B.lead,'bold')?1.95:1.7):1)*(s.wall?.75:1)*(mine?B.atkM:1);const per=atk*s.men*.028/s.cont.length;
-   for(const e of s.cont){const ang=hitAngle(s,e);const fl=ang<1.05?0:ang<2.1?1:2;e.hurt+=per*[1,1.4,1.8][fl]*terMult(s,e)*dt/defOf(e,fl===0);if(s.charge>0)e.morale-=dt*6;
+   for(const e of s.cont){const ang=hitAngle(s,e);const fl=ang<1.05?0:ang<2.1?1:2;const cm=counterMult(s,e)*(s.charge>0&&e.brace>0&&fl===0?.4:1);e.hurt+=per*[1,1.4,1.8][fl]*terMult(s,e)*cm*dt/defOf(e,fl===0);if(s.charge>0){if(e.brace>0&&fl===0){s.hurt+=per*dt*1.3/defOf(s);s.charge=0;ctrFx(e,'Spears hold!');}else e.morale-=dt*6;}if(s.type==='berserk'&&['levy','bondi'].includes(e.type))e.morale-=dt*4;if(cm>1.2)ctrFx(e,ctrText(s,e));
     if(fl){e.morale-=dt*(fl===1?3:7);if(!B.auto&&!(e.flankT>0)){e.flankT=3;B.fx.push({txt:fl===1?'Flanked!':'From behind!',x:e.x,y:e.y-sqR(e)-16,t:1.4,c:e.side===B.ps?'#ff8a6a':'#ffe08a'});if(mine&&!B.toldFlank){B.toldFlank=1;bmsg('You hit them in the flank! Attacks from the side or rear do far more harm and break their nerve.');}if(!mine&&e.side===B.ps&&!B.toldFlanked){B.toldFlanked=1;bmsg('Your men are taken in the flank! Turn to face them or pull back.');}}}}}
   else if(U.rng&&!s.rout&&s.shot<=0){let best=null,bd=U.rng*((s.ter&&s.ter.hill)?1.25:1);for(const e of sq){if(e.gone||e.side===s.side)continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<bd){bd=d;best=e;}}
-   if(best){s.shot=1;const front=hitAngle(s,best)<1.05;const dmg=U.shot*s.men*.016*(1+eq)*mf*((best.ter&&best.ter.wood)?.5:1)/(defOf(best,front)*(best.wall&&front?2.2:1));best.hurt+=dmg;best.morale-=dmg*.8;if(!B.auto)B.fx.push({x0:s.x,y0:s.y,x1:best.x,y1:best.y,t:.35});}}
+   if(best){s.shot=1;const front=hitAngle(s,best)<1.05;const dmg=U.shot*s.men*.016*(1+eq)*mf*rangedMult(best)*(s.volley>0?2:1)*((best.ter&&best.ter.wood)?.5:1)/(defOf(best,front)*(best.wall&&front?2.2:1));best.hurt+=dmg;if(s.volley>0){s.volley--;s.shot=.45;}if(best.type==='berserk'&&rangedMult(best)>1)ctrFx(best,'Arrows bite!');best.morale-=dmg*.8;if(!B.auto)B.fx.push({x0:s.x,y0:s.y,x1:best.x,y1:best.y,t:.35});}}
   if(s.cont.length)s.morale-=dt*(s.cont.length>1?2.5:.4);
  }
  // loot
@@ -1405,10 +1439,10 @@ function battleStep(dt){if(B.over)return;B.t+=dt;
   if(B.auto&&B.withdrawA&&aF.every(s=>s.x<SHIPX+40)){endBattle('withdraw');return;}if(B.t>360){endBattle('withdraw');return;}}
  else{if(!aF.length){endBattle('victory');return;}if(!dF.length){endBattle('defeat');return;}}
  for(const f of B.fx)f.t-=dt;B.fx=B.fx.filter(f=>f.t>0);}
-function defOf(e,front=true){const U=UT[e.type];const eq=B.eq[e.side]||0;let d=U.def*(1+eq)*(e.wall&&front?1.6:1)*(e.side===B.ps&&has(B.lead,'cautious')?1.1:1);if(e.side==='D'&&B.wall&&Math.hypot(e.x-VC.x,(e.y-VC.y)*1.2)<215)d*=1+.3*B.wall;if(e.rout)d*=.5;return d;}
+function defOf(e,front=true){const U=UT[e.type];const eq=B.eq[e.side]||0;let d=U.def*(1+eq)*(e.wall&&front?1.6:1)*(e.brace>0&&front?1.5:1)*(e.side===B.ps&&has(B.lead,'cautious')?1.1:1);if(e.side==='D'&&B.wall&&Math.hypot(e.x-VC.x,(e.y-VC.y)*1.2)<215)d*=1+.3*B.wall;if(e.rout)d*=.5;return d;}
 function moveTo(s,tx,ty,step){const dx=tx-s.x,dy=ty-s.y,d=Math.hypot(dx,dy);if(d<.01)return;const m=Math.min(step,d);s.x+=dx/d*m;s.y+=dy/d*m;s.face=Math.atan2(dy,dx);}
 function nearestEnemy(s,maxD,filter){let best=null,bd=maxD||1e9;for(const e of B.sq){if(e.gone||e.rout||e.side===s.side)continue;if(filter&&!filter(e))continue;const d=Math.hypot(e.x-s.x,e.y-s.y);if(e.side===B.ps&&s.side!==B.ps&&(e.order==='fallback'||e.order==='ships')&&d>sqR(e)+sqR(s)+20)continue;if(d<bd){bd=d;best=e;}}return best;}
-function aiSquad(s){const U=UT[s.type];s.bld=s.bld??null;
+function aiSquad(s){const U=UT[s.type];s.bld=s.bld??null;aiAbility(s);
  if(s.side==='A'){
   if(B.withdrawA||(B.auto&&B.mode==='raid'&&aWithdrawCheck())){s.tgt=null;s.bld=null;s.tx=SHIPX+10;s.ty=clamp(s.y,60,BH-60);s.order='ships';s.wall=false;return;}
   if(U.rng){const e=nearestEnemy(s,U.rng*1.4);if(e){const d=Math.hypot(e.x-s.x,e.y-s.y);if(d<90){s.tx=s.x-(e.x-s.x);s.ty=s.y-(e.y-s.y)*.5;}else if(d>U.rng*.9){s.tx=e.x;s.ty=e.y;}else{s.tx=s.x;s.ty=s.y;}s.tgt=null;return;}}
@@ -1498,9 +1532,9 @@ function renderBattleUI(){if(!B)return;const mine=B.sq.filter(s=>s.side===B.ps);
  $('btop').innerHTML=`<b style="font-family:Cinzel;color:#d4a73a">${esc(B.title)}</b><span>⏱ ${Math.floor(B.t)}s</span><span>You: <b>${sumSide(B.ps)}</b></span><span>Them: <b>${sumSide(B.ps==='A'?'D':'A')}</b>${B.pool>0?` <span style="color:#ff9a7a">(+${B.pool} gathering)</span>`:''}</span><span>${lootTxt}</span><span class="grow"></span>
  <button data-act="bpause">${B.paused?'▶ Resume':'❚❚ Pause'}</button><button data-act="bspeed">${B.speed}× speed</button><button class="${B.auto?'gold':''}" data-act="bauto">${B.auto?'Auto: on':'Auto: off'}</button>${B.mode==='raid'?`<button class="alt" data-act="bships">⛵ Back to the ships</button><button class="red" data-act="bsail">Sail away</button>`:''}`;
  const sel=B.sq.find(s=>s.id===B.sel);
- if(B.deploy){$('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}</div>`).join('')+`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px"><button data-act="bform" data-arg="line">Line</button><button data-act="bform" data-arg="wedge">Wedge (svínfylking)</button><button class="gold" data-act="bgo">⚔ Begin the fight</button><div class="small" style="color:#d9c79a">Deploy: pick a warband, then click inside the bright area to place it. ${esc(B.ter?B.ter.txt:'')}${B.lead?' Led by '+esc(captName(B.lead))+'.':''}</div></div>`;return;}
- $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (routed: running)':s.dis?' (falling back)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
- +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break wall':'Shield wall'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot</button>':''}<button data-act="bhold">Hold</button><button data-act="bfall">Fall back</button><div class="small" style="color:#b9a682">Tap ground to move · tap an enemy to attack${B.ps==='A'?' · tap a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Tap a warband to command it</span>'}</div>`;}
+ if(B.deploy){$('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}</div>`).join('')+`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px"><button data-act="bform" data-arg="line">Line</button><button data-act="bform" data-arg="wedge">Wedge (svínfylking)</button><button class="gold" data-act="bgo">⚔ Begin the fight</button><div class="small" style="color:#d9c79a">Deploy: pick a warband, then click inside the bright area to place it. <b>Matchups:</b> ${esc(MATCHUPS)} ${esc(B.ter?B.ter.txt:'')}${B.lead?' Led by '+esc(captName(B.lead))+'.':''}</div></div>`;return;}
+ $('bbot').innerHTML=mine.map((s,i)=>`<div class="sq ${s.id===B.sel?'sel':''} ${s.gone||s.rout?'rout':''}" data-act="bsel" data-arg="${s.id}"><b>${i+1}. ${UT[s.type].n}</b> ${Math.round(s.men)}/${s.max}${s.gone?(s.fled?' ⛵':' †'):s.rout?' (routed: running)':s.dis?' (falling back)':s.brace>0?' (braced)':''}${s.wall?' 🛡':''}<div class="bar"><i style="width:${clamp(s.morale/s.base*100,0,100)}%"></i></div></div>`).join('')
+ +`<div style="border-left:1px solid #5a4632;padding-left:10px;margin-left:6px">${sel&&!sel.gone?`<button data-act="bwall">${sel.wall?'Break wall':'Shield wall'}</button><button data-act="bcharge" ${sel.chargeCd>0?'disabled':''}>Charge${sel.chargeCd>0?' '+Math.ceil(sel.chargeCd):''}</button>${B.ps==='A'?'<button data-act="bloot">Loot</button>':''}<button data-act="bhold">Hold</button><button data-act="bfall">Fall back</button>${ABIL[sel.type]?`<button class="gold" data-act="babil" ${sel.abCd>0?'disabled':''} title="${esc(ABIL[sel.type].d||'')}">${esc(ABIL[sel.type].n)}${sel.abCd>0?' '+Math.ceil(sel.abCd):''}</button>`:''}<div class="small" style="color:#b9a682">Tap ground to move · tap an enemy to attack${B.ps==='A'?' · tap a house to loot':''}</div>`:'<span class="small" style="color:#b9a682">Tap a warband to command it</span>'}</div>`;}
 ACT.bsel=a=>{B.sel=+a;renderBattleUI();};
 ACT.bpause=()=>{B.paused=!B.paused;renderBattleUI();};
 ACT.bspeed=()=>{B.speed=B.speed===1?2:B.speed===2?3:1;renderBattleUI();};
@@ -1514,7 +1548,7 @@ ACT.bloot=()=>{const s=selSq();if(!s)return;let bb=-1,bd=1e9;B.blds.forEach((b,i
 ACT.bfall=()=>{const s=selSq();if(!s)return;let tx,ty=s.y;if(B.ps==='A'){tx=Math.max(SHIPX+30,s.x-170);}else{const k=.6;tx=s.x+(VC.x-s.x)*k;ty=s.y+(VC.y-s.y)*k;}s.tgt=null;s.bld=null;s.tx=tx;s.ty=ty;s.order='fallback';s.wall=false;s.charge=0;B.auto=false;bmsg(`${UT[s.type].n} fall back in good order.`);renderBattleUI();};
 ACT.bhold=()=>{const s=selSq();if(s){s.tgt=null;s.bld=null;s.tx=s.x;s.ty=s.y;s.order='hold';}};
 function battleKey(e){if(e.code==='Space'){e.preventDefault();ACT.bpause();return;}const n=+e.key;if(n>=1&&n<=9){const m=B.sq.filter(s=>s.side===B.ps)[n-1];if(m){B.sel=m.id;renderBattleUI();}return;}
- const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='f')ACT.bfall();else if(k==='r'&&B.ps==='A')ACT.bships();}
+ const k=e.key.toLowerCase();if(k==='w')ACT.bwall();else if(k==='c')ACT.bcharge();else if(k==='l'&&B.ps==='A')ACT.bloot();else if(k==='h')ACT.bhold();else if(k==='f')ACT.bfall();else if(k==='q')ACT.babil();else if(k==='r'&&B.ps==='A')ACT.bships();}
 bcv.addEventListener('mousedown',e=>{if(!B||!battleOn)return;e.preventDefault();const r=bcv.getBoundingClientRect();const{k,ox,oy}=fieldScale();const x=(e.clientX-r.left-ox)/k,y=(e.clientY-r.top-oy)/k;
  let hit=null,hd=1e9;for(const s of B.sq){if(s.gone)continue;const d=Math.hypot(s.x-x,s.y-y);if(d<sqR(s)+18&&d<hd){hd=d;hit=s;}}
  if(hit&&hit.side===B.ps&&e.button===0){B.sel=hit.id;renderBattleUI();return;}const s=selSq();if(!s)return;
